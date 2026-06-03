@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "arkrenderer",
+  "version-string": "0.1.0",
+  "description": "ARKRenderer third-party dependencies managed by vcpkg manifest mode.",
+  "dependencies": [
+    "vulkan",
+    "vulkan-memory-allocator",
+    "volk",
+    "vk-bootstrap",
+    "spirv-headers",
+    "spirv-reflect",
+    "glfw3",
+    "glm",
+    "spdlog",
+    "fmt",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "glfw-binding",
+        "vulkan-binding"
+      ]
+    },
+    "stb",
+    {
+      "name": "directx-dxc",
+      "platform": "(windows & !arm32 & !uwp & !xbox) | (linux & x64)"
+    },
+    "tinygltf"
+  ]
+}
