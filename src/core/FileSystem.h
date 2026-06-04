@@ -3,5 +3,5 @@
 #include <filesystem>
 
 namespace ark {
-using Path = std::filesystem::path;
+    using Path = std::filesystem::path;
 } // namespace ark

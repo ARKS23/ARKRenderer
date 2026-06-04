@@ -1,11 +1,10 @@
 #pragma once
 
 namespace ark::rhi {
-struct GraphicsPipelineDesc {
-};
+    struct GraphicsPipelineDesc {};
 
-class PipelineState {
-public:
-    virtual ~PipelineState() = default;
-};
+    class PipelineState {
+    public:
+        virtual ~PipelineState() = default;
+    };
 } // namespace ark::rhi

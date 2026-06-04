@@ -8,7 +8,7 @@ BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-NamespaceIndentation: None
+NamespaceIndentation: All
 AccessModifierOffset: -4
 PointerAlignment: Left
 SortIncludes: false

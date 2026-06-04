@@ -65,15 +65,9 @@ int main() {
     int glfwRevision = 0;
     glfwGetVersion(&glfwMajor, &glfwMinor, &glfwRevision);
 
-    const std::string report = fmt::format(
-        "ARKRenderer dependencies OK | Vulkan header {} | GLFW {}.{}.{} | ImGui {} | STB {} | glm.z {}",
-        VK_HEADER_VERSION,
-        glfwMajor,
-        glfwMinor,
-        glfwRevision,
-        IMGUI_VERSION,
-        STBI_VERSION,
-        sampleVector.z);
+    const std::string report =
+        fmt::format("ARKRenderer dependencies OK | Vulkan header {} | GLFW {}.{}.{} | ImGui {} | STB {} | glm.z {}",
+                    VK_HEADER_VERSION, glfwMajor, glfwMinor, glfwRevision, IMGUI_VERSION, STBI_VERSION, sampleVector.z);
 
     spdlog::info("{}", report);
     std::cout << report << '\n';

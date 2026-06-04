@@ -14,14 +14,14 @@
 #include <memory>
 
 namespace ark::rhi {
-class RenderDevice {
-public:
-    virtual ~RenderDevice() = default;
+    class RenderDevice {
+    public:
+        virtual ~RenderDevice() = default;
 
-    virtual void beginFrame() = 0;
-    virtual void endFrame() = 0;
-    virtual void waitIdle() = 0;
-};
+        virtual void beginFrame() = 0;
+        virtual void endFrame() = 0;
+        virtual void waitIdle() = 0;
+    };
 
-using RenderDevicePtr = std::unique_ptr<RenderDevice>;
+    using RenderDevicePtr = std::unique_ptr<RenderDevice>;
 } // namespace ark::rhi

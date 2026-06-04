@@ -3,11 +3,11 @@
 #include <spdlog/spdlog.h>
 
 namespace ark {
-class Log {
-public:
-    static void initialize();
-    static void shutdown();
-};
+    class Log {
+    public:
+        static void initialize();
+        static void shutdown();
+    };
 } // namespace ark
 
 #define ARK_TRACE(...) ::spdlog::trace(__VA_ARGS__)

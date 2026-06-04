@@ -1,6 +1,5 @@
 #pragma once
 
 namespace ark::rhi::vulkan {
-class VulkanSync {
-};
+    class VulkanSync {};
 } // namespace ark::rhi::vulkan

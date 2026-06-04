@@ -1,6 +1,5 @@
 #pragma once
 
 namespace ark::rhi::vulkan {
-class VulkanCommandBuffer {
-};
+    class VulkanCommandBuffer {};
 } // namespace ark::rhi::vulkan

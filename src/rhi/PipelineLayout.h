@@ -1,11 +1,10 @@
 #pragma once
 
 namespace ark::rhi {
-struct PipelineLayoutDesc {
-};
+    struct PipelineLayoutDesc {};
 
-class PipelineLayout {
-public:
-    virtual ~PipelineLayout() = default;
-};
+    class PipelineLayout {
+    public:
+        virtual ~PipelineLayout() = default;
+    };
 } // namespace ark::rhi
