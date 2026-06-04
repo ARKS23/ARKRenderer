@@ -9,6 +9,10 @@
 - 第一阶段优先跑通窗口、Vulkan device、swapchain、ClearPass 和 ImGuiPass。
 - RenderGraph 先保留轻量接口，不在第一版实现复杂依赖分析和自动同步。
 
+相关文档：
+
+- `docs/design/module_responsibility.md`：记录各模块职责、依赖边界、对象所有权和 Vulkan 阶段开发守则。
+
 ## 目录结构
 
 ```text
@@ -60,8 +64,8 @@ src/
 |   |-- FrameResource.h
 |   |
 |   `-- vulkan/
-|       |-- VulkanRenderDevice.h
-|       |-- VulkanDeviceContext.h
+|       |-- VulkanDevice.h
+|       |-- VulkanCommandContext.h
 |       |-- VulkanSwapChain.h
 |       |
 |       |-- VulkanBuffer.h
@@ -75,7 +79,10 @@ src/
 |       |-- VulkanDescriptorSet.h
 |       |
 |       |-- VulkanAllocator.h
-|       |-- VulkanDescriptorAllocator.h
+|       |-- VulkanResourceManager.h
+|       |-- VulkanDescriptorManager.h
+|       |-- VulkanBindlessResourceManager.h
+|       |-- VulkanPipelineCache.h
 |       |-- VulkanCommandPool.h
 |       |-- VulkanCommandBuffer.h
 |       |-- VulkanCommandQueue.h
@@ -114,6 +121,14 @@ src/
 `rhi/` 定义渲染硬件接口。第一版采用 Vulkan-first 设计，不追求过早支持多后端，但上层不直接接触 Vulkan 类型。
 
 `rhi/vulkan/` 是 Vulkan 后端实现，是项目中唯一允许直接包含 Vulkan 头文件的位置。
+
+Vulkan 后端目标架构采用 `VulkanDevice + VulkanCommandContext + VulkanSwapChain` 三个核心对象：
+
+- `VulkanDevice` 对应公共 RHI 的 `RenderDevice` 实现，负责设备创建、设备能力查询、资源创建和设备级生命周期。
+- `VulkanCommandContext` 对应公共 RHI 的 `DeviceContext` 实现，负责 command buffer 录制、资源状态转换、绑定状态、draw / dispatch / copy / submit。
+- `VulkanSwapChain` 对应公共 RHI 的 `SwapChain` 实现，负责窗口 surface、backbuffer、默认 depth buffer、acquire、present 和 resize。
+
+代码结构应直接使用 `VulkanDevice`、`VulkanCommandContext` 和 `VulkanSwapChain` 作为后端核心类型，避免再引入容易模糊职责的旧命名。
 
 `asset/` 只负责解析文件并输出 CPU 侧中间数据，例如 `ImageData`、`MeshData`、`MaterialData`、`ShaderBytecode`。GPU 资源创建由 `renderer/` 调用 `RenderDevice` 完成。
 
@@ -162,22 +177,104 @@ RenderGraph
     后续再升级为真正的 frame graph。
 
 RenderDevice
-    创建设备对象，包括 Buffer、Texture、TextureView、Sampler、Shader、
-    PipelineLayout、PipelineState、DescriptorSetLayout、DescriptorSet 等。
-    管理 allocator、descriptor allocator、pipeline cache、frame resource 和 deletion queue。
+    设备与资源工厂。
+    负责创建 Buffer、Texture、TextureView、Sampler、Shader、Fence、
+    PipelineLayout、PipelineState、DescriptorSetLayout、DescriptorSet 等对象。
+    保存设备能力信息，管理 allocator、descriptor allocator、pipeline cache 和设备级资源生命周期。
+    一般不负责每帧 draw，不负责 command buffer 录制，也不负责 acquire / present。
 
 DeviceContext
-    录制和提交命令，包括 draw、dispatch、copy、barrier、begin/end rendering。
-    对外隐藏具体 CommandBuffer 和 Queue 细节。
+    资源使用与命令执行对象。
+    维护当前绑定状态，录制和提交命令，包括 draw、dispatch、copy、map/update、
+    resource transition、begin/end rendering。
+    对应 Vulkan 的 command buffer / command encoder / queue submit 这一侧。
 
 SwapChain
-    管理 surface、backbuffer、acquire、present 和 resize。
-    对 renderer 层只暴露当前 backbuffer 的 Texture / TextureView。
+    管理窗口相关的 surface、backbuffer、默认 depth buffer、resize、acquire 和 present。
+    对 renderer 层提供当前 backbuffer render target view 和 depth stencil view。
 ```
+
+## Vulkan 后端目标架构
+
+Vulkan 后端按以下对象分工落地：
+
+```text
+VulkanDevice
+    create Buffer / Texture / Shader / Pipeline / Sampler / Fence
+    query and store device capabilities
+    own VkInstance / VkDevice / VkSurfaceKHR / queues
+    own allocator, descriptor manager, bindless manager, pipeline cache
+    provide waitIdle
+
+VulkanCommandContext
+    beginRendering / endRendering
+    setPipeline
+    bindDescriptorSet / bindGlobalBindlessSet
+    setVertexBuffer / setIndexBuffer
+    draw / drawIndexed / dispatch
+    copy / update / map if needed
+    pipelineBarrier / resource transition
+    submit command buffer
+
+VulkanSwapChain
+    acquire
+    getCurrentBackBuffer
+    getDepthBuffer
+    present
+    resize
+
+VulkanFrameResource
+    command buffer
+    imageAvailableSemaphore
+    renderFinishedSemaphore
+    inFlightFence
+    per-frame deferred deletion
+
+VulkanResourceManager
+    manage resource handles
+    track resource lifetime
+    route delayed destruction to current frame deferred deletion
+
+VulkanDescriptorManager
+    allocate descriptor pools / descriptor sets
+    manage descriptor set layouts where needed
+
+VulkanBindlessResourceManager
+    allocate bindless indices
+    update global bindless descriptor set
+    recycle bindless slots safely
+
+VulkanPipelineCache
+    cache graphics pipelines
+    cache compute pipelines
+    own VkPipelineCache if enabled
+
+RenderGraph
+    added later
+    manage pass order, resource read/write declarations and barriers
+```
+
+命名规则：
+
+- 公共 RHI 层继续使用 `RenderDevice`、`DeviceContext`、`SwapChain`。
+- Vulkan 后端实现建议使用 `VulkanDevice`、`VulkanCommandContext`、`VulkanSwapChain`。
+- renderer 层的 `FrameContext` 保留为高层一帧语义上下文。
+- 底层每帧 GPU 对象使用 `VulkanFrameResource`，不要命名为 `FrameContext`，避免和 renderer 层混淆。
+
+落地顺序：
+
+1. `VulkanDevice + VulkanSwapChain`：只完成设备、surface、swapchain、backbuffer 和默认 depth buffer。
+2. `VulkanCommandContext + VulkanFrameResource`：完成 command buffer、semaphore、fence、acquire / submit / present 和清屏。
+3. `VulkanResourceManager`：引入资源 handle、生命周期和延迟销毁。
+4. `VulkanDescriptorManager + VulkanBindlessResourceManager`：引入 descriptor set、bindless index 和全局 bindless set。
+5. `VulkanPipelineCache`：缓存 graphics / compute pipeline。
+6. `RenderGraph`：多 pass、资源读写声明和自动 barrier 后期再加。
 
 ## Native Window Handle
 
 `rhi/vulkan/` 不直接依赖 `app/Window`。`Window` 只负责返回平台窗口句柄，Vulkan 后端根据该句柄创建 `VkSurfaceKHR`。
+
+注意：Vulkan physical device 和 present queue 的选择通常需要 `VkSurfaceKHR`。因此第一版推荐在 `VulkanDevice` 初始化阶段根据 `NativeWindowHandle` 创建 surface，并用它完成 physical device / queue family 选择；`VulkanSwapChain` 借用该 surface 创建 swapchain。后续如果支持多窗口，再独立抽象 `Surface` 对象。
 
 RHI 层可以定义轻量 native window 描述：
 
@@ -210,6 +307,7 @@ struct SwapChainDesc
     uint32_t width = 0;
     uint32_t height = 0;
     Format colorFormat = Format::Unknown;
+    Format depthFormat = Format::D32Float;
     NativeWindowHandle nativeWindow;
 };
 ```
@@ -227,7 +325,7 @@ rhi/vulkan/
     -> 根据 NativeWindowHandle 创建 VkSurfaceKHR
 ```
 
-这样可以守住 `rhi/vulkan/ -> rhi/, core/` 的依赖规则。
+这样可以守住 `rhi/vulkan/ -> rhi/, core/` 的依赖规则，同时避免 `app/` 或 `renderer/` 直接接触 Vulkan surface。
 
 ## FrameContext 与 FrameResource
 
@@ -251,7 +349,7 @@ struct FrameContext
 };
 ```
 
-`FrameResource` 属于 `rhi/` 或 `rhi/vulkan/` 层，是每帧 GPU 资源集合。
+`FrameResource` 是每帧命令录制和 GPU 提交需要的底层资源集合。它不属于 `RenderDevice` 的核心职责，第一版可以作为 `DeviceContext` 或 `Renderer` 内部 frame scheduler 的实现细节。
 
 公共层的 `FrameResource.h` 应保持抽象，不包含 `VkFence`、`VkSemaphore`、`VkCommandPool` 等后端类型。具体 Vulkan 内容放在 `VulkanFrameResource.h`。
 
@@ -268,36 +366,30 @@ struct FrameContext
 两者不要混用：
 
 - `FrameContext` 回答“这一帧要画什么，pass 可以访问哪些高层对象”。
-- `FrameResource` 回答“这一帧 GPU 提交需要哪些底层资源和同步对象”。
+- `FrameResource` 回答“这一帧命令录制和 GPU 提交需要哪些底层资源和同步对象”。
 
 ## Frame Sync Ownership
 
-第一版同步对象由 `FrameResource` 持有。其他对象只使用这些同步对象，不拥有它们。
+第一版同步对象可以由 `FrameResource` 持有，但 `FrameResource` 不应由 `RenderDevice` 直接驱动。更清晰的划分是：
 
-职责划分：
-
-- `RenderDevice::beginFrame()` 等待当前 frame 的 in-flight fence，并重置 per-frame resources。
-- `SwapChain::acquireNextImage()` 使用 `imageAvailableSemaphore` 获取 backbuffer。
-- `DeviceContext::submit()` 等待 `imageAvailableSemaphore`，并 signal `renderFinishedSemaphore`。
-- `SwapChain::present()` 等待 `renderFinishedSemaphore`。
-- `RenderDevice::endFrame()` 推进 frame index，并处理安全可释放的延迟销毁资源。
+- `Renderer` 或内部 frame scheduler 负责选择当前 frame，并协调 acquire、record、submit、present 的顺序。
+- `SwapChain` 负责 acquire / present，以及窗口 backbuffer 和默认 depth buffer 的 resize。
+- `DeviceContext` 负责 command buffer 录制、资源状态转换和 queue submit。
+- `RenderDevice` 只提供设备能力、资源创建、设备级生命周期管理和 `waitIdle()`。
 
 第一版一帧同步流程示例：
 
 ```cpp
-FrameResource& frame = device.getCurrentFrameResource();
-
-device.beginFrame();
+FrameResource& frame = frameScheduler.currentFrame();
 
 if (!swapChain.acquireNextImage(frame.imageAvailableSemaphore))
 {
     device.waitIdle();
     renderer.resize(window.getWidth(), window.getHeight());
-    device.endFrame();
     return;
 }
 
-context.begin();
+context.begin(frame);
 frameRenderer.render(frameContext);
 context.end();
 
@@ -309,7 +401,7 @@ submit.fence = frame.inFlightFence;
 context.submit(submit);
 swapChain.present(frame.renderFinishedSemaphore);
 
-device.endFrame();
+frameScheduler.advance();
 ```
 
 如果 `acquireNextImage()` 或 `present()` 返回 out-of-date / suboptimal，第一版可以跳过当前帧绘制并触发 resize。注意：acquire 失败后不能继续录制绘制命令。
@@ -334,7 +426,7 @@ public:
 };
 ```
 
-Vulkan surface 由 `rhi/vulkan/` 创建。例如在 `VulkanSwapChain` 或相关 helper 中将 native window handle 转换为 `VkSurfaceKHR`。
+Vulkan surface 由 `rhi/vulkan/` 创建。第一版推荐由 `VulkanDevice` 或它内部的 helper 在设备初始化早期创建 surface，因为 physical device / present queue 选择需要查询 surface 支持；`VulkanSwapChain` 只负责基于已有 surface 创建和重建 swapchain。
 
 这样可以守住边界：
 
@@ -441,7 +533,6 @@ public:
 Application::run()
     -> Window::pollEvents()
     -> Renderer::render(scene, view)
-        -> RenderDevice::beginFrame()
         -> SwapChain::acquireNextImage()
         -> DeviceContext::begin()
         -> FrameRenderer::render(frameContext)
@@ -450,16 +541,16 @@ Application::run()
         -> DeviceContext::end()
         -> DeviceContext::submit()
         -> SwapChain::present()
-        -> RenderDevice::endFrame()
 ```
 
 职责说明：
 
-- `RenderDevice::beginFrame()` 等待当前 frame fence，重置 per-frame resources。
+- `Renderer` 或内部 frame scheduler 选择当前 frame resource，并协调一帧执行顺序。
 - `SwapChain::acquireNextImage()` 获取当前 backbuffer。
+- `DeviceContext::begin()` / `end()` 录制当前帧 command buffer。
 - `DeviceContext::submit()` 提交 command buffer，并处理 wait/signal semaphore。
 - `SwapChain::present()` 呈现当前 backbuffer。
-- `RenderDevice::endFrame()` 推进 frame index，并清理安全可释放的延迟销毁资源。
+- `RenderDevice` 不参与每帧 draw，只提供资源创建、设备能力查询、设备级生命周期管理和 `waitIdle()`。
 
 如果 acquire 或 present 失败，当前帧不能继续正常绘制，应进入 resize / recreate swapchain 流程。
 
@@ -469,10 +560,11 @@ Application::run()
 
 1. 等待 GPU 完成当前相关工作。
 2. 销毁旧 swapchain 相关资源。
-3. 重建 swapchain。
-4. 重建依赖 swapchain 尺寸的 render targets，例如 depth texture、HDR color texture。
-5. 通知 `FrameRenderer`、`RenderGraph` 和 pass 更新尺寸相关资源。
-6. 更新 ImGui 相关 framebuffer 状态。
+3. 重建 swapchain backbuffer。
+4. 由 `SwapChain` 重建默认 depth buffer / depth stencil view。
+5. 重建其他依赖 swapchain 尺寸的 render targets，例如 HDR color texture。
+6. 通知 `FrameRenderer`、`RenderGraph` 和 pass 更新尺寸相关资源。
+7. 更新 ImGui 相关 framebuffer 状态。
 
 第一版可以使用简单策略：
 
@@ -492,7 +584,7 @@ frameRenderer.resize(width, height);
 Application
 -> Window
 -> Renderer
--> VulkanRenderDevice
+-> VulkanDevice
 -> VulkanSwapChain
 -> ClearPass
 -> ImGuiPass
