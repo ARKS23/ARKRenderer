@@ -1,10 +1,11 @@
 #pragma once
 
 #include "app/Window.h"
-
-#include <memory>
+#include "core/Memory.h"
 
 namespace ark {
+    class Renderer;
+
     struct ApplicationDesc {
         WindowDesc window;
     };
@@ -18,6 +19,7 @@ namespace ark {
 
     private:
         ApplicationDesc m_Desc;
-        std::unique_ptr<Window> m_Window;
+        Scope<Window> m_Window;
+        Scope<Renderer> m_Renderer;
     };
 } // namespace ark

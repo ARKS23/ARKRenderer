@@ -7,6 +7,7 @@
 #include "core/Assert.h"
 #include "core/FileSystem.h"
 #include "core/Log.h"
+#include "core/Memory.h"
 #include "core/NonCopyable.h"
 #include "core/Result.h"
 #include "core/Timer.h"
@@ -37,6 +38,7 @@
 #include "rhi/PipelineLayout.h"
 #include "rhi/PipelineState.h"
 #include "rhi/RHICommon.h"
+#include "rhi/RenderBackend.h"
 #include "rhi/RenderDevice.h"
 #include "rhi/ResourceBarrier.h"
 #include "rhi/Sampler.h"
@@ -51,6 +53,7 @@
 #include "rhi/vulkan/VulkanCommandContext.h"
 #include "rhi/vulkan/VulkanCommandPool.h"
 #include "rhi/vulkan/VulkanCommandQueue.h"
+#include "rhi/vulkan/VulkanCommon.h"
 #include "rhi/vulkan/VulkanDeletionQueue.h"
 #include "rhi/vulkan/VulkanDescriptorManager.h"
 #include "rhi/vulkan/VulkanDescriptorSet.h"
@@ -73,8 +76,29 @@
 
 int main() {
     ark::rhi::NativeWindowHandle nativeWindow{};
+
+    ark::rhi::RenderDeviceDesc renderDeviceDesc{};
+    ark::rhi::RenderDeviceCreateInfo renderDeviceCreateInfo{};
+    renderDeviceCreateInfo.desc = renderDeviceDesc;
+    renderDeviceCreateInfo.desc.backend = ark::rhi::RenderBackendType::Vulkan;
+    renderDeviceCreateInfo.nativeWindow = nativeWindow;
+
     ark::rhi::SwapChainDesc swapChainDesc{};
-    swapChainDesc.nativeWindow = nativeWindow;
+    ark::rhi::SwapChainCreateInfo swapChainCreateInfo{};
+    swapChainCreateInfo.desc = swapChainDesc;
+    ark::rhi::RenderBackendDesc renderBackendDesc{};
+    renderBackendDesc.device = renderDeviceCreateInfo;
+    renderBackendDesc.swapChain = swapChainDesc;
+
+    const ark::rhi::SwapChainStatus swapChainStatus = ark::rhi::SwapChainStatus::Ready;
+    const bool extentValid = ark::rhi::isValidExtent(swapChainDesc.extent);
+    const char* colorFormatName = ark::rhi::vulkan::formatName(swapChainDesc.colorFormat);
+    ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
+    ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
+
+    ark::RendererDesc rendererDesc{};
+    rendererDesc.nativeWindow = nativeWindow;
+    rendererDesc.extent = swapChainDesc.extent;
 
     ark::FrameContext frameContext{};
     ark::RenderGraph renderGraph;
@@ -82,6 +106,16 @@ int main() {
 
     ark::Timer timer;
     timer.reset();
+
+    (void)renderDeviceCreateInfo;
+    (void)swapChainCreateInfo;
+    (void)renderBackendDesc;
+    (void)swapChainStatus;
+    (void)extentValid;
+    (void)colorFormatName;
+    (void)scopedTimer;
+    (void)sharedTimer;
+    (void)rendererDesc;
 
     return EXIT_SUCCESS;
 }

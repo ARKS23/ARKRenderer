@@ -237,6 +237,7 @@ Window
 典型对象：
 
 - `RenderDevice`
+- `RenderBackend`
 - `DeviceContext`
 - `SwapChain`
 - `Buffer`
@@ -265,6 +266,7 @@ Window
 设计要点：
 
 - `RenderDevice` 是设备与资源工厂，负责创建 Buffer、Texture、Shader、PipelineState、Sampler、Fence、PipelineResourceSignature 或 PipelineLayout / DescriptorSetLayout 等对象。
+- `RenderBackend` 是公共 RHI 层的运行期后端对象，统一持有 `RenderDevice + SwapChain`，并通过后端工厂隐藏 `VulkanDevice` / `VulkanSwapChain` 的具体创建细节。
 - `RenderDevice` 保存设备能力信息，管理 allocator、descriptor allocator、pipeline cache 和设备级资源生命周期。
 - `RenderDevice` 不负责每帧 draw，不负责 command buffer 录制，不负责 acquire / present。
 - `DeviceContext` 是资源使用与命令执行对象，维护当前绑定状态，负责 draw、dispatch、copy、map/update、resource transition、command recording 和 queue submit。
@@ -348,6 +350,12 @@ Window
 - 不绕过 engine public API 创建 Vulkan 对象。
 
 ## 对象所有权
+
+项目级所有权约定：
+
+- `Scope<T>` 表示唯一所有权，是当前默认选择。
+- `Ref<T>` 表示共享所有权，只在资源确实跨系统共享生命周期时使用。
+- 后续 GPU 资源生命周期优先由 `ResourceManager` 和 handle 系统管理，不默认使用共享指针。
 
 ```text
 Application
@@ -562,7 +570,7 @@ Renderer::resize(width, height)
 
 为了避免过早设计，Vulkan 阶段建议按以下顺序推进：
 
-1. 补齐 `RenderDeviceDesc`、`RenderDeviceCaps`、`SwapChainDesc`、`SwapChainStatus` 等最小描述结构。
+1. 补齐 `RenderDeviceDesc`、`RenderDeviceCreateInfo`、`RenderDeviceCaps`、`SwapChainDesc`、`SwapChainCreateInfo`、`SwapChainStatus` 等最小描述结构。
 2. 实现 `VulkanDevice` 初始化和销毁。
 3. 实现 `VulkanSwapChain` 创建、backbuffer image view、默认 depth buffer 和 resize。
 4. 实现 `VulkanFrameResource` 和最小 `VulkanCommandContext`，再补齐 `SubmitDesc`、`AcquireResult`、`PresentResult`。

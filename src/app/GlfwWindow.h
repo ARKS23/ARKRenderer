@@ -8,11 +8,11 @@ namespace ark {
         explicit GlfwWindow(const WindowDesc& desc);
         ~GlfwWindow() override;
 
-        [[nodiscard]] bool shouldClose() const override;
+        bool shouldClose() const override;
         void pollEvents() override;
 
-        [[nodiscard]] rhi::NativeWindowHandle getNativeWindowHandle() const override;
-        [[nodiscard]] rhi::Extent2D getExtent() const override;
+        rhi::NativeWindowHandle getNativeWindowHandle() const override;
+        rhi::Extent2D getExtent() const override;
 
     private:
         void* m_Window = nullptr;

@@ -11,7 +11,7 @@ namespace ark {
             m_Start = Clock::now();
         }
 
-        [[nodiscard]] double elapsedSeconds() const {
+        double elapsedSeconds() const {
             return std::chrono::duration<double>(Clock::now() - m_Start).count();
         }
 

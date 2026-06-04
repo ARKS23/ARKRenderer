@@ -50,6 +50,8 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
    - `SwapChainDesc`
    - `SwapChainCreateInfo`
    - `SwapChainStatus` 或 `Result` 风格的状态枚举
+
+   当前基础版本已完成：`RenderDeviceDesc` 保存设备级配置，`RenderDeviceCreateInfo` 保存创建设备时需要的窗口句柄；`SwapChainDesc` 保存 swapchain 自身的持久描述，`SwapChainCreateInfo` 保存创建 swapchain 时需要的设备依赖。这样可以避免把创建时依赖和对象运行期描述混在一起。
 2. 扩展 `RenderDevice` 接口：
    - 提供 `waitIdle()`。
    - 提供设备能力查询，例如 GPU 名称、API 版本、队列能力、支持的格式等。
@@ -81,8 +83,8 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
    - 在接口层明确默认 depth buffer / depth view 属于 `SwapChain`；真实 Vulkan depth image 可以在 Phase 0.2 完成，也可以作为 Phase 0.3 清屏闭环前置任务完成。
    - 析构时销毁 image views 和 swapchain。
 6. 实现 `Renderer` 的第一版真实类：
-   - 持有 `rhi::RenderDevicePtr`。
-   - 持有 `rhi::SwapChain`。
+   - 通过 `Scope<rhi::RenderDevice>` 持有设备。
+   - 通过 `Scope<rhi::SwapChain>` 持有 swapchain。
    - 初始化时接收窗口 native handle 和 extent。
    - `render()` 暂时可以为空实现。
    - `resize()` 暂时可以记录尺寸或触发 swapchain 保守重建。
@@ -94,29 +96,53 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
    - `framework_headers_smoke.cpp` 覆盖新接口头文件。
    - 如有必要增加轻量构造测试，但不要在自动测试里启动窗口主循环。
 
+## 当前实现记录
+
+本阶段代码已经完成以下内容：
+
+- `src/core/Memory.h`：新增 `Scope<T>`、`Ref<T>`、`makeScope<T>()`、`makeRef<T>()`，统一项目所有权表达。
+- `src/rhi/RHICommon.h`：新增 `RenderBackendType`、`isValidExtent()`，并补齐必要中文注释。
+- `src/rhi/RenderBackend.h/.cpp`：新增公共 RHI 后端工厂和 `RenderBackend` 运行期对象，统一持有 `RenderDevice + SwapChain`。
+- `src/rhi/RenderDevice.h`：补齐 `RenderDeviceDesc`、`RenderDeviceCreateInfo`、`RenderDeviceCaps`，移除每帧 begin/end 职责。
+- `src/rhi/SwapChain.h`：补齐 `SwapChainDesc`、`SwapChainCreateInfo`、`SwapChainStatus`，明确默认 depth view 属于 `SwapChain`。
+- `src/rhi/vulkan/VulkanCommon.h/.cpp`：集中 Vulkan 格式映射、present mode 名称、版本号格式化等后端工具函数。
+- `src/rhi/vulkan/VulkanDevice.h/.cpp`：使用 volk + vk-bootstrap 创建 instance、debug messenger、GLFW surface、physical device、logical device、graphics queue 和 present queue，并在析构时按顺序释放。
+- `src/rhi/vulkan/VulkanSwapChain.h/.cpp`：使用 vk-bootstrap 创建 swapchain、获取 backbuffer images、创建 backbuffer image views，并支持保守 `resize()`。
+- `src/rhi/vulkan/VulkanTextureView.h/.cpp`：为 swapchain backbuffer image view 提供最小 RAII 包装。
+- `src/rhi/vulkan/VulkanRenderBackend.cpp`：实现 Vulkan 后端工厂，集中创建 `VulkanDevice` 和 `VulkanSwapChain`。
+- `src/renderer/Renderer.h/.cpp`：新增 `RendererDesc` 和 `createRenderer()`，应用层通过 renderer 工厂创建 renderer；renderer 只依赖公共 RHI，不直接包含 Vulkan 后端头文件。
+- `src/app/Application.cpp`：创建窗口后初始化 Renderer；退出时先销毁 Renderer，再销毁 Window。
+- `tests/framework_headers_smoke.cpp`：覆盖新增 RHI 描述结构、renderer 描述结构和 Vulkan 公共工具头文件。
+
+当前 `Renderer::render()` 仍为空实现，不执行 acquire / submit / present；这是 Phase 0.2 的刻意边界。默认 depth buffer 的所有权已经归属 `SwapChain`，但真实 depth image / depth view 分配将作为 Phase 0.3 清屏闭环的前置任务完成。
+
 ## 建议新增文件
 
 ```text
 src/
 |-- renderer/
-|   |-- Renderer.cpp
-|   `-- VulkanRendererFactory.h        可选：如果需要隐藏 Vulkan 后端创建细节
+|   `-- Renderer.cpp                   已新增：隐藏 Vulkan 后端创建细节
 |
 `-- rhi/
+    |-- RenderBackend.h                已新增：公共后端工厂接口
+    |-- RenderBackend.cpp              已新增：公共后端对象和通用创建流程
     |-- RenderDevice.cpp               可选：如果有公共 helper
     |-- SwapChain.cpp                  可选：如果有公共 helper
     |
     `-- vulkan/
+        |-- VulkanCommon.h             已新增：Vulkan 格式映射和日志辅助
+        |-- VulkanCommon.cpp
         |-- VulkanDevice.cpp
+        |-- VulkanRenderBackend.cpp    已新增：Vulkan 后端工厂实现
         |-- VulkanSwapChain.cpp
-        |-- VulkanCommon.h             可选：Vulkan 检查宏和小工具
+        |-- VulkanTextureView.cpp
         `-- VulkanSurface.h            可选：如果 surface 生命周期需要独立 helper
 ```
 
 说明：
 
 - 是否新增 `VulkanSurface.h` 取决于实现复杂度。第一版可以让 `VulkanDevice` 直接持有 `VkSurfaceKHR`，等多窗口或多 swapchain 需求出现后再拆出独立对象。
-- 是否新增 `VulkanRendererFactory.h` 取决于 `Application` 是否需要避免看到 Vulkan 后端类型。推荐 `Application` 只创建 `Renderer`，具体后端选择放在 renderer 层或工厂函数里。
+- 暂未新增 `VulkanRendererFactory.h`，因为当前 `createRenderer()` 已放在 `Renderer.h/.cpp`，足以隐藏 Vulkan 后端类型。后续多后端选择复杂后再拆独立 factory 文件。
 
 ## 关键接口草案
 
@@ -124,7 +150,19 @@ src/
 
 ```cpp
 struct RenderDeviceDesc {
+    RenderBackendType backend = RenderBackendType::Vulkan;
     bool enableValidation = false;
+    std::string applicationName = "ARKRenderer";
+    u32 applicationVersion = 0;
+    u32 preferredApiVersion = 0;
+};
+```
+
+`RenderDeviceCreateInfo`：
+
+```cpp
+struct RenderDeviceCreateInfo {
+    RenderDeviceDesc desc;
     NativeWindowHandle nativeWindow;
 };
 ```
@@ -147,9 +185,28 @@ struct SwapChainDesc {
     Extent2D extent;
     Format colorFormat = Format::Unknown;
     Format depthFormat = Format::D32Float;
-    NativeWindowHandle nativeWindow;
     u32 imageCount = 2;
     bool enableVSync = true;
+};
+```
+
+`SwapChainCreateInfo`：
+
+```cpp
+struct SwapChainCreateInfo {
+    SwapChainDesc desc;
+    RenderDevice* device = nullptr;
+};
+```
+
+`SwapChainStatus`：
+
+```cpp
+enum class SwapChainStatus {
+    Ready,
+    Suboptimal,
+    OutOfDate,
+    SurfaceLost,
 };
 ```
 
@@ -162,7 +219,7 @@ public:
 
     virtual void waitIdle() = 0;
 
-    [[nodiscard]] virtual const RenderDeviceCaps& getCaps() const = 0;
+    virtual const RenderDeviceCaps& getCaps() const = 0;
 
     // 后续阶段继续补 Buffer / Texture / Shader / PipelineState 等创建接口。
 };
@@ -175,12 +232,12 @@ class SwapChain {
 public:
     virtual ~SwapChain() = default;
 
-    [[nodiscard]] virtual const SwapChainDesc& getDesc() const = 0;
-    [[nodiscard]] virtual u32 getBackBufferCount() const = 0;
-    [[nodiscard]] virtual TextureView* getCurrentBackBufferView() = 0;
-    [[nodiscard]] virtual TextureView* getDepthBufferView() = 0;
+    virtual const SwapChainDesc& getDesc() const = 0;
+    virtual u32 getBackBufferCount() const = 0;
+    virtual TextureView* getCurrentBackBufferView() = 0;
+    virtual TextureView* getDepthBufferView() = 0;
 
-    virtual void resize(Extent2D extent) = 0;
+    virtual SwapChainStatus resize(Extent2D extent) = 0;
 };
 ```
 
@@ -259,6 +316,12 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
 - GPU 名称、queue family、swapchain format、present mode 和 extent 合理。
 - 关闭窗口后程序正常退出。
 - Debug 下 validation layer 没有明显错误。
+
+当前验证记录：
+
+- `cmake --build --preset msvc-vcpkg-local-debug` 通过。
+- `ctest --preset msvc-vcpkg-local-debug` 通过。
+- `ark_sandbox.exe` 已进行 3 秒短启动 smoke check：程序没有提前异常退出，随后由脚本停止。
 
 ## 验收标准
 

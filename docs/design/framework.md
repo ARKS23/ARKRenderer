@@ -46,6 +46,7 @@ src/
 |
 |-- rhi/
 |   |-- RHICommon.h
+|   |-- RenderBackend.h
 |   |-- RenderDevice.h
 |   |-- DeviceContext.h
 |   |-- SwapChain.h
@@ -79,6 +80,7 @@ src/
 |       |-- VulkanDescriptorSet.h
 |       |
 |       |-- VulkanAllocator.h
+|       |-- VulkanRenderBackend.cpp
 |       |-- VulkanResourceManager.h
 |       |-- VulkanDescriptorManager.h
 |       |-- VulkanBindlessResourceManager.h
@@ -261,6 +263,13 @@ RenderGraph
 - renderer 层的 `FrameContext` 保留为高层一帧语义上下文。
 - 底层每帧 GPU 对象使用 `VulkanFrameResource`，不要命名为 `FrameContext`，避免和 renderer 层混淆。
 
+所有权规则：
+
+- 项目代码使用 `core/Memory.h` 中的 `Scope<T>` 表达唯一所有权，使用 `makeScope<T>()` 创建对象。
+- `Ref<T>` 只用于确实需要共享生命周期的对象，例如后续 asset cache 中的共享材质或纹理资源。
+- RHI 设备、swapchain、后端 RAII 对象默认使用 `Scope<T>`；GPU 资源后续优先收敛到 `ResourceManager + handle`，避免大量共享指针导致释放时机不清晰。
+- `RenderBackend` 是公共 RHI 层的运行期后端对象，统一持有 `RenderDevice + SwapChain`；具体 Vulkan 创建逻辑放在 `rhi/vulkan/VulkanRenderBackend.cpp`，避免 `renderer/` 直接包含 `rhi/vulkan/` 头文件。
+
 落地顺序：
 
 1. `VulkanDevice + VulkanSwapChain`：只完成设备、surface、swapchain、backbuffer 和默认 depth buffer。
@@ -299,16 +308,32 @@ struct NativeWindowHandle
 NativeWindowHandle Window::getNativeWindowHandle() const;
 ```
 
-`SwapChainDesc` 持有 native window 描述：
+`RenderDeviceCreateInfo` 持有 native window 描述，因为第一版由 `VulkanDevice` 在初始化阶段创建 `VkSurfaceKHR`，并用该 surface 完成 physical device / present queue 选择：
+
+```cpp
+struct RenderDeviceCreateInfo
+{
+    RenderDeviceDesc desc;
+    NativeWindowHandle nativeWindow;
+};
+```
+
+`SwapChainDesc` 只描述 swapchain 自身的持久属性，不保存窗口句柄：
 
 ```cpp
 struct SwapChainDesc
 {
-    uint32_t width = 0;
-    uint32_t height = 0;
+    Extent2D extent;
     Format colorFormat = Format::Unknown;
     Format depthFormat = Format::D32Float;
-    NativeWindowHandle nativeWindow;
+    uint32_t imageCount = 2;
+    bool enableVSync = true;
+};
+
+struct SwapChainCreateInfo
+{
+    SwapChainDesc desc;
+    RenderDevice* device = nullptr;
 };
 ```
 
@@ -319,10 +344,12 @@ app/Window
     -> 返回 NativeWindowHandle
 
 renderer/
-    -> 将 NativeWindowHandle 填入 SwapChainDesc
+    -> 将 NativeWindowHandle 填入 RenderDeviceCreateInfo
+    -> 将 SwapChainDesc + RenderDevice 填入 SwapChainCreateInfo
 
 rhi/vulkan/
-    -> 根据 NativeWindowHandle 创建 VkSurfaceKHR
+    -> VulkanDevice 根据 NativeWindowHandle 创建 VkSurfaceKHR
+    -> VulkanSwapChain 借用已有 surface 创建 VkSwapchainKHR
 ```
 
 这样可以守住 `rhi/vulkan/ -> rhi/, core/` 的依赖规则，同时避免 `app/` 或 `renderer/` 直接接触 Vulkan surface。

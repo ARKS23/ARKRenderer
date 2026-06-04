@@ -14,10 +14,10 @@ namespace ark {
     public:
         virtual ~Window() = default;
 
-        [[nodiscard]] virtual bool shouldClose() const = 0;
+        virtual bool shouldClose() const = 0;
         virtual void pollEvents() = 0;
 
-        [[nodiscard]] virtual rhi::NativeWindowHandle getNativeWindowHandle() const = 0;
-        [[nodiscard]] virtual rhi::Extent2D getExtent() const = 0;
+        virtual rhi::NativeWindowHandle getNativeWindowHandle() const = 0;
+        virtual rhi::Extent2D getExtent() const = 0;
     };
 } // namespace ark

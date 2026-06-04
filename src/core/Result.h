@@ -17,23 +17,23 @@ namespace ark {
         Result(Error error) : m_Value(std::move(error)) {
         }
 
-        [[nodiscard]] bool hasValue() const {
+        bool hasValue() const {
             return std::holds_alternative<T>(m_Value);
         }
 
-        [[nodiscard]] explicit operator bool() const {
+        explicit operator bool() const {
             return hasValue();
         }
 
-        [[nodiscard]] T& value() {
+        T& value() {
             return std::get<T>(m_Value);
         }
 
-        [[nodiscard]] const T& value() const {
+        const T& value() const {
             return std::get<T>(m_Value);
         }
 
-        [[nodiscard]] const Error& error() const {
+        const Error& error() const {
             return std::get<Error>(m_Value);
         }
 
