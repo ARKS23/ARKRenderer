@@ -2,10 +2,8 @@
 
 #include "rhi/RHICommon.h"
 
-namespace ark::rhi
-{
-struct TextureViewDesc
-{
+namespace ark::rhi {
+struct TextureViewDesc {
     Format format = Format::Unknown;
     u32 baseMipLevel = 0;
     u32 mipLevelCount = 1;
@@ -13,8 +11,7 @@ struct TextureViewDesc
     u32 arrayLayerCount = 1;
 };
 
-class TextureView
-{
+class TextureView {
 public:
     virtual ~TextureView() = default;
 };

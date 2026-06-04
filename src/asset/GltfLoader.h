@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class GltfLoader
-{
+namespace ark {
+class GltfLoader {
 public:
     GltfLoader() = default;
 };

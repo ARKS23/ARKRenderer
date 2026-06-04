@@ -69,31 +69,35 @@ endif()
 # ARKRenderer 主目标
 # ------------------------------------------------------------------------------
 
-# 目前 src/ 里主要是框架头文件骨架。使用 CONFIGURE_DEPENDS 可以在新增头文件后
-# 自动触发 CMake 重新配置，方便早期快速搭建目录结构。
+# 早期阶段使用 GLOB_RECURSE 方便快速增加骨架文件；CONFIGURE_DEPENDS
+# 会在新增源码/头文件后触发 CMake 重新配置。
 file(GLOB_RECURSE ARK_RENDERER_HEADERS CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/src/*.h")
+file(GLOB_RECURSE ARK_RENDERER_SOURCES CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/src/*.cpp")
 
-add_library(ark_renderer INTERFACE)
+add_library(ark_renderer STATIC
+    ${ARK_RENDERER_HEADERS}
+    ${ARK_RENDERER_SOURCES})
 add_library(ARKRenderer::ark_renderer ALIAS ark_renderer)
-
-target_sources(ark_renderer INTERFACE ${ARK_RENDERER_HEADERS})
 
 source_group(TREE "${PROJECT_SOURCE_DIR}/src"
     PREFIX "src"
-    FILES ${ARK_RENDERER_HEADERS})
+    FILES
+        ${ARK_RENDERER_HEADERS}
+        ${ARK_RENDERER_SOURCES})
 
-target_compile_features(ark_renderer INTERFACE cxx_std_20)
+target_compile_features(ark_renderer PUBLIC cxx_std_20)
 
 target_include_directories(ark_renderer
-    INTERFACE
+    PUBLIC
         "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>"
         ${Stb_INCLUDE_DIR}
         ${TINYGLTF_INCLUDE_DIRS})
 
 # Vulkan 头文件包含顺序和函数加载策略集中在这里约束，避免散落到各个模块。
 target_compile_definitions(ark_renderer
-    INTERFACE
+    PUBLIC
         GLFW_INCLUDE_NONE
         VK_NO_PROTOTYPES
         SPIRV_REFLECT_USE_SYSTEM_SPIRV_H
@@ -101,18 +105,27 @@ target_compile_definitions(ark_renderer
         VMA_DYNAMIC_VULKAN_FUNCTIONS=1)
 
 if(ARK_DXC_SUPPORTED)
-    target_compile_definitions(ark_renderer INTERFACE ARK_HAS_DXC=1)
+    target_compile_definitions(ark_renderer PUBLIC ARK_HAS_DXC=1)
 else()
-    target_compile_definitions(ark_renderer INTERFACE ARK_HAS_DXC=0)
+    target_compile_definitions(ark_renderer PUBLIC ARK_HAS_DXC=0)
 endif()
 
-target_link_libraries(ark_renderer INTERFACE ${ARK_RENDERER_THIRD_PARTY_LIBS})
+target_link_libraries(ark_renderer PUBLIC ${ARK_RENDERER_THIRD_PARTY_LIBS})
 
 if(MSVC)
-    target_compile_options(ark_renderer INTERFACE /W4 /permissive- /Zc:__cplusplus)
+    target_compile_options(ark_renderer PUBLIC /W4 /permissive- /Zc:__cplusplus)
 else()
-    target_compile_options(ark_renderer INTERFACE -Wall -Wextra -Wpedantic)
+    target_compile_options(ark_renderer PUBLIC -Wall -Wextra -Wpedantic)
 endif()
+
+# ------------------------------------------------------------------------------
+# 示例程序
+# ------------------------------------------------------------------------------
+
+add_executable(ark_sandbox apps/sandbox/main.cpp)
+target_link_libraries(ark_sandbox PRIVATE ARKRenderer::ark_renderer)
+set_target_properties(ark_sandbox PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
 # ------------------------------------------------------------------------------
 # 测试

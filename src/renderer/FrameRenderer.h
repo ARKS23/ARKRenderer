@@ -1,11 +1,9 @@
 #pragma once
 
-namespace ark
-{
+namespace ark {
 struct FrameContext;
 
-class FrameRenderer
-{
+class FrameRenderer {
 public:
     virtual ~FrameRenderer() = default;
 

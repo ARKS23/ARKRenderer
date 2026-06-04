@@ -2,7 +2,6 @@
 
 #include <filesystem>
 
-namespace ark
-{
+namespace ark {
 using Path = std::filesystem::path;
 } // namespace ark

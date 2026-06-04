@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class RenderQueue
-{
+namespace ark {
+class RenderQueue {
 public:
     virtual ~RenderQueue() = default;
 };

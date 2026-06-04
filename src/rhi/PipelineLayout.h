@@ -1,13 +1,10 @@
 #pragma once
 
-namespace ark::rhi
-{
-struct PipelineLayoutDesc
-{
+namespace ark::rhi {
+struct PipelineLayoutDesc {
 };
 
-class PipelineLayout
-{
+class PipelineLayout {
 public:
     virtual ~PipelineLayout() = default;
 };

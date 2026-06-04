@@ -36,8 +36,7 @@
 #include <iostream>
 #include <string>
 
-int main()
-{
+int main() {
     const glm::vec3 sampleVector{1.0F, 2.0F, 3.0F};
 
     VkApplicationInfo appInfo{};

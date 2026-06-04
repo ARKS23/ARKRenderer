@@ -2,10 +2,8 @@
 
 #include "rhi/SwapChain.h"
 
-namespace ark::rhi::vulkan
-{
-class VulkanSwapChain : public SwapChain
-{
+namespace ark::rhi::vulkan {
+class VulkanSwapChain : public SwapChain {
 public:
     [[nodiscard]] const SwapChainDesc& getDesc() const override;
     [[nodiscard]] TextureView* getCurrentBackBufferView() override;

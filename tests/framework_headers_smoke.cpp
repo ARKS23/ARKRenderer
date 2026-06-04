@@ -1,4 +1,5 @@
 #include "app/Application.h"
+#include "app/GlfwWindow.h"
 #include "app/Window.h"
 #include "asset/GltfLoader.h"
 #include "asset/ShaderCompiler.h"
@@ -67,8 +68,7 @@
 
 #include <cstdlib>
 
-int main()
-{
+int main() {
     ark::rhi::NativeWindowHandle nativeWindow{};
     ark::rhi::SwapChainDesc swapChainDesc{};
     swapChainDesc.nativeWindow = nativeWindow;

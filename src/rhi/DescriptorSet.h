@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark::rhi
-{
-class DescriptorSet
-{
+namespace ark::rhi {
+class DescriptorSet {
 public:
     virtual ~DescriptorSet() = default;
 };

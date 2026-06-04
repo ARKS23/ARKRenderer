@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark::rhi
-{
-enum class ResourceState
-{
+namespace ark::rhi {
+enum class ResourceState {
     Undefined,
     Present,
     RenderTarget,
@@ -19,8 +17,7 @@ enum class ResourceState
     IndirectArgument,
 };
 
-struct ResourceBarrier
-{
+struct ResourceBarrier {
     ResourceState before = ResourceState::Undefined;
     ResourceState after = ResourceState::Undefined;
 };

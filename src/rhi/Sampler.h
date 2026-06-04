@@ -1,21 +1,17 @@
 #pragma once
 
-namespace ark::rhi
-{
-enum class FilterMode
-{
+namespace ark::rhi {
+enum class FilterMode {
     Nearest,
     Linear,
 };
 
-struct SamplerDesc
-{
+struct SamplerDesc {
     FilterMode minFilter = FilterMode::Linear;
     FilterMode magFilter = FilterMode::Linear;
 };
 
-class Sampler
-{
+class Sampler {
 public:
     virtual ~Sampler() = default;
 };

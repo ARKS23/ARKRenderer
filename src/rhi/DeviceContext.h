@@ -1,13 +1,10 @@
 #pragma once
 
-namespace ark::rhi
-{
-struct SubmitDesc
-{
+namespace ark::rhi {
+struct SubmitDesc {
 };
 
-class DeviceContext
-{
+class DeviceContext {
 public:
     virtual ~DeviceContext() = default;
 

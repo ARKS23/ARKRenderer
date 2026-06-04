@@ -2,19 +2,16 @@
 
 #include "rhi/RHICommon.h"
 
-namespace ark::rhi
-{
+namespace ark::rhi {
 class TextureView;
 
-struct SwapChainDesc
-{
+struct SwapChainDesc {
     Extent2D extent;
     Format colorFormat = Format::Unknown;
     NativeWindowHandle nativeWindow;
 };
 
-class SwapChain
-{
+class SwapChain {
 public:
     virtual ~SwapChain() = default;
 

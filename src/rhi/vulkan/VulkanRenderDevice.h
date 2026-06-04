@@ -2,10 +2,8 @@
 
 #include "rhi/RenderDevice.h"
 
-namespace ark::rhi::vulkan
-{
-class VulkanRenderDevice : public RenderDevice
-{
+namespace ark::rhi::vulkan {
+class VulkanRenderDevice : public RenderDevice {
 public:
     void beginFrame() override;
     void endFrame() override;

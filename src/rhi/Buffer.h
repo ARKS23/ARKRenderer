@@ -2,10 +2,8 @@
 
 #include "core/Types.h"
 
-namespace ark::rhi
-{
-enum class BufferUsage : u32
-{
+namespace ark::rhi {
+enum class BufferUsage : u32 {
     None = 0,
     Vertex = 1 << 0,
     Index = 1 << 1,
@@ -15,14 +13,12 @@ enum class BufferUsage : u32
     TransferDst = 1 << 5,
 };
 
-struct BufferDesc
-{
+struct BufferDesc {
     u64 size = 0;
     BufferUsage usage = BufferUsage::None;
 };
 
-class Buffer
-{
+class Buffer {
 public:
     virtual ~Buffer() = default;
 };

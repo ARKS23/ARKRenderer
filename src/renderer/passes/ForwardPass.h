@@ -2,10 +2,8 @@
 
 #include "renderer/RenderPass.h"
 
-namespace ark
-{
-class ForwardPass : public RenderPass
-{
+namespace ark {
+class ForwardPass : public RenderPass {
 public:
     void execute(FrameContext& frameContext) override;
 };

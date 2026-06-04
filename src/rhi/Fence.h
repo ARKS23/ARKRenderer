@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark::rhi
-{
-class Fence
-{
+namespace ark::rhi {
+class Fence {
 public:
     virtual ~Fence() = default;
 };

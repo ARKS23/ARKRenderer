@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class ShaderCompiler
-{
+namespace ark {
+class ShaderCompiler {
 public:
     ShaderCompiler() = default;
 };

@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class NonCopyable
-{
+namespace ark {
+class NonCopyable {
 public:
     NonCopyable() = default;
     NonCopyable(const NonCopyable&) = delete;

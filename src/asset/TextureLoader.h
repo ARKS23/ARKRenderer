@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class TextureLoader
-{
+namespace ark {
+class TextureLoader {
 public:
     TextureLoader() = default;
 };

@@ -1,13 +1,10 @@
 #pragma once
 
-namespace ark::rhi
-{
-struct DescriptorSetLayoutDesc
-{
+namespace ark::rhi {
+struct DescriptorSetLayoutDesc {
 };
 
-class DescriptorSetLayout
-{
+class DescriptorSetLayout {
 public:
     virtual ~DescriptorSetLayout() = default;
 };

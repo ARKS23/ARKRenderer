@@ -13,10 +13,8 @@
 
 #include <memory>
 
-namespace ark::rhi
-{
-class RenderDevice
-{
+namespace ark::rhi {
+class RenderDevice {
 public:
     virtual ~RenderDevice() = default;
 

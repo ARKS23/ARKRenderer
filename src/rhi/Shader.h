@@ -2,23 +2,19 @@
 
 #include <string>
 
-namespace ark::rhi
-{
-enum class ShaderStage
-{
+namespace ark::rhi {
+enum class ShaderStage {
     Vertex,
     Fragment,
     Compute,
 };
 
-struct ShaderDesc
-{
+struct ShaderDesc {
     ShaderStage stage = ShaderStage::Vertex;
     std::string debugName;
 };
 
-class Shader
-{
+class Shader {
 public:
     virtual ~Shader() = default;
 };

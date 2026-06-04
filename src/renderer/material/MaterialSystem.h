@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class MaterialSystem
-{
+namespace ark {
+class MaterialSystem {
 public:
     virtual ~MaterialSystem() = default;
 };

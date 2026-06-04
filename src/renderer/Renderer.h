@@ -1,12 +1,10 @@
 #pragma once
 
-namespace ark
-{
+namespace ark {
 class RenderScene;
 class RenderView;
 
-class Renderer
-{
+class Renderer {
 public:
     virtual ~Renderer() = default;
 

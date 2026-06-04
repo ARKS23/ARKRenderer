@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class RenderView
-{
+namespace ark {
+class RenderView {
 public:
     virtual ~RenderView() = default;
 };

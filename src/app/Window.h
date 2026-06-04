@@ -4,16 +4,13 @@
 
 #include <string>
 
-namespace ark
-{
-struct WindowDesc
-{
+namespace ark {
+struct WindowDesc {
     std::string title = "ARKRenderer";
     rhi::Extent2D extent{1280, 720};
 };
 
-class Window
-{
+class Window {
 public:
     virtual ~Window() = default;
 

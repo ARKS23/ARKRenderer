@@ -1,13 +1,10 @@
 #pragma once
 
-namespace ark::rhi
-{
-struct GraphicsPipelineDesc
-{
+namespace ark::rhi {
+struct GraphicsPipelineDesc {
 };
 
-class PipelineState
-{
+class PipelineState {
 public:
     virtual ~PipelineState() = default;
 };

@@ -1,9 +1,7 @@
 #pragma once
 
-namespace ark
-{
-class RenderScene
-{
+namespace ark {
+class RenderScene {
 public:
     virtual ~RenderScene() = default;
 };

@@ -2,10 +2,8 @@
 
 #include "rhi/RHICommon.h"
 
-namespace ark::rhi
-{
-enum class TextureUsage : u32
-{
+namespace ark::rhi {
+enum class TextureUsage : u32 {
     None = 0,
     RenderTarget = 1 << 0,
     DepthStencil = 1 << 1,
@@ -15,8 +13,7 @@ enum class TextureUsage : u32
     TransferDst = 1 << 5,
 };
 
-struct TextureDesc
-{
+struct TextureDesc {
     Extent2D extent;
     Format format = Format::Unknown;
     u32 mipLevels = 1;
@@ -24,8 +21,7 @@ struct TextureDesc
     TextureUsage usage = TextureUsage::None;
 };
 
-class Texture
-{
+class Texture {
 public:
     virtual ~Texture() = default;
 };

@@ -1,12 +1,23 @@
 #pragma once
 
-namespace ark
-{
-class Application
-{
-public:
-    virtual ~Application() = default;
+#include "app/Window.h"
 
-    virtual int run() = 0;
+#include <memory>
+
+namespace ark {
+struct ApplicationDesc {
+    WindowDesc window;
+};
+
+class Application {
+public:
+    explicit Application(ApplicationDesc desc = {});
+    ~Application();
+
+    int run();
+
+private:
+    ApplicationDesc m_Desc;
+    std::unique_ptr<Window> m_Window;
 };
 } // namespace ark
