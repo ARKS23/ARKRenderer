@@ -153,145 +153,24 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
 
 当前清屏路径仍是后端级最小实现：clear 直接由 `VulkanCommandContext::clearRenderTarget()` 调用 `vkCmdClearColorImage` 完成，尚未上移到 `FrameRenderer + ClearPass`。这符合 Phase 0.3 的边界，后续可在 Phase 0.4 前半段把 clear 逻辑整理到 renderer pass 层。
 
-## 建议新增或补齐的文件
+## UML 类图
 
-```text
-src/
-|-- rhi/
-|   |-- DeviceContext.h             补齐当前 frame / submit / clear 所需描述
-|   |-- FrameResource.h             公共 RHI 的抽象 frame token
-|   |-- ResourceBarrier.h           补齐 texture barrier 描述
-|   |-- SwapChain.h                 补齐 acquire / present
-|   |-- Texture.h                   补齐 TextureDesc 和 ownership 语义
-|   `-- TextureView.h               补齐 view 与 texture 的关系
-|
-`-- rhi/
-    `-- vulkan/
-        |-- VulkanCommandBuffer.h
-        |-- VulkanCommandBuffer.cpp
-        |-- VulkanCommandContext.h
-        |-- VulkanCommandContext.cpp
-        |-- VulkanCommandPool.h
-        |-- VulkanCommandPool.cpp
-        |-- VulkanFrameResource.h
-        |-- VulkanFrameResource.cpp
-        |-- VulkanTexture.h
-        |-- VulkanTexture.cpp
-        |-- VulkanSync.h
-        `-- VulkanSync.cpp
-```
+下面的类图描述 Phase 0.3 已经落地的核心关系。重点不是列出所有成员函数，而是看清三层边界：
 
-说明：
+- `renderer/` 只组织一帧流程，不直接依赖 Vulkan。
+- `rhi/` 定义公共接口和资源语义。
+- `rhi/vulkan/` 实现具体 Vulkan 对象，并把 `Vk*` 生命周期封装在后端内部。
 
-- `VulkanCommandPool` 和 `VulkanCommandBuffer` 已经作为轻量 RAII wrapper 落地。
-- `VulkanCommandQueue` 暂时仍作为后续抽象预留，当前 submit 先放在 `VulkanCommandContext` 中。
-- `RenderGraph` 本阶段不实现真实执行逻辑。
+![Phase 0.3 UML 类图](assets/phase03_class_diagram.svg)
 
-## 接口草案
+关系阅读顺序：
 
-`FrameResource`：
-
-```cpp
-struct FrameResource {
-    virtual ~FrameResource() = default;
-
-    u32 frameSlot = 0;
-    u64 frameIndex = 0;
-};
-```
-
-公共层只表达一帧 token，不暴露 `VkCommandBuffer`、`VkSemaphore` 或 `VkFence`。
-
-`SwapChain`：
-
-```cpp
-struct AcquireResult {
-    SwapChainStatus status = SwapChainStatus::Ready;
-    u32 imageIndex = InvalidBackBufferIndex;
-};
-
-class SwapChain {
-public:
-    virtual AcquireResult acquireNextImage(FrameResource& frameResource) = 0;
-    virtual SwapChainStatus present(FrameResource& frameResource) = 0;
-    virtual u32 getCurrentBackBufferIndex() const = 0;
-};
-```
-
-`DeviceContext`：
-
-```cpp
-struct ClearColor {
-    float r = 0.05f;
-    float g = 0.08f;
-    float b = 0.12f;
-    float a = 1.0f;
-};
-
-struct SubmitDesc {
-    FrameResource* frameResource = nullptr;
-    bool waitForSwapChainImage = true;
-    bool signalRenderFinished = true;
-};
-
-class DeviceContext {
-public:
-    virtual FrameResource& beginFrame() = 0;
-    virtual bool begin(FrameResource& frameResource) = 0;
-    virtual bool end() = 0;
-    virtual bool submit(const SubmitDesc& desc) = 0;
-    virtual void advanceFrame() = 0;
-
-    virtual void pipelineBarrier(std::span<const ResourceBarrier> barriers) = 0;
-    virtual void clearRenderTarget(TextureView& renderTargetView, const ClearColor& color) = 0;
-};
-```
-
-这些接口是当前 Phase 0.3 的落地版本。后续进入 pass 和真实绘制阶段时，可以在保持职责边界不变的前提下继续演进。
-
-## 一帧流程草案
-
-```cpp
-void Renderer::render(RenderScene& scene, const RenderView& view) {
-    (void)scene;
-    (void)view;
-
-    auto& frame = context.beginFrame();
-
-    auto acquireResult = swapChain.acquireNextImage(frame);
-    if (!canRenderAfterAcquire(acquireResult.status)) {
-        handleSwapChainStatus(acquireResult.status);
-        return;
-    }
-
-    if (!context.begin(frame)) {
-        return;
-    }
-
-    auto* backBuffer = swapChain.getCurrentBackBufferView();
-    context.pipelineBarrier({backBufferPresentToClearBarrier});
-    context.clearRenderTarget(*backBuffer, clearColor);
-    context.pipelineBarrier({backBufferClearToPresentBarrier});
-
-    if (!context.end()) {
-        return;
-    }
-
-    if (!context.submit({.frameResource = &frame})) {
-        return;
-    }
-
-    auto presentStatus = swapChain.present(frame);
-    context.advanceFrame();
-    handleSwapChainStatus(presentStatus);
-}
-```
-
-注意：
-
-- 如果 acquire 返回 out-of-date，当前帧不能继续录制绘制命令。
-- 如果 present 返回 out-of-date 或 suboptimal，可以在 present 后触发 resize。
-- 如果窗口 extent 为 0，Renderer 应暂停渲染，等待窗口恢复有效尺寸。
+- `DefaultRenderer` 拥有一个 `RenderBackend`，但不直接创建或持有任何 Vulkan 对象。
+- `RenderBackend` 统一拥有 `RenderDevice`、`DeviceContext` 和 `SwapChain`，并通过内部 `RenderBackendFactory` 创建具体后端对象。
+- `VulkanCommandContext` 实现 `DeviceContext`，并拥有一个固定大小的 `VulkanFrameResource` 环形队列。
+- `VulkanSwapChain` 实现 `SwapChain`，拥有 backbuffer 的 `TextureView`，但只借用 swapchain image 的 `VkImage`。
+- `TextureView` 可以回溯到 `Texture`，因此 clear 和 barrier 可以从公共 RHI 对象找到后端 image。
+- `ResourceBarrier` 只表达 RHI 语义，具体 Vulkan layout / access / stage 转换由 `VulkanCommandContext` 完成。
 
 ## Resize 规则
 

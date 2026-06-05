@@ -1,0 +1,305 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="1320" viewBox="0 0 1900 1320">
+  <defs>
+    <pattern id="small-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#eceff3" stroke-width="1"/>
+    </pattern>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <rect width="80" height="80" fill="url(#small-grid)"/>
+      <path d="M 80 0 L 0 0 0 80" fill="none" stroke="#d6dbe1" stroke-width="1.2"/>
+    </pattern>
+
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 1 1 L 11 6 L 1 11" fill="none" stroke="#e8754a" stroke-width="1.8"/>
+    </marker>
+    <marker id="inherit" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto" markerUnits="strokeWidth">
+      <path d="M 1 1 L 15 8 L 1 15 Z" fill="#ffffff" stroke="#e8754a" stroke-width="1.8"/>
+    </marker>
+    <marker id="diamond" markerWidth="18" markerHeight="18" refX="2" refY="9" orient="auto" markerUnits="strokeWidth">
+      <path d="M 2 9 L 9 2 L 16 9 L 9 16 Z" fill="#e8754a" stroke="#e8754a" stroke-width="1.4"/>
+    </marker>
+
+    <style>
+      .title { font: 700 28px "Segoe UI", Arial, sans-serif; fill: #182536; }
+      .subtitle { font: 500 15px "Segoe UI", Arial, sans-serif; fill: #5c6978; }
+      .layer { font: 700 18px "Segoe UI", Arial, sans-serif; fill: #6f7b89; }
+      .box { fill: #fff8ef; stroke: #e8754a; stroke-width: 2; rx: 0; }
+      .box-detail { fill: #f4f6f8; stroke: #8e99a8; stroke-width: 2; rx: 0; }
+      .box-data { fill: #f0f7ff; stroke: #5b8def; stroke-width: 2; rx: 0; }
+      .header { fill: #ffd392; stroke: #e8754a; stroke-width: 1.5; }
+      .header-detail { fill: #e2e7ee; stroke: #8e99a8; stroke-width: 1.5; }
+      .header-data { fill: #cfe8ff; stroke: #5b8def; stroke-width: 1.5; }
+      .name { font: 700 18px "Segoe UI", Arial, sans-serif; fill: #1f2c3a; }
+      .stereo { font: 600 13px "Segoe UI", Arial, sans-serif; fill: #5c6978; }
+      .member { font: 15px Consolas, "Cascadia Mono", monospace; fill: #1f2c3a; }
+      .line { stroke: #e8754a; stroke-width: 2; fill: none; }
+      .line-dashed { stroke: #e8754a; stroke-width: 2; stroke-dasharray: 8 6; fill: none; }
+      .line-muted { stroke: #8e99a8; stroke-width: 2; fill: none; }
+      .label { font: 600 13px "Segoe UI", Arial, sans-serif; fill: #d85f38; }
+    </style>
+  </defs>
+
+  <rect width="1900" height="1320" fill="#ffffff"/>
+  <rect width="1900" height="1320" fill="url(#grid)"/>
+
+  <text x="60" y="48" class="title">Phase 0.3 Class Diagram - Clear Backbuffer Rendering Path</text>
+  <text x="60" y="76" class="subtitle">Renderer orchestrates one frame through public RHI. Vulkan objects stay inside the backend.</text>
+
+  <text x="60" y="126" class="layer">renderer layer</text>
+  <text x="60" y="336" class="layer">public RHI layer</text>
+  <text x="60" y="856" class="layer">vulkan backend layer</text>
+
+  <!-- Renderer layer -->
+  <g transform="translate(80 145)">
+    <rect class="box" width="320" height="150"/>
+    <rect class="header" width="320" height="38"/>
+    <text x="160" y="24" text-anchor="middle" class="name">DefaultRenderer</text>
+    <line x1="0" y1="74" x2="320" y2="74" class="line"/>
+    <text x="12" y="58" class="member">- m_Backend : Scope~RenderBackend~</text>
+    <text x="12" y="95" class="member">+ render(scene, view) : void</text>
+    <text x="12" y="119" class="member">+ resize(extent) : void</text>
+  </g>
+
+  <g transform="translate(540 130)">
+    <rect class="box" width="370" height="180"/>
+    <rect class="header" width="370" height="38"/>
+    <text x="185" y="24" text-anchor="middle" class="name">RenderBackend</text>
+    <line x1="0" y1="102" x2="370" y2="102" class="line"/>
+    <text x="12" y="58" class="member">- m_Device : Scope~RenderDevice~</text>
+    <text x="12" y="80" class="member">- m_Context : Scope~DeviceContext~</text>
+    <text x="12" y="125" class="member">+ device() : RenderDevice&amp;</text>
+    <text x="12" y="148" class="member">+ context() : DeviceContext&amp;</text>
+    <text x="12" y="171" class="member">+ swapChain() : SwapChain*</text>
+  </g>
+
+  <g transform="translate(1090 145)">
+    <rect class="box-detail" width="410" height="145"/>
+    <rect class="header-detail" width="410" height="38"/>
+    <text x="205" y="24" text-anchor="middle" class="name">RenderBackendFactory</text>
+    <text x="205" y="55" text-anchor="middle" class="stereo">&lt;&lt;detail&gt;&gt;</text>
+    <line x1="0" y1="70" x2="410" y2="70" class="line-muted"/>
+    <text x="12" y="94" class="member">+ createRenderDevice(...)</text>
+    <text x="12" y="117" class="member">+ createDeviceContext(...)</text>
+    <text x="12" y="140" class="member">+ createSwapChain(...)</text>
+  </g>
+
+  <!-- Public RHI layer -->
+  <g transform="translate(150 365)">
+    <rect class="box" width="360" height="180"/>
+    <rect class="header" width="360" height="38"/>
+    <text x="180" y="18" text-anchor="middle" class="stereo">&lt;&lt;interface&gt;&gt;</text>
+    <text x="180" y="36" text-anchor="middle" class="name">RenderDevice</text>
+    <line x1="0" y1="82" x2="360" y2="82" class="line"/>
+    <text x="12" y="63" class="member">+ waitIdle() : void</text>
+    <text x="12" y="105" class="member">+ createTexture(desc)</text>
+    <text x="12" y="128" class="member">+ createTextureView(texture, desc)</text>
+    <text x="12" y="151" class="member">+ createSampler(desc)</text>
+  </g>
+
+  <g transform="translate(610 350)">
+    <rect class="box" width="420" height="215"/>
+    <rect class="header" width="420" height="38"/>
+    <text x="210" y="18" text-anchor="middle" class="stereo">&lt;&lt;interface&gt;&gt;</text>
+    <text x="210" y="36" text-anchor="middle" class="name">DeviceContext</text>
+    <line x1="0" y1="82" x2="420" y2="82" class="line"/>
+    <text x="12" y="63" class="member">+ beginFrame() : FrameResource&amp;</text>
+    <text x="12" y="105" class="member">+ begin(frame) / end()</text>
+    <text x="12" y="128" class="member">+ pipelineBarrier(barriers)</text>
+    <text x="12" y="151" class="member">+ clearRenderTarget(view, color)</text>
+    <text x="12" y="174" class="member">+ submit(desc) : bool</text>
+    <text x="12" y="197" class="member">+ advanceFrame() : void</text>
+  </g>
+
+  <g transform="translate(1130 365)">
+    <rect class="box" width="390" height="180"/>
+    <rect class="header" width="390" height="38"/>
+    <text x="195" y="18" text-anchor="middle" class="stereo">&lt;&lt;interface&gt;&gt;</text>
+    <text x="195" y="36" text-anchor="middle" class="name">SwapChain</text>
+    <line x1="0" y1="82" x2="390" y2="82" class="line"/>
+    <text x="12" y="63" class="member">+ acquireNextImage(frame)</text>
+    <text x="12" y="105" class="member">+ present(frame)</text>
+    <text x="12" y="128" class="member">+ getCurrentBackBufferView()</text>
+    <text x="12" y="151" class="member">+ resize(extent)</text>
+  </g>
+
+  <g transform="translate(150 640)">
+    <rect class="box" width="320" height="130"/>
+    <rect class="header" width="320" height="38"/>
+    <text x="160" y="18" text-anchor="middle" class="stereo">&lt;&lt;interface&gt;&gt;</text>
+    <text x="160" y="36" text-anchor="middle" class="name">Texture</text>
+    <line x1="0" y1="74" x2="320" y2="74" class="line"/>
+    <text x="12" y="59" class="member">+ getDesc() : TextureDesc</text>
+    <text x="12" y="97" class="member">+ getState() : ResourceState</text>
+  </g>
+
+  <g transform="translate(540 640)">
+    <rect class="box" width="350" height="130"/>
+    <rect class="header" width="350" height="38"/>
+    <text x="175" y="18" text-anchor="middle" class="stereo">&lt;&lt;interface&gt;&gt;</text>
+    <text x="175" y="36" text-anchor="middle" class="name">TextureView</text>
+    <line x1="0" y1="74" x2="350" y2="74" class="line"/>
+    <text x="12" y="59" class="member">+ getTexture() : Texture*</text>
+    <text x="12" y="97" class="member">+ getDesc() : TextureViewDesc</text>
+  </g>
+
+  <g transform="translate(970 650)">
+    <rect class="box-data" width="300" height="105"/>
+    <rect class="header-data" width="300" height="38"/>
+    <text x="150" y="24" text-anchor="middle" class="name">FrameResource</text>
+    <text x="12" y="62" class="member">+ frameSlot : u32</text>
+    <text x="12" y="86" class="member">+ frameIndex : u64</text>
+  </g>
+
+  <g transform="translate(1340 640)">
+    <rect class="box-data" width="330" height="130"/>
+    <rect class="header-data" width="330" height="38"/>
+    <text x="165" y="24" text-anchor="middle" class="name">ResourceBarrier</text>
+    <text x="12" y="62" class="member">+ texture : Texture*</text>
+    <text x="12" y="86" class="member">+ before : ResourceState</text>
+    <text x="12" y="110" class="member">+ after : ResourceState</text>
+  </g>
+
+  <!-- Vulkan backend layer -->
+  <g transform="translate(150 890)">
+    <rect class="box" width="360" height="125"/>
+    <rect class="header" width="360" height="38"/>
+    <text x="180" y="24" text-anchor="middle" class="name">VulkanDevice</text>
+    <line x1="0" y1="72" x2="360" y2="72" class="line"/>
+    <text x="12" y="58" class="member">+ waitIdle() : void</text>
+    <text x="12" y="95" class="member">+ createTextureView(...)</text>
+  </g>
+
+  <g transform="translate(610 865)">
+    <rect class="box" width="430" height="185"/>
+    <rect class="header" width="430" height="38"/>
+    <text x="215" y="24" text-anchor="middle" class="name">VulkanCommandContext</text>
+    <line x1="0" y1="82" x2="430" y2="82" class="line"/>
+    <text x="12" y="63" class="member">- m_FrameResources : FrameResourceRing</text>
+    <text x="12" y="105" class="member">+ beginFrame() : FrameResource&amp;</text>
+    <text x="12" y="128" class="member">+ pipelineBarrier(barriers)</text>
+    <text x="12" y="151" class="member">+ clearRenderTarget(view, color)</text>
+    <text x="12" y="174" class="member">+ submit(desc) : bool</text>
+  </g>
+
+  <g transform="translate(1130 865)">
+    <rect class="box" width="420" height="185"/>
+    <rect class="header" width="420" height="38"/>
+    <text x="210" y="24" text-anchor="middle" class="name">VulkanSwapChain</text>
+    <line x1="0" y1="82" x2="420" y2="82" class="line"/>
+    <text x="12" y="63" class="member">- m_SwapChain : VkSwapchainKHR</text>
+    <text x="12" y="105" class="member">- m_BackBufferTextures : list</text>
+    <text x="12" y="128" class="member">- m_BackBufferViews : list</text>
+    <text x="12" y="151" class="member">+ acquireNextImage(frame)</text>
+    <text x="12" y="174" class="member">+ present(frame)</text>
+  </g>
+
+  <g transform="translate(600 1125)">
+    <rect class="box" width="440" height="150"/>
+    <rect class="header" width="440" height="38"/>
+    <text x="220" y="24" text-anchor="middle" class="name">VulkanFrameResource</text>
+    <text x="12" y="62" class="member">- commandPool / commandBuffer</text>
+    <text x="12" y="86" class="member">- imageAvailableSemaphore</text>
+    <text x="12" y="110" class="member">- renderFinishedSemaphore</text>
+    <text x="12" y="134" class="member">- inFlightFence</text>
+  </g>
+
+  <g transform="translate(1090 1135)">
+    <rect class="box" width="330" height="130"/>
+    <rect class="header" width="330" height="38"/>
+    <text x="165" y="24" text-anchor="middle" class="name">VulkanTexture</text>
+    <line x1="0" y1="74" x2="330" y2="74" class="line"/>
+    <text x="12" y="59" class="member">- m_Image : VkImage</text>
+    <text x="12" y="97" class="member">- m_Ownership : Borrowed/Owned</text>
+  </g>
+
+  <g transform="translate(1480 1135)">
+    <rect class="box" width="350" height="130"/>
+    <rect class="header" width="350" height="38"/>
+    <text x="175" y="24" text-anchor="middle" class="name">VulkanTextureView</text>
+    <line x1="0" y1="74" x2="350" y2="74" class="line"/>
+    <text x="12" y="59" class="member">- m_ImageView : VkImageView</text>
+    <text x="12" y="97" class="member">+ getTexture() : Texture*</text>
+  </g>
+
+  <g transform="translate(70 1135)">
+    <rect class="box" width="225" height="72"/>
+    <rect class="header" width="225" height="32"/>
+    <text x="112" y="22" text-anchor="middle" class="name">VulkanCommandPool</text>
+    <text x="12" y="55" class="member">+ reset() : bool</text>
+  </g>
+
+  <g transform="translate(330 1135)">
+    <rect class="box" width="235" height="72"/>
+    <rect class="header" width="235" height="32"/>
+    <text x="117" y="22" text-anchor="middle" class="name">VulkanCommandBuffer</text>
+    <text x="12" y="55" class="member">+ begin() / end()</text>
+  </g>
+
+  <g transform="translate(205 1235)">
+    <rect class="box" width="225" height="72"/>
+    <rect class="header" width="225" height="32"/>
+    <text x="112" y="22" text-anchor="middle" class="name">VulkanSync</text>
+    <text x="12" y="55" class="member">semaphore / fence</text>
+  </g>
+
+  <!-- Ownership and dependency arrows -->
+  <path d="M 400 220 C 460 220, 480 220, 540 220" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <text x="455" y="208" class="label">owns</text>
+
+  <path d="M 725 310 L 725 350" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <path d="M 690 310 C 520 330, 420 340, 330 365" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <path d="M 790 310 C 980 330, 1120 340, 1300 365" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+
+  <path d="M 910 210 C 1005 210, 1025 210, 1090 210" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="950" y="195" class="label">internal create</text>
+
+  <path d="M 330 890 L 330 545" class="line" marker-end="url(#inherit)"/>
+  <path d="M 820 865 L 820 565" class="line" marker-end="url(#inherit)"/>
+  <path d="M 1320 865 L 1320 545" class="line" marker-end="url(#inherit)"/>
+  <path d="M 820 1125 C 890 990, 1010 850, 1115 755" class="line" marker-end="url(#inherit)"/>
+  <path d="M 1255 1135 C 980 1030, 520 900, 310 770" class="line" marker-end="url(#inherit)"/>
+  <path d="M 1655 1135 C 1450 995, 1000 870, 715 770" class="line" marker-end="url(#inherit)"/>
+
+  <path d="M 1500 220 C 1580 390, 1560 690, 1510 865" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="1540" y="535" class="label">creates</text>
+  <path d="M 1300 290 C 1240 500, 960 680, 850 865" class="line-dashed" marker-end="url(#arrow)"/>
+  <path d="M 1130 290 C 900 520, 520 700, 330 890" class="line-dashed" marker-end="url(#arrow)"/>
+
+  <path d="M 610 475 C 520 535, 455 585, 365 640" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="475" y="555" class="label">clear uses view</text>
+  <path d="M 1030 455 C 1145 500, 1200 570, 1120 650" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="1100" y="545" class="label">begin / submit</text>
+  <path d="M 1030 515 C 1180 545, 1280 590, 1340 665" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="1175" y="583" class="label">barrier</text>
+  <path d="M 1130 500 C 1040 555, 1005 600, 1040 650" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="1040" y="590" class="label">acquire / present</text>
+
+  <path d="M 540 705 L 470 705" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="475" y="690" class="label">view of</text>
+  <path d="M 1340 705 C 960 790, 620 800, 470 720" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="930" y="760" class="label">target texture</text>
+
+  <path d="M 820 1050 L 820 1125" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <text x="835" y="1090" class="label">frame ring</text>
+  <path d="M 600 1185 L 565 1170" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <path d="M 600 1165 C 520 1135, 405 1130, 295 1165" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <path d="M 600 1225 C 520 1275, 450 1280, 430 1270" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+
+  <path d="M 1320 1050 C 1320 1085, 1270 1110, 1255 1135" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <text x="1270" y="1100" class="label">borrowed images</text>
+  <path d="M 1480 1200 L 1420 1200" class="line-dashed" marker-end="url(#arrow)"/>
+  <text x="1425" y="1184" class="label">view of</text>
+  <path d="M 1435 1050 C 1530 1090, 1605 1115, 1650 1135" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+  <text x="1530" y="1095" class="label">owns views</text>
+
+  <!-- Legend -->
+  <g transform="translate(1515 90)">
+    <rect x="0" y="0" width="320" height="145" fill="#ffffff" stroke="#d6dbe1" stroke-width="1.5"/>
+    <text x="18" y="28" class="name">Legend</text>
+    <path d="M 20 52 L 95 52" class="line" marker-end="url(#inherit)"/>
+    <text x="110" y="57" class="subtitle">implements / inherits</text>
+    <path d="M 20 82 L 95 82" class="line" marker-start="url(#diamond)" marker-end="url(#arrow)"/>
+    <text x="110" y="87" class="subtitle">owns</text>
+    <path d="M 20 112 L 95 112" class="line-dashed" marker-end="url(#arrow)"/>
+    <text x="110" y="117" class="subtitle">depends / creates</text>
+  </g>
+</svg>
