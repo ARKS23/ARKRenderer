@@ -5,6 +5,6 @@
 namespace ark {
     class ToneMappingPass : public RenderPass {
     public:
-        void execute(FrameContext& frameContext) override;
+        bool execute(FrameContext& frameContext) override;
     };
 } // namespace ark

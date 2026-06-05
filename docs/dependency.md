@@ -56,5 +56,5 @@ tests/dependency_smoke.cpp
 | `VK_NO_PROTOTYPES` | 禁用 Vulkan 静态函数原型，配合 volk 动态加载 Vulkan 函数 |
 | `SPIRV_REFLECT_USE_SYSTEM_SPIRV_H` | 让 SPIRV-Reflect 使用 vcpkg 提供的系统 SPIR-V headers |
 | `VMA_STATIC_VULKAN_FUNCTIONS=0` | 禁用 VMA 静态 Vulkan 函数绑定 |
-| `VMA_DYNAMIC_VULKAN_FUNCTIONS=1` | 启用 VMA 动态 Vulkan 函数绑定，适配 volk |
+| `VMA_DYNAMIC_VULKAN_FUNCTIONS=0` | 禁用 VMA 内部动态 Vulkan 函数绑定，改由 `vmaImportVulkanFunctionsFromVolk()` 从 volk 导入函数表 |
 | `ARK_HAS_DXC` | 当前平台支持 DXC 时为 `1`，否则为 `0` |

@@ -1,7 +1,12 @@
 #include "rhi/vulkan/VulkanDevice.h"
 
 #include "core/Log.h"
+#include "core/Memory.h"
 #include "core/ScopeExit.h"
+#include "rhi/vulkan/VulkanBuffer.h"
+#include "rhi/vulkan/VulkanPipelineLayout.h"
+#include "rhi/vulkan/VulkanPipelineState.h"
+#include "rhi/vulkan/VulkanShader.h"
 
 #include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
@@ -130,10 +135,12 @@ namespace ark::rhi::vulkan {
         return m_Caps.presentQueueFamily;
     }
 
+    VmaAllocator VulkanDevice::getAllocator() const {
+        return m_Allocator ? m_Allocator->getHandle() : VK_NULL_HANDLE;
+    }
+
     Scope<Buffer> VulkanDevice::createBuffer(const BufferDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createBuffer");
-        return {};
+        return makeScope<VulkanBuffer>(getAllocator(), desc);
     }
 
     Scope<Texture> VulkanDevice::createTexture(const TextureDesc& desc) {
@@ -156,21 +163,15 @@ namespace ark::rhi::vulkan {
     }
 
     Scope<Shader> VulkanDevice::createShader(const ShaderDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createShader");
-        return {};
+        return makeScope<VulkanShader>(m_Device, desc);
     }
 
     Scope<PipelineLayout> VulkanDevice::createPipelineLayout(const PipelineLayoutDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createPipelineLayout");
-        return {};
+        return makeScope<VulkanPipelineLayout>(m_Device, desc);
     }
 
     Scope<PipelineState> VulkanDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createGraphicsPipeline");
-        return {};
+        return makeScope<VulkanPipelineState>(m_Device, desc);
     }
 
     Scope<DescriptorSetLayout> VulkanDevice::createDescriptorSetLayout(const DescriptorSetLayoutDesc& desc) {
@@ -244,6 +245,11 @@ namespace ark::rhi::vulkan {
 
         vkb::PhysicalDevice selectedPhysicalDevice = physicalDeviceResult.value();
         vkb::DeviceBuilder deviceBuilder(selectedPhysicalDevice);
+        VkPhysicalDeviceVulkan13Features vulkan13Features{};
+        vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+        vulkan13Features.dynamicRendering = VK_TRUE;
+
+        deviceBuilder.add_pNext(&vulkan13Features);
 
         auto deviceResult = deviceBuilder.build();
         if (!deviceResult) {
@@ -274,10 +280,13 @@ namespace ark::rhi::vulkan {
 
         m_Caps.gpuName = properties.deviceName;
         m_Caps.apiVersion = properties.apiVersion;
+        m_Allocator = makeScope<VulkanAllocator>(m_Instance, m_PhysicalDevice, m_Device, m_Caps.apiVersion);
     }
 
     void VulkanDevice::destroy() {
         // Vulkan 对象按依赖反序销毁：device -> surface/debug messenger -> instance。
+        m_Allocator.reset();
+
         if (m_Device != VK_NULL_HANDLE) {
             vkDeviceWaitIdle(m_Device);
             vkDestroyDevice(m_Device, nullptr);

@@ -2,7 +2,9 @@
 
 #include "core/Log.h"
 #include "core/Memory.h"
+#include "rhi/vulkan/VulkanBuffer.h"
 #include "rhi/vulkan/VulkanDevice.h"
+#include "rhi/vulkan/VulkanPipelineState.h"
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
 
@@ -75,6 +77,50 @@ namespace ark::rhi::vulkan {
                 return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             }
         }
+
+        VkAttachmentLoadOp toVkLoadOp(LoadOp loadOp) {
+            switch (loadOp) {
+            case LoadOp::Load:
+                return VK_ATTACHMENT_LOAD_OP_LOAD;
+            case LoadOp::Clear:
+                return VK_ATTACHMENT_LOAD_OP_CLEAR;
+            case LoadOp::DontCare:
+                return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            }
+
+            return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        }
+
+        VkAttachmentStoreOp toVkStoreOp(StoreOp storeOp) {
+            switch (storeOp) {
+            case StoreOp::Store:
+                return VK_ATTACHMENT_STORE_OP_STORE;
+            case StoreOp::DontCare:
+                return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            }
+
+            return VK_ATTACHMENT_STORE_OP_STORE;
+        }
+
+        VkIndexType toVkIndexType(IndexType indexType) {
+            switch (indexType) {
+            case IndexType::UInt16:
+                return VK_INDEX_TYPE_UINT16;
+            case IndexType::UInt32:
+                return VK_INDEX_TYPE_UINT32;
+            }
+
+            return VK_INDEX_TYPE_UINT32;
+        }
+
+        VkClearValue toVkClearValue(const ClearColor& color) {
+            VkClearValue clearValue{};
+            clearValue.color.float32[0] = color.r;
+            clearValue.color.float32[1] = color.g;
+            clearValue.color.float32[2] = color.b;
+            clearValue.color.float32[3] = color.a;
+            return clearValue;
+        }
     } // namespace
 
     VulkanCommandContext::VulkanCommandContext(VulkanDevice& device) : m_Device(device) {
@@ -130,6 +176,7 @@ namespace ark::rhi::vulkan {
 
         m_RecordingFrame = frame;
         m_IsRecording = true;
+        m_IsRendering = false;
         return true;
     }
 
@@ -137,6 +184,11 @@ namespace ark::rhi::vulkan {
         // end 结束当前 command buffer，submit 前必须调用。
         if (!m_RecordingFrame || !m_IsRecording) {
             ARK_ERROR("VulkanCommandContext::end called without active recording");
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::end called while rendering is active");
             return false;
         }
 
@@ -175,8 +227,9 @@ namespace ark::rhi::vulkan {
         // renderFinishedSemaphore 由 submit signal，present 等它后才能呈现当前 backbuffer。
         const VkSemaphore signalSemaphore =
             desc.signalRenderFinished ? frame->getRenderFinishedSemaphore() : VK_NULL_HANDLE;
-        // 本阶段 command buffer 只做 transfer clear，所以等待阶段使用 TRANSFER。
-        const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        // acquire semaphore 需要保护后续对 backbuffer 的写入；当前兼容 dynamic rendering 和旧 transfer clear。
+        const VkPipelineStageFlags waitStage =
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -209,15 +262,105 @@ namespace ark::rhi::vulkan {
         m_FrameSlot = static_cast<u32>(m_FrameIndex % m_FrameResources.size());
     }
 
-    void VulkanCommandContext::beginRendering(const RenderingDesc& desc) {
-        (void)desc;
+    bool VulkanCommandContext::beginRendering(const RenderingDesc& desc) {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::beginRendering requires active command buffer");
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::beginRendering called while rendering is active");
+            return false;
+        }
+
+        VulkanTextureView* colorView = dynamic_cast<VulkanTextureView*>(desc.colorAttachment.view);
+        if (!colorView || colorView->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::beginRendering requires Vulkan color attachment view");
+            return false;
+        }
+
+        VkRenderingAttachmentInfo colorAttachment{};
+        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachment.imageView = colorView->getHandle();
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp = toVkLoadOp(desc.colorAttachment.loadOp);
+        colorAttachment.storeOp = toVkStoreOp(desc.colorAttachment.storeOp);
+        colorAttachment.clearValue = toVkClearValue(desc.colorAttachment.clearColor);
+
+        VkRenderingInfo renderingInfo{};
+        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        renderingInfo.renderArea.offset = VkOffset2D{0, 0};
+        renderingInfo.renderArea.extent = VkExtent2D{desc.extent.width, desc.extent.height};
+        renderingInfo.layerCount = 1;
+        renderingInfo.colorAttachmentCount = 1;
+        renderingInfo.pColorAttachments = &colorAttachment;
+
+        vkCmdBeginRendering(commandBuffer, &renderingInfo);
+        m_IsRendering = true;
+        return true;
     }
 
     void VulkanCommandContext::endRendering() {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::endRendering requires active command buffer");
+            return;
+        }
+
+        if (!m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::endRendering called without active rendering");
+            return;
+        }
+
+        vkCmdEndRendering(commandBuffer);
+        m_IsRendering = false;
+    }
+
+    void VulkanCommandContext::setViewport(const Viewport& viewport) {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setViewport requires active command buffer");
+            return;
+        }
+
+        VkViewport vkViewport{};
+        vkViewport.x = viewport.x;
+        vkViewport.y = viewport.y;
+        vkViewport.width = viewport.width;
+        vkViewport.height = viewport.height;
+        vkViewport.minDepth = viewport.minDepth;
+        vkViewport.maxDepth = viewport.maxDepth;
+        vkCmdSetViewport(commandBuffer, 0, 1, &vkViewport);
+    }
+
+    void VulkanCommandContext::setScissorRect(const ScissorRect& rect) {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setScissorRect requires active command buffer");
+            return;
+        }
+
+        VkRect2D scissor{};
+        scissor.offset = VkOffset2D{rect.x, rect.y};
+        scissor.extent = VkExtent2D{rect.width, rect.height};
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     }
 
     void VulkanCommandContext::setPipeline(PipelineState& pipeline) {
-        (void)pipeline;
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setPipeline requires active command buffer");
+            return;
+        }
+
+        VulkanPipelineState* vulkanPipeline = dynamic_cast<VulkanPipelineState*>(&pipeline);
+        if (!vulkanPipeline || vulkanPipeline->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setPipeline requires VulkanPipelineState");
+            return;
+        }
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->getHandle());
     }
 
     void VulkanCommandContext::bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) {
@@ -225,17 +368,59 @@ namespace ark::rhi::vulkan {
         (void)descriptorSet;
     }
 
-    void VulkanCommandContext::setVertexBuffer(u32 slot, Buffer& buffer) {
-        (void)slot;
-        (void)buffer;
+    void VulkanCommandContext::setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setVertexBuffer requires active command buffer");
+            return;
+        }
+
+        VulkanBuffer* vulkanBuffer = dynamic_cast<VulkanBuffer*>(&buffer);
+        if (!vulkanBuffer || vulkanBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setVertexBuffer requires VulkanBuffer");
+            return;
+        }
+
+        const VkBuffer vkBuffer = vulkanBuffer->getHandle();
+        const VkDeviceSize vkOffset = offset;
+        vkCmdBindVertexBuffers(commandBuffer, slot, 1, &vkBuffer, &vkOffset);
     }
 
-    void VulkanCommandContext::setIndexBuffer(Buffer& buffer) {
-        (void)buffer;
+    void VulkanCommandContext::setIndexBuffer(Buffer& buffer, IndexType indexType, u64 offset) {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setIndexBuffer requires active command buffer");
+            return;
+        }
+
+        VulkanBuffer* vulkanBuffer = dynamic_cast<VulkanBuffer*>(&buffer);
+        if (!vulkanBuffer || vulkanBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setIndexBuffer requires VulkanBuffer");
+            return;
+        }
+
+        vkCmdBindIndexBuffer(commandBuffer, vulkanBuffer->getHandle(), offset, toVkIndexType(indexType));
+    }
+
+    void VulkanCommandContext::draw(const DrawDesc& desc) {
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::draw requires active command buffer");
+            return;
+        }
+
+        vkCmdDraw(commandBuffer, desc.vertexCount, desc.instanceCount, desc.firstVertex, desc.firstInstance);
     }
 
     void VulkanCommandContext::drawIndexed(const DrawIndexedDesc& desc) {
-        (void)desc;
+        const VkCommandBuffer commandBuffer = currentCommandBuffer();
+        if (commandBuffer == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::drawIndexed requires active command buffer");
+            return;
+        }
+
+        vkCmdDrawIndexed(commandBuffer, desc.indexCount, desc.instanceCount, desc.firstIndex, desc.vertexOffset,
+                         desc.firstInstance);
     }
 
     void VulkanCommandContext::pipelineBarrier(std::span<const ResourceBarrier> barriers) {

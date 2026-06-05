@@ -12,9 +12,17 @@ namespace ark::rhi {
     class PipelineState;
     class TextureView;
 
-    // dynamic rendering 的附件描述，后续 ForwardPass / ClearPass 会通过它进入 beginRendering。
+    struct RenderingAttachmentDesc {
+        TextureView* view = nullptr;
+        LoadOp loadOp = LoadOp::Clear;
+        StoreOp storeOp = StoreOp::Store;
+        ClearColor clearColor{};
+    };
+
+    // dynamic rendering 的附件描述，renderer 只表达 RHI 语义，后端负责映射到 VkRenderingAttachmentInfo。
     struct RenderingDesc {
-        TextureView* colorAttachment = nullptr;
+        Extent2D extent{};
+        RenderingAttachmentDesc colorAttachment;
         TextureView* depthStencilAttachment = nullptr;
     };
 
@@ -27,18 +35,18 @@ namespace ark::rhi {
         u32 firstInstance = 0;
     };
 
+    struct DrawDesc {
+        u32 vertexCount = 0;
+        u32 instanceCount = 1;
+        u32 firstVertex = 0;
+        u32 firstInstance = 0;
+    };
+
     // submit 描述当前只覆盖 swapchain 最小同步，后续可以扩展为多 semaphore / timeline semaphore。
     struct SubmitDesc {
         FrameResource* frameResource = nullptr;
         bool waitForSwapChainImage = true;
         bool signalRenderFinished = true;
-    };
-
-    struct ClearColor {
-        float r = 0.05f;
-        float g = 0.08f;
-        float b = 0.12f;
-        float a = 1.0f;
     };
 
     // DeviceContext 是资源使用与命令执行对象，负责 command recording、barrier、draw/dispatch 和 submit。
@@ -55,15 +63,18 @@ namespace ark::rhi {
         virtual bool submit(const SubmitDesc& desc) = 0;
         virtual void advanceFrame() = 0;
 
-        // 渲染区域控制接口暂时保留，Phase 0.3 的 clear 路径还没有使用 dynamic rendering。
-        virtual void beginRendering(const RenderingDesc& desc) = 0;
+        // 渲染区域控制接口对应 Vulkan dynamic rendering 或其他 API 的 render encoder。
+        virtual bool beginRendering(const RenderingDesc& desc) = 0;
         virtual void endRendering() = 0;
+        virtual void setViewport(const Viewport& viewport) = 0;
+        virtual void setScissorRect(const ScissorRect& rect) = 0;
 
-        // 下面是后续真实绘制需要的状态绑定和 draw 接口，当前 Vulkan 实现仍是占位。
+        // 下面是绘制需要的状态绑定和 draw 接口；资源创建仍由 RenderDevice 负责。
         virtual void setPipeline(PipelineState& pipeline) = 0;
         virtual void bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) = 0;
-        virtual void setVertexBuffer(u32 slot, Buffer& buffer) = 0;
-        virtual void setIndexBuffer(Buffer& buffer) = 0;
+        virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset = 0) = 0;
+        virtual void setIndexBuffer(Buffer& buffer, IndexType indexType = IndexType::UInt32, u64 offset = 0) = 0;
+        virtual void draw(const DrawDesc& desc) = 0;
         virtual void drawIndexed(const DrawIndexedDesc& desc) = 0;
 
         // barrier 和 clear 是 Phase 0.3 清屏闭环已经使用的最小命令。

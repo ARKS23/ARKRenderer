@@ -11,12 +11,14 @@ namespace ark {
             m_Passes.push_back(pass);
         }
 
-        void execute(FrameContext& frameContext) {
+        bool execute(FrameContext& frameContext) {
             for (RenderPass* pass : m_Passes) {
-                if (pass) {
-                    pass->execute(frameContext);
+                if (pass && !pass->execute(frameContext)) {
+                    return false;
                 }
             }
+
+            return true;
         }
 
     private:

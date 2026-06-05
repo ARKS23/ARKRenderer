@@ -93,6 +93,8 @@ src/
 |   |-- ResourceBarrier.h
 |   |
 |   `-- vulkan/
+|       |-- VulkanAllocator.h
+|       |-- VulkanAllocator.cpp
 |       |-- VulkanBuffer.h
 |       |-- VulkanBuffer.cpp
 |       |-- VulkanShader.h
@@ -120,12 +122,14 @@ src/
 本阶段需要让 RHI 表达最小 buffer 创建和绑定语义：
 
 ```cpp
-enum class BufferUsage {
-    Vertex,
-    Index,
-    Uniform,
-    TransferSrc,
-    TransferDst,
+enum class BufferUsage : u32 {
+    None = 0,
+    Vertex = 1 << 0,
+    Index = 1 << 1,
+    Uniform = 1 << 2,
+    Storage = 1 << 3,
+    TransferSrc = 1 << 4,
+    TransferDst = 1 << 5,
 };
 
 enum class MemoryUsage {
@@ -134,9 +138,10 @@ enum class MemoryUsage {
 };
 
 struct BufferDesc {
+    std::string debugName;
     u64 size = 0;
-    BufferUsage usage = BufferUsage::Vertex;
-    MemoryUsage memoryUsage = MemoryUsage::CpuToGpu;
+    BufferUsage usage = BufferUsage::None;
+    MemoryUsage memoryUsage = MemoryUsage::GpuOnly;
     const void* initialData = nullptr;
 };
 
@@ -162,8 +167,9 @@ enum class ShaderStage {
 };
 
 struct ShaderDesc {
-    ShaderStage stage = ShaderStage::Vertex;
     std::string debugName;
+    ShaderStage stage = ShaderStage::Vertex;
+    std::string entryPoint = "main";
     std::vector<u32> bytecode;
 };
 
@@ -193,6 +199,8 @@ struct PipelineLayoutDesc {
 class PipelineLayout {
 public:
     virtual ~PipelineLayout() = default;
+
+    virtual const PipelineLayoutDesc& getDesc() const = 0;
 };
 ```
 
@@ -204,14 +212,37 @@ public:
 
 ```cpp
 enum class PrimitiveTopology {
-    TriangleList,
+    PointList,
     LineList,
+    LineStrip,
+    TriangleList,
+    TriangleStrip,
 };
 
 enum class CullMode {
     None,
     Front,
     Back,
+};
+
+enum class VertexInputRate {
+    PerVertex,
+    PerInstance,
+};
+
+enum class PolygonMode {
+    Fill,
+    Line,
+};
+
+enum class FrontFace {
+    CounterClockwise,
+    Clockwise,
+};
+
+enum class CompareOp {
+    Less,
+    Always,
 };
 
 struct VertexAttributeDesc {
@@ -223,7 +254,28 @@ struct VertexAttributeDesc {
 struct VertexBufferLayoutDesc {
     u32 binding = 0;
     u32 stride = 0;
+    VertexInputRate inputRate = VertexInputRate::PerVertex;
     std::vector<VertexAttributeDesc> attributes;
+};
+
+struct RasterStateDesc {
+    PolygonMode polygonMode = PolygonMode::Fill;
+    CullMode cullMode = CullMode::None;
+    FrontFace frontFace = FrontFace::CounterClockwise;
+};
+
+struct DepthStencilStateDesc {
+    bool enableDepthTest = false;
+    bool enableDepthWrite = false;
+    CompareOp depthCompareOp = CompareOp::Less;
+};
+
+struct ColorBlendAttachmentDesc {
+    bool enableBlend = false;
+};
+
+struct BlendStateDesc {
+    ColorBlendAttachmentDesc colorAttachment;
 };
 
 struct GraphicsPipelineDesc {
@@ -233,11 +285,11 @@ struct GraphicsPipelineDesc {
     PipelineLayout* layout = nullptr;
     std::vector<VertexBufferLayoutDesc> vertexBuffers;
     PrimitiveTopology topology = PrimitiveTopology::TriangleList;
-    CullMode cullMode = CullMode::Back;
-    Format colorFormat = Format::BGRA8_UNorm;
+    RasterStateDesc rasterState;
+    DepthStencilStateDesc depthStencilState;
+    BlendStateDesc blendState;
+    Format colorFormat = Format::Unknown;
     Format depthFormat = Format::Unknown;
-    bool enableDepthTest = false;
-    bool enableDepthWrite = false;
 };
 
 class PipelineState {
@@ -265,7 +317,14 @@ struct RenderingAttachmentDesc {
 struct RenderingDesc {
     Extent2D extent;
     RenderingAttachmentDesc colorAttachment;
-    TextureView* depthAttachment = nullptr;
+    TextureView* depthStencilAttachment = nullptr;
+};
+
+struct DrawDesc {
+    u32 vertexCount = 0;
+    u32 instanceCount = 1;
+    u32 firstVertex = 0;
+    u32 firstInstance = 0;
 };
 
 struct Viewport {
@@ -291,14 +350,14 @@ public:
     virtual void setViewport(const Viewport& viewport) = 0;
     virtual void setScissorRect(const ScissorRect& rect) = 0;
     virtual void setPipeline(PipelineState& pipeline) = 0;
-    virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) = 0;
-    virtual void setIndexBuffer(Buffer& buffer, IndexType indexType, u64 offset) = 0;
-    virtual void draw(u32 vertexCount, u32 firstVertex) = 0;
+    virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset = 0) = 0;
+    virtual void setIndexBuffer(Buffer& buffer, IndexType indexType = IndexType::UInt32, u64 offset = 0) = 0;
+    virtual void draw(const DrawDesc& desc) = 0;
     virtual void drawIndexed(const DrawIndexedDesc& desc) = 0;
 };
 ```
 
-第一版三角形可以只用 `draw(3, 0)`，`setIndexBuffer()` 和 `drawIndexed()` 可以同时补接口但暂不在 sandbox 中使用。
+第一版三角形可以只用 `DrawDesc{.vertexCount = 3}`，`setIndexBuffer()` 和 `drawIndexed()` 可以同时补接口但暂不在 sandbox 中使用。
 
 ## Renderer 层设计
 
@@ -447,6 +506,15 @@ shaders/triangle.frag
    - 新增 `ClearPass`，把 Phase 0.3 的 clear 语义从 `Renderer` 中移出。
    - 新增 `TrianglePass` 或最小 `ForwardPass`，负责创建三角形资源并执行 draw。
 
+   当前实现更新：
+
+   - `FrameContext` 已扩展为 renderer 层一帧逻辑上下文，集中传递 `RenderDevice`、`DeviceContext`、`SwapChain`、`FrameResource`、backbuffer view、extent、clear color、scene 和 view。
+   - `RenderPass` 已补齐 `setup(RenderDevice&)` 和 `execute(FrameContext&)`，其中 `execute()` 返回 `bool`，便于 pass 失败时中止当前帧。
+   - `FrameRenderer` 已落地为 RenderGraph 前的轻量手动调度器，当前固定执行 `ClearPass -> TrianglePass`。
+   - `ClearPass` 已接管 Phase 0.3 的清屏命令，`Renderer` 不再直接调用 `clearRenderTarget()`。
+   - `TrianglePass` 已建立结构位置，当前暂不发出 draw；后续补齐 RHI buffer / shader / pipeline / draw path 后在这里创建三角形资源并绘制。
+   - `Renderer::render()` 现在只保留 acquire、begin、FrameRenderer 调度、end、submit、present 和 swapchain 状态处理，职责边界更接近后续 RenderGraph 替换路径。
+
 2. 补齐 RHI 资源描述：
    - `BufferDesc`
    - `ShaderDesc`
@@ -455,6 +523,16 @@ shaders/triangle.frag
    - vertex input 描述
    - viewport / scissor 描述
    - load / store op 描述
+
+   当前实现更新：
+
+   - `RHICommon.h` 已补充 `ClearColor`、`LoadOp`、`StoreOp`、`Viewport` 和 `ScissorRect`，这些是后续 dynamic rendering 和 draw path 会共用的轻量 RHI 描述。
+   - `BufferDesc` 已补齐 `debugName`、`size`、`usage`、`memoryUsage` 和 `initialData`；`BufferUsage` 支持位组合，并提供 `hasBufferUsage()` 辅助检查。
+   - `ShaderDesc` 已补齐 `debugName`、`stage`、`entryPoint` 和 SPIR-V `bytecode`。
+   - `PipelineLayoutDesc` 已补齐 `debugName`，descriptor set layout / push constant 后续阶段再扩展。
+   - `GraphicsPipelineDesc` 已补齐 shader、pipeline layout、vertex input、topology、raster state、depth stencil state、blend state、color format 和 depth format。
+   - `DeviceContext.h` 中的 `RenderingDesc` 已补齐 extent、color attachment、load/store op 和 clear color 描述；真实 `beginRendering()` 已在第 3 项落地。
+   - `framework_headers_smoke.cpp` 已覆盖新增描述结构，确保后续修改 RHI 描述时能被编译检查捕获。
 
 3. 补齐 RHI 命令接口：
    - `beginRendering()`
@@ -466,11 +544,31 @@ shaders/triangle.frag
    - `draw()`
    - 预留 `setIndexBuffer()` / `drawIndexed()`
 
+   当前实现更新：
+
+   - `DeviceContext` 已补齐 `beginRendering()`、`endRendering()`、`setViewport()`、`setScissorRect()`、`setPipeline()`、`setVertexBuffer()`、`setIndexBuffer()`、`draw()` 和 `drawIndexed()`。
+   - `beginRendering()` 改为返回 `bool`，让 attachment 无效、命令缓冲未开始等错误能反馈给 renderer/pass 调度层。
+   - `DrawDesc` 已加入 RHI，非索引绘制不再用散落参数表达；`DrawIndexedDesc` 继续保留给后续 mesh/index buffer。
+   - `VulkanCommandContext` 已实现 dynamic rendering begin/end、动态 viewport/scissor、graphics pipeline 绑定、vertex/index buffer 绑定和 draw/drawIndexed 命令。
+   - `FrameRenderer` 主路径已从 `vkCmdClearColorImage` 过渡到 dynamic rendering：backbuffer 先 transition 到 `RenderTarget`，再通过 `loadOp=Clear` 完成清屏，最后 transition 回 `Present`。
+   - `ClearPass` 当前保留语义位置，真实清屏由 `FrameRenderer::beginRendering(loadOp=Clear)` 表达，方便后续迁移到 RenderGraph。
+
 4. 实现 Vulkan 资源对象：
    - `VulkanBuffer`
    - `VulkanShader`
    - `VulkanPipelineLayout`
    - `VulkanPipelineState`
+
+   当前实现更新：
+
+   - 新增 `VulkanAllocator`，由 `VulkanDevice` 持有 VMA allocator，并通过 `vmaImportVulkanFunctionsFromVolk()` 复用项目的 volk 加载策略。
+   - `VulkanBuffer` 已实现 `VkBuffer + VMA allocation`，支持 RHI `BufferUsage` 到 Vulkan usage 的映射；`MemoryUsage::CpuToGpu` 支持 `initialData` 直接初始化。
+   - `VulkanShader` 已实现 `VkShaderModule` RAII，保存 `ShaderDesc`、shader stage 和 entry point。
+   - `VulkanPipelineLayout` 已实现空 `VkPipelineLayout`，descriptor set layout / push constant 后续阶段再扩展。
+   - `VulkanPipelineState` 已实现最小 graphics pipeline，使用 dynamic rendering 的 `VkPipelineRenderingCreateInfo`，viewport/scissor 作为 dynamic state。
+   - `VulkanDevice::createBuffer()`、`createShader()`、`createPipelineLayout()` 和 `createGraphicsPipeline()` 已接入真实 Vulkan 对象创建。
+   - `Format` 已补充 `R32G32Float`、`R32G32B32Float`、`R32G32B32A32Float`，用于后续 position/color 顶点输入。
+   - 仍未纳入本阶段的 `Texture`、`Sampler`、`DescriptorSet`、`Fence` 工厂继续保持明确的未实现报错。
 
 5. 实现 Vulkan command draw path：
    - dynamic rendering begin / end。
@@ -478,6 +576,11 @@ shaders/triangle.frag
    - vertex buffer bind。
    - viewport / scissor。
    - draw call。
+
+   当前状态说明：
+
+   - 底层 `VulkanCommandContext` 命令已经具备上述能力。
+   - `TrianglePass` 尚未创建 shader / pipeline / vertex buffer，也暂未调用 `draw()`；这部分会和 shader 编译、sandbox 接入一起完成。
 
 6. 新增 shader：
    - `triangle.vert`

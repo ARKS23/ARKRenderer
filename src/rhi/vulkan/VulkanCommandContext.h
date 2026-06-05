@@ -21,13 +21,16 @@ namespace ark::rhi::vulkan {
         bool submit(const SubmitDesc& desc) override;
         void advanceFrame() override;
 
-        void beginRendering(const RenderingDesc& desc) override;
+        bool beginRendering(const RenderingDesc& desc) override;
         void endRendering() override;
+        void setViewport(const Viewport& viewport) override;
+        void setScissorRect(const ScissorRect& rect) override;
 
         void setPipeline(PipelineState& pipeline) override;
         void bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) override;
-        void setVertexBuffer(u32 slot, Buffer& buffer) override;
-        void setIndexBuffer(Buffer& buffer) override;
+        void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) override;
+        void setIndexBuffer(Buffer& buffer, IndexType indexType, u64 offset) override;
+        void draw(const DrawDesc& desc) override;
         void drawIndexed(const DrawIndexedDesc& desc) override;
         void pipelineBarrier(std::span<const ResourceBarrier> barriers) override;
         void clearRenderTarget(TextureView& renderTargetView, const ClearColor& color) override;
@@ -49,5 +52,6 @@ namespace ark::rhi::vulkan {
         // 当前正在录制的帧；用于 barrier/clear/submit 找到正确 command buffer。
         VulkanFrameResource* m_RecordingFrame = nullptr;
         bool m_IsRecording = false;
+        bool m_IsRendering = false;
     };
 } // namespace ark::rhi::vulkan

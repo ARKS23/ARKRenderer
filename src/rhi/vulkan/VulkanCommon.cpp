@@ -9,6 +9,12 @@ namespace ark::rhi::vulkan {
         switch (format) {
         case Format::Unknown:
             return "Unknown";
+        case Format::R32G32Float:
+            return "R32G32Float";
+        case Format::R32G32B32Float:
+            return "R32G32B32Float";
+        case Format::R32G32B32A32Float:
+            return "R32G32B32A32Float";
         case Format::BGRA8Unorm:
             return "BGRA8Unorm";
         case Format::RGBA8Unorm:
@@ -28,6 +34,12 @@ namespace ark::rhi::vulkan {
         switch (format) {
         case VK_FORMAT_UNDEFINED:
             return "VK_FORMAT_UNDEFINED";
+        case VK_FORMAT_R32G32_SFLOAT:
+            return "VK_FORMAT_R32G32_SFLOAT";
+        case VK_FORMAT_R32G32B32_SFLOAT:
+            return "VK_FORMAT_R32G32B32_SFLOAT";
+        case VK_FORMAT_R32G32B32A32_SFLOAT:
+            return "VK_FORMAT_R32G32B32A32_SFLOAT";
         case VK_FORMAT_B8G8R8A8_UNORM:
             return "VK_FORMAT_B8G8R8A8_UNORM";
         case VK_FORMAT_R8G8B8A8_UNORM:
@@ -125,6 +137,12 @@ namespace ark::rhi::vulkan {
 
     VkFormat toVkFormat(Format format) {
         switch (format) {
+        case Format::R32G32Float:
+            return VK_FORMAT_R32G32_SFLOAT;
+        case Format::R32G32B32Float:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case Format::R32G32B32A32Float:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
         case Format::BGRA8Unorm:
             return VK_FORMAT_B8G8R8A8_UNORM;
         case Format::RGBA8Unorm:
@@ -144,6 +162,12 @@ namespace ark::rhi::vulkan {
 
     Format fromVkFormat(VkFormat format) {
         switch (format) {
+        case VK_FORMAT_R32G32_SFLOAT:
+            return Format::R32G32Float;
+        case VK_FORMAT_R32G32B32_SFLOAT:
+            return Format::R32G32B32Float;
+        case VK_FORMAT_R32G32B32A32_SFLOAT:
+            return Format::R32G32B32A32Float;
         case VK_FORMAT_B8G8R8A8_UNORM:
         case VK_FORMAT_B8G8R8A8_SRGB:
             return Format::BGRA8Unorm;

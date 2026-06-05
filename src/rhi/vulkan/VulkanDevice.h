@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rhi/RenderDevice.h"
+#include "rhi/vulkan/VulkanAllocator.h"
 #include "rhi/vulkan/VulkanCommon.h"
 
 namespace ark::rhi::vulkan {
@@ -22,6 +23,7 @@ namespace ark::rhi::vulkan {
         VkQueue getPresentQueue() const;
         u32 getGraphicsQueueFamily() const;
         u32 getPresentQueueFamily() const;
+        VmaAllocator getAllocator() const;
 
         Scope<Buffer> createBuffer(const BufferDesc& desc) override;
         Scope<Texture> createTexture(const TextureDesc& desc) override;
@@ -50,5 +52,6 @@ namespace ark::rhi::vulkan {
         VkDevice m_Device = VK_NULL_HANDLE;
         VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
         VkQueue m_PresentQueue = VK_NULL_HANDLE;
+        Scope<VulkanAllocator> m_Allocator;
     };
 } // namespace ark::rhi::vulkan

@@ -2,13 +2,13 @@
 
 #include "core/Log.h"
 #include "core/Memory.h"
+#include "renderer/FrameContext.h"
+#include "renderer/FrameRenderer.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "rhi/RenderBackend.h"
-#include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
-#include <array>
 #include <stdexcept>
 
 namespace ark {
@@ -40,18 +40,21 @@ namespace ark {
                     m_RenderingPaused = true;
                 }
 
+                // FrameRenderer 负责一帧内部 pass 顺序；Renderer 只保留 acquire/submit/present 外壳。
+                m_FrameRenderer = createFrameRenderer();
+                m_FrameRenderer->setup(m_Backend->device());
+                m_FrameRenderer->resize(m_Extent);
+
                 ARK_INFO("Renderer initialized");
             }
 
             ~DefaultRenderer() override {
+                m_FrameRenderer.reset();
                 m_Backend.reset();
                 ARK_INFO("Renderer shutdown");
             }
 
             void render(RenderScene& scene, const RenderView& view) override {
-                (void)scene;
-                (void)view;
-
                 // 窗口最小化或 swapchain 尚未创建时跳过当前帧，避免用 0 尺寸重建 swapchain。
                 if (m_RenderingPaused || !m_Backend->swapChain()) {
                     return;
@@ -76,31 +79,26 @@ namespace ark {
                     return;
                 }
 
-                rhi::Texture* backBuffer = backBufferView->getTexture();
                 if (!context.begin(frame)) {
                     return;
                 }
 
-                // Phase 0.3 先用 transfer clear 验证最小帧闭环，后续再上移到 ClearPass。
-                const std::array<rhi::ResourceBarrier, 1> toClear{{
-                    rhi::ResourceBarrier{
-                        .texture = backBuffer,
-                        .before = backBuffer->getState(),
-                        .after = rhi::ResourceState::CopyDst,
-                    },
-                }};
-                context.pipelineBarrier(toClear);
-                context.clearRenderTarget(*backBufferView, m_ClearColor);
+                FrameContext frameContext{};
+                frameContext.frameIndex = frame.frameIndex;
+                frameContext.scene = &scene;
+                frameContext.view = &view;
+                frameContext.device = &m_Backend->device();
+                frameContext.context = &context;
+                frameContext.swapChain = &swapChain;
+                frameContext.frameResource = &frame;
+                frameContext.backBufferView = backBufferView;
+                frameContext.extent = m_Extent;
+                frameContext.clearColor = m_ClearColor;
 
-                // present 前必须把 backbuffer 转回 Present 状态。
-                const std::array<rhi::ResourceBarrier, 1> toPresent{{
-                    rhi::ResourceBarrier{
-                        .texture = backBuffer,
-                        .before = backBuffer->getState(),
-                        .after = rhi::ResourceState::Present,
-                    },
-                }};
-                context.pipelineBarrier(toPresent);
+                if (!m_FrameRenderer->render(frameContext)) {
+                    context.end();
+                    return;
+                }
 
                 if (!context.end()) {
                     return;
@@ -132,6 +130,7 @@ namespace ark {
                 }
 
                 m_RenderingPaused = false;
+                m_FrameRenderer->resize(extent);
                 if (m_Backend->swapChain()) {
                     m_Backend->swapChain()->resize(extent);
                     return;
@@ -167,6 +166,7 @@ namespace ark {
                 }
             }
 
+            Scope<FrameRenderer> m_FrameRenderer;
             Scope<rhi::RenderBackend> m_Backend;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};

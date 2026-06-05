@@ -11,6 +11,9 @@ namespace ark::rhi {
     // RHI 公共格式枚举保持 API 无关，后端负责映射到 VkFormat 等原生格式。
     enum class Format {
         Unknown,
+        R32G32Float,
+        R32G32B32Float,
+        R32G32B32A32Float,
         BGRA8Unorm,
         RGBA8Unorm,
         RGBA16Float,
@@ -34,6 +37,47 @@ namespace ark::rhi {
     struct Extent2D {
         u32 width = 0;
         u32 height = 0;
+    };
+
+    struct ClearColor {
+        float r = 0.05f;
+        float g = 0.08f;
+        float b = 0.12f;
+        float a = 1.0f;
+    };
+
+    // dynamic rendering / render pass 附件加载策略，表达 RHI 语义而不是 Vulkan loadOp。
+    enum class LoadOp {
+        Load,
+        Clear,
+        DontCare,
+    };
+
+    // dynamic rendering / render pass 附件存储策略，后端负责映射到具体 API。
+    enum class StoreOp {
+        Store,
+        DontCare,
+    };
+
+    struct Viewport {
+        float x = 0.0f;
+        float y = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+        float minDepth = 0.0f;
+        float maxDepth = 1.0f;
+    };
+
+    struct ScissorRect {
+        i32 x = 0;
+        i32 y = 0;
+        u32 width = 0;
+        u32 height = 0;
+    };
+
+    enum class IndexType {
+        UInt16,
+        UInt32,
     };
 
     // 窗口最小化时尺寸可能为 0，创建或重建 swapchain 前需要先过滤。

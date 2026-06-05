@@ -102,7 +102,7 @@ target_compile_definitions(ark_renderer
         VK_NO_PROTOTYPES
         SPIRV_REFLECT_USE_SYSTEM_SPIRV_H
         VMA_STATIC_VULKAN_FUNCTIONS=0
-        VMA_DYNAMIC_VULKAN_FUNCTIONS=1)
+        VMA_DYNAMIC_VULKAN_FUNCTIONS=0)
 
 if(ARK_DXC_SUPPORTED)
     target_compile_definitions(ark_renderer PUBLIC ARK_HAS_DXC=1)
