@@ -1,7 +1,5 @@
 #include "rhi/vulkan/VulkanCommandBuffer.h"
 
-#include <stdexcept>
-
 namespace ark::rhi::vulkan {
     VulkanCommandBuffer::VulkanCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBuffer commandBuffer)
         : m_Device(device), m_CommandPool(commandPool), m_CommandBuffer(commandBuffer) {
@@ -22,10 +20,10 @@ namespace ark::rhi::vulkan {
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-        return vkBeginCommandBuffer(m_CommandBuffer, &beginInfo) == VK_SUCCESS;
+        return ARK_VK_CHECK(vkBeginCommandBuffer(m_CommandBuffer, &beginInfo));
     }
 
     bool VulkanCommandBuffer::end() {
-        return vkEndCommandBuffer(m_CommandBuffer) == VK_SUCCESS;
+        return ARK_VK_CHECK(vkEndCommandBuffer(m_CommandBuffer));
     }
 } // namespace ark::rhi::vulkan

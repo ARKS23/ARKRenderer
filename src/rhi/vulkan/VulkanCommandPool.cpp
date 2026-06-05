@@ -9,8 +9,7 @@ namespace ark::rhi::vulkan {
         createInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         createInfo.queueFamilyIndex = queueFamilyIndex;
 
-        const VkResult result = vkCreateCommandPool(m_Device, &createInfo, nullptr, &m_CommandPool);
-        if (result != VK_SUCCESS) {
+        if (!ARK_VK_CHECK(vkCreateCommandPool(m_Device, &createInfo, nullptr, &m_CommandPool))) {
             throw std::runtime_error("vkCreateCommandPool failed");
         }
     }
@@ -33,8 +32,7 @@ namespace ark::rhi::vulkan {
         allocateInfo.commandBufferCount = 1;
 
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-        const VkResult result = vkAllocateCommandBuffers(m_Device, &allocateInfo, &commandBuffer);
-        if (result != VK_SUCCESS) {
+        if (!ARK_VK_CHECK(vkAllocateCommandBuffers(m_Device, &allocateInfo, &commandBuffer))) {
             throw std::runtime_error("vkAllocateCommandBuffers failed");
         }
 
@@ -42,6 +40,6 @@ namespace ark::rhi::vulkan {
     }
 
     bool VulkanCommandPool::reset() {
-        return vkResetCommandPool(m_Device, m_CommandPool, 0) == VK_SUCCESS;
+        return ARK_VK_CHECK(vkResetCommandPool(m_Device, m_CommandPool, 0));
     }
 } // namespace ark::rhi::vulkan

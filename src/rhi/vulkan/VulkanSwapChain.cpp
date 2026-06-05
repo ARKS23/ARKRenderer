@@ -2,6 +2,7 @@
 
 #include "core/Log.h"
 #include "core/Memory.h"
+#include "core/ScopeExit.h"
 #include "rhi/vulkan/VulkanDevice.h"
 #include "rhi/vulkan/VulkanFrameResource.h"
 
@@ -20,7 +21,7 @@ namespace ark::rhi::vulkan {
 
             const VkResult vkResult = result.vk_result();
             if (vkResult != VK_SUCCESS) {
-                message += fmt::format(" (VkResult: {})", static_cast<int>(vkResult));
+                message += fmt::format(" ({}: {})", vkResultName(vkResult), static_cast<int>(vkResult));
             }
 
             return message;
@@ -39,7 +40,7 @@ namespace ark::rhi::vulkan {
             case VK_ERROR_DEVICE_LOST:
                 return SwapChainStatus::DeviceLost;
             default:
-                ARK_ERROR("{} failed: VkResult={}", operation, static_cast<int>(result));
+                ARK_ERROR("{} failed: {} ({})", operation, vkResultName(result), static_cast<int>(result));
                 return SwapChainStatus::Error;
             }
         }
@@ -72,12 +73,7 @@ namespace ark::rhi::vulkan {
             return;
         }
 
-        try {
-            create();
-        } catch (...) {
-            destroy();
-            throw;
-        }
+        create();
     }
 
     VulkanSwapChain::~VulkanSwapChain() {
@@ -191,6 +187,10 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanSwapChain::create() {
+        auto cleanupOnFailure = makeScopeExit([this]() {
+            destroy();
+        });
+
         // SwapChain 借用 VulkanDevice 持有的 surface；它只拥有 swapchain 和 image view。
         vkb::SwapchainBuilder builder(m_Device->getPhysicalDevice(), m_Device->getDevice(), m_Device->getSurface(),
                                       m_Device->getGraphicsQueueFamily(), m_Device->getPresentQueueFamily());
@@ -262,6 +262,8 @@ namespace ark::rhi::vulkan {
         ARK_INFO("Vulkan swapchain created: extent={}x{}, images={}, format={}, presentMode={}", m_Desc.extent.width,
                  m_Desc.extent.height, m_BackBufferCount, vkFormatName(m_ColorFormat), presentModeName(m_PresentMode));
         ARK_INFO("Default depth buffer is owned by SwapChain and will be allocated before the first clear pass");
+
+        cleanupOnFailure.release();
     }
 
     void VulkanSwapChain::destroy() {

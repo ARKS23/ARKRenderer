@@ -1,6 +1,7 @@
 #include "rhi/vulkan/VulkanDevice.h"
 
 #include "core/Log.h"
+#include "core/ScopeExit.h"
 
 #include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
@@ -19,7 +20,7 @@ namespace ark::rhi::vulkan {
 
             const VkResult vkResult = result.vk_result();
             if (vkResult != VK_SUCCESS) {
-                message += fmt::format(" (VkResult: {})", static_cast<int>(vkResult));
+                message += fmt::format(" ({}: {})", vkResultName(vkResult), static_cast<int>(vkResult));
             }
 
             const std::vector<std::string>& reasons = result.detailed_failure_reasons();
@@ -62,18 +63,18 @@ namespace ark::rhi::vulkan {
             throw std::runtime_error("VulkanDevice requires a valid GLFW native window handle");
         }
 
-        if (volkInitialize() != VK_SUCCESS) {
+        if (!ARK_VK_CHECK(volkInitialize())) {
             throw std::runtime_error("volkInitialize failed");
         }
 
-        try {
-            createInstance(createInfo);
-            createSurface(createInfo.nativeWindow);
-            createDevice();
-        } catch (...) {
+        auto cleanupOnFailure = makeScopeExit([this]() {
             destroy();
-            throw;
-        }
+        });
+
+        createInstance(createInfo);
+        createSurface(createInfo.nativeWindow);
+        createDevice();
+        cleanupOnFailure.release();
 
         ARK_INFO("Vulkan device initialized: GPU='{}', API={}, graphicsQueue={}, presentQueue={}", m_Caps.gpuName,
                  vulkanVersionToString(m_Caps.apiVersion), m_Caps.graphicsQueueFamily, m_Caps.presentQueueFamily);
@@ -220,10 +221,9 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanDevice::createSurface(NativeWindowHandle nativeWindow) {
-        VkResult result = glfwCreateWindowSurface(m_Instance, static_cast<GLFWwindow*>(nativeWindow.handle), nullptr,
-                                                  &m_Surface);
-        if (result != VK_SUCCESS) {
-            throw std::runtime_error(fmt::format("glfwCreateWindowSurface failed: {}", static_cast<int>(result)));
+        if (!ARK_VK_CHECK(
+                glfwCreateWindowSurface(m_Instance, static_cast<GLFWwindow*>(nativeWindow.handle), nullptr, &m_Surface))) {
+            throw std::runtime_error("glfwCreateWindowSurface failed");
         }
 
         ARK_INFO("Vulkan surface created");

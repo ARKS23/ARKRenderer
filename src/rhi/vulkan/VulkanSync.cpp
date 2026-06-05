@@ -14,8 +14,7 @@ namespace ark::rhi::vulkan {
             VkSemaphoreCreateInfo createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-            const VkResult result = vkCreateSemaphore(m_Device, &createInfo, nullptr, &m_Semaphore);
-            if (result != VK_SUCCESS) {
+            if (!ARK_VK_CHECK(vkCreateSemaphore(m_Device, &createInfo, nullptr, &m_Semaphore))) {
                 throw std::runtime_error("vkCreateSemaphore failed");
             }
             return;
@@ -26,8 +25,7 @@ namespace ark::rhi::vulkan {
         createInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         createInfo.flags = desc.signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0;
 
-        const VkResult result = vkCreateFence(m_Device, &createInfo, nullptr, &m_Fence);
-        if (result != VK_SUCCESS) {
+        if (!ARK_VK_CHECK(vkCreateFence(m_Device, &createInfo, nullptr, &m_Fence))) {
             throw std::runtime_error("vkCreateFence failed");
         }
     }

@@ -99,11 +99,7 @@ namespace ark::rhi::vulkan {
         // fence 在 submit 时交给 queue；它 signal 后，说明该 frame slot 的命令资源可以复用。
         const VkFence fence = frame->getInFlightFence();
         if (fence != VK_NULL_HANDLE) {
-            const VkResult result =
-                vkWaitForFences(m_Device.getDevice(), 1, &fence, VK_TRUE, std::numeric_limits<u64>::max());
-            if (result != VK_SUCCESS) {
-                ARK_ERROR("vkWaitForFences failed: VkResult={}", static_cast<int>(result));
-            }
+            ARK_VK_CHECK(vkWaitForFences(m_Device.getDevice(), 1, &fence, VK_TRUE, std::numeric_limits<u64>::max()));
         }
 
         return *frame;
@@ -124,13 +120,11 @@ namespace ark::rhi::vulkan {
 
         // reset command pool 会让该 pool 分配出的 command buffer 回到可重新录制状态。
         if (!frame->commandPool->reset()) {
-            ARK_ERROR("vkResetCommandPool failed");
             return false;
         }
 
         // 当前 command buffer 以 one-time submit 方式录制：本帧录制，本帧提交。
         if (!frame->commandBuffer->begin()) {
-            ARK_ERROR("vkBeginCommandBuffer failed");
             return false;
         }
 
@@ -147,7 +141,6 @@ namespace ark::rhi::vulkan {
         }
 
         if (!m_RecordingFrame->commandBuffer->end()) {
-            ARK_ERROR("vkEndCommandBuffer failed");
             return false;
         }
 
@@ -172,9 +165,7 @@ namespace ark::rhi::vulkan {
         // submit 前重置 fence；GPU 完成这次提交后会重新 signal 它。
         const VkFence fence = frame->getInFlightFence();
         if (fence != VK_NULL_HANDLE) {
-            const VkResult resetResult = vkResetFences(m_Device.getDevice(), 1, &fence);
-            if (resetResult != VK_SUCCESS) {
-                ARK_ERROR("vkResetFences failed: VkResult={}", static_cast<int>(resetResult));
+            if (!ARK_VK_CHECK(vkResetFences(m_Device.getDevice(), 1, &fence))) {
                 return false;
             }
         }
@@ -204,9 +195,7 @@ namespace ark::rhi::vulkan {
         }
 
         // vkQueueSubmit 是异步提交；返回成功只表示提交进入队列，不表示 GPU 已经执行完。
-        const VkResult result = vkQueueSubmit(m_Device.getGraphicsQueue(), 1, &submitInfo, fence);
-        if (result != VK_SUCCESS) {
-            ARK_ERROR("vkQueueSubmit failed: VkResult={}", static_cast<int>(result));
+        if (!ARK_VK_CHECK(vkQueueSubmit(m_Device.getGraphicsQueue(), 1, &submitInfo, fence))) {
             return false;
         }
 
