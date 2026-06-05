@@ -91,6 +91,15 @@ int main() {
     renderBackendDesc.swapChain = swapChainDesc;
 
     const ark::rhi::SwapChainStatus swapChainStatus = ark::rhi::SwapChainStatus::Ready;
+    ark::rhi::AcquireResult acquireResult{};
+    ark::rhi::FrameResource frameResource{};
+    frameResource.frameSlot = 0;
+    frameResource.frameIndex = 1;
+
+    ark::rhi::vulkan::VulkanFrameResource vulkanFrameResource{};
+    vulkanFrameResource.frameSlot = 0;
+    vulkanFrameResource.frameIndex = frameResource.frameIndex;
+
     const bool extentValid = ark::rhi::isValidExtent(swapChainDesc.extent);
     const char* colorFormatName = ark::rhi::vulkan::formatName(swapChainDesc.colorFormat);
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
@@ -111,6 +120,9 @@ int main() {
     (void)swapChainCreateInfo;
     (void)renderBackendDesc;
     (void)swapChainStatus;
+    (void)acquireResult;
+    (void)frameResource;
+    (void)vulkanFrameResource;
     (void)extentValid;
     (void)colorFormatName;
     (void)scopedTimer;

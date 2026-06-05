@@ -18,6 +18,7 @@ namespace ark::rhi {
         D32Float,
     };
 
+    // 窗口类别
     enum class NativeWindowType {
         GLFW,
         Win32,

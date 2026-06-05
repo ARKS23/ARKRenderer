@@ -109,7 +109,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
 - `src/rhi/vulkan/VulkanDevice.h/.cpp`：使用 volk + vk-bootstrap 创建 instance、debug messenger、GLFW surface、physical device、logical device、graphics queue 和 present queue，并在析构时按顺序释放。
 - `src/rhi/vulkan/VulkanSwapChain.h/.cpp`：使用 vk-bootstrap 创建 swapchain、获取 backbuffer images、创建 backbuffer image views，并支持保守 `resize()`。
 - `src/rhi/vulkan/VulkanTextureView.h/.cpp`：为 swapchain backbuffer image view 提供最小 RAII 包装。
-- `src/rhi/vulkan/VulkanRenderBackend.cpp`：实现 Vulkan 后端工厂，集中创建 `VulkanDevice` 和 `VulkanSwapChain`。
+- `src/rhi/vulkan/VulkanBackendFactory.cpp`：实现 Vulkan 后端工厂，集中创建 `VulkanDevice`、`VulkanCommandContext` 和 `VulkanSwapChain`。
 - `src/renderer/Renderer.h/.cpp`：新增 `RendererDesc` 和 `createRenderer()`，应用层通过 renderer 工厂创建 renderer；renderer 只依赖公共 RHI，不直接包含 Vulkan 后端头文件。
 - `src/app/Application.cpp`：创建窗口后初始化 Renderer；退出时先销毁 Renderer，再销毁 Window。
 - `tests/framework_headers_smoke.cpp`：覆盖新增 RHI 描述结构、renderer 描述结构和 Vulkan 公共工具头文件。
@@ -133,7 +133,7 @@ src/
         |-- VulkanCommon.h             已新增：Vulkan 格式映射和日志辅助
         |-- VulkanCommon.cpp
         |-- VulkanDevice.cpp
-        |-- VulkanRenderBackend.cpp    已新增：Vulkan 后端工厂实现
+        |-- VulkanBackendFactory.cpp   已新增：Vulkan 后端工厂实现
         |-- VulkanSwapChain.cpp
         |-- VulkanTextureView.cpp
         `-- VulkanSurface.h            可选：如果 surface 生命周期需要独立 helper

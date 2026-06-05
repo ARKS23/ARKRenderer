@@ -3,12 +3,14 @@
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "rhi/vulkan/VulkanDevice.h"
+#include "rhi/vulkan/VulkanFrameResource.h"
 
 #include <VkBootstrap.h>
 
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace ark::rhi::vulkan {
@@ -22,6 +24,28 @@ namespace ark::rhi::vulkan {
             }
 
             return message;
+        }
+
+        SwapChainStatus toSwapChainStatus(VkResult result, const char* operation) {
+            switch (result) {
+            case VK_SUCCESS:
+                return SwapChainStatus::Ready;
+            case VK_SUBOPTIMAL_KHR:
+                return SwapChainStatus::Suboptimal;
+            case VK_ERROR_OUT_OF_DATE_KHR:
+                return SwapChainStatus::OutOfDate;
+            case VK_ERROR_SURFACE_LOST_KHR:
+                return SwapChainStatus::SurfaceLost;
+            case VK_ERROR_DEVICE_LOST:
+                return SwapChainStatus::DeviceLost;
+            default:
+                ARK_ERROR("{} failed: VkResult={}", operation, static_cast<int>(result));
+                return SwapChainStatus::Error;
+            }
+        }
+
+        VulkanFrameResource* asVulkanFrameResource(FrameResource& frameResource) {
+            return dynamic_cast<VulkanFrameResource*>(&frameResource);
         }
 
         VkSurfaceFormatKHR chooseDesiredFormat(Format format) {
@@ -68,8 +92,12 @@ namespace ark::rhi::vulkan {
         return m_BackBufferCount;
     }
 
+    u32 VulkanSwapChain::getCurrentBackBufferIndex() const {
+        return m_CurrentBackBufferIndex;
+    }
+
     TextureView* VulkanSwapChain::getCurrentBackBufferView() {
-        if (m_BackBufferViews.empty()) {
+        if (m_CurrentBackBufferIndex >= m_BackBufferViews.size()) {
             return nullptr;
         }
 
@@ -78,6 +106,72 @@ namespace ark::rhi::vulkan {
 
     TextureView* VulkanSwapChain::getDepthBufferView() {
         return m_DepthBufferView.get();
+    }
+
+    AcquireResult VulkanSwapChain::acquireNextImage(FrameResource& frameResource) {
+        AcquireResult result{};
+
+        if (m_SwapChain == VK_NULL_HANDLE || m_BackBufferViews.empty()) {
+            result.status = SwapChainStatus::OutOfDate;
+            return result;
+        }
+
+        VulkanFrameResource* vulkanFrameResource = asVulkanFrameResource(frameResource);
+        if (!vulkanFrameResource) {
+            ARK_ERROR("VulkanSwapChain::acquireNextImage requires VulkanFrameResource");
+            result.status = SwapChainStatus::Error;
+            return result;
+        }
+
+        const VkSemaphore imageAvailableSemaphore = vulkanFrameResource->getImageAvailableSemaphore();
+        if (imageAvailableSemaphore == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanSwapChain::acquireNextImage requires image available semaphore");
+            result.status = SwapChainStatus::Error;
+            return result;
+        }
+
+        u32 imageIndex = InvalidBackBufferIndex;
+        const VkResult vkResult =
+            vkAcquireNextImageKHR(m_Device->getDevice(), m_SwapChain, std::numeric_limits<u64>::max(),
+                                  imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+        result.status = toSwapChainStatus(vkResult, "vkAcquireNextImageKHR");
+        if (result.status == SwapChainStatus::Ready || result.status == SwapChainStatus::Suboptimal) {
+            m_CurrentBackBufferIndex = imageIndex;
+            result.imageIndex = imageIndex;
+        }
+
+        return result;
+    }
+
+    SwapChainStatus VulkanSwapChain::present(FrameResource& frameResource) {
+        if (m_SwapChain == VK_NULL_HANDLE || m_CurrentBackBufferIndex >= m_BackBufferViews.size()) {
+            return SwapChainStatus::OutOfDate;
+        }
+
+        VulkanFrameResource* vulkanFrameResource = asVulkanFrameResource(frameResource);
+        if (!vulkanFrameResource) {
+            ARK_ERROR("VulkanSwapChain::present requires VulkanFrameResource");
+            return SwapChainStatus::Error;
+        }
+
+        const VkSemaphore renderFinishedSemaphore = vulkanFrameResource->getRenderFinishedSemaphore();
+        const VkSwapchainKHR swapChains[] = {m_SwapChain};
+        const u32 imageIndices[] = {m_CurrentBackBufferIndex};
+
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = imageIndices;
+
+        if (renderFinishedSemaphore != VK_NULL_HANDLE) {
+            presentInfo.waitSemaphoreCount = 1;
+            presentInfo.pWaitSemaphores = &renderFinishedSemaphore;
+        }
+
+        const VkResult vkResult = vkQueuePresentKHR(m_Device->getPresentQueue(), &presentInfo);
+        return toSwapChainStatus(vkResult, "vkQueuePresentKHR");
     }
 
     SwapChainStatus VulkanSwapChain::resize(Extent2D extent) {
@@ -92,6 +186,7 @@ namespace ark::rhi::vulkan {
         m_Device->waitIdle();
         destroy();
         create();
+
         return SwapChainStatus::Ready;
     }
 
@@ -102,7 +197,7 @@ namespace ark::rhi::vulkan {
 
         builder.set_desired_extent(m_Desc.extent.width, m_Desc.extent.height)
             .set_desired_min_image_count(std::max<u32>(2, m_Desc.imageCount))
-            .set_image_usage_flags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+            .set_image_usage_flags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
 
         if (m_Desc.colorFormat != Format::Unknown) {
             builder.set_desired_format(chooseDesiredFormat(m_Desc.colorFormat))
@@ -144,16 +239,25 @@ namespace ark::rhi::vulkan {
 
         m_BackBufferImages = imagesResult.value();
         std::vector<VkImageView> imageViews = imageViewsResult.value();
+        m_BackBufferTextures.reserve(m_BackBufferImages.size());
         m_BackBufferViews.reserve(imageViews.size());
+
+        TextureDesc textureDesc{};
+        textureDesc.extent = m_Desc.extent;
+        textureDesc.format = m_Desc.colorFormat;
+        textureDesc.usage = TextureUsage::RenderTarget;
 
         TextureViewDesc viewDesc{};
         viewDesc.format = m_Desc.colorFormat;
-        for (VkImageView imageView : imageViews) {
-            // swapchain image 由 VkSwapchainKHR 拥有，只有 image view 需要我们销毁。
-            m_BackBufferViews.push_back(makeScope<VulkanTextureView>(m_Device->getDevice(), imageView, viewDesc));
+        for (usize index = 0; index < imageViews.size(); ++index) {
+            // swapchain image 由 VkSwapchainKHR 拥有，VulkanTexture 只是借用 VkImage。
+            m_BackBufferTextures.push_back(makeScope<VulkanTexture>(m_Device->getDevice(), m_BackBufferImages[index],
+                                                                    textureDesc, VulkanTextureOwnership::Borrowed));
+            m_BackBufferViews.push_back(makeScope<VulkanTextureView>(m_Device->getDevice(), imageViews[index],
+                                                                     m_BackBufferTextures.back().get(), viewDesc));
         }
 
-        m_CurrentBackBufferIndex = 0;
+        m_CurrentBackBufferIndex = InvalidBackBufferIndex;
 
         ARK_INFO("Vulkan swapchain created: extent={}x{}, images={}, format={}, presentMode={}", m_Desc.extent.width,
                  m_Desc.extent.height, m_BackBufferCount, vkFormatName(m_ColorFormat), presentModeName(m_PresentMode));
@@ -164,9 +268,10 @@ namespace ark::rhi::vulkan {
         // image view 必须早于 VkSwapchainKHR 销毁。
         m_DepthBufferView.reset();
         m_BackBufferViews.clear();
+        m_BackBufferTextures.clear();
         m_BackBufferImages.clear();
         m_BackBufferCount = 0;
-        m_CurrentBackBufferIndex = 0;
+        m_CurrentBackBufferIndex = InvalidBackBufferIndex;
 
         if (m_SwapChain != VK_NULL_HANDLE) {
             vkDestroySwapchainKHR(m_Device->getDevice(), m_SwapChain, nullptr);

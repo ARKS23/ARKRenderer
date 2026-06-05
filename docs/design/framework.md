@@ -80,7 +80,7 @@ src/
 |       |-- VulkanDescriptorSet.h
 |       |
 |       |-- VulkanAllocator.h
-|       |-- VulkanRenderBackend.cpp
+|       |-- VulkanBackendFactory.cpp
 |       |-- VulkanResourceManager.h
 |       |-- VulkanDescriptorManager.h
 |       |-- VulkanBindlessResourceManager.h
@@ -268,7 +268,7 @@ RenderGraph
 - 项目代码使用 `core/Memory.h` 中的 `Scope<T>` 表达唯一所有权，使用 `makeScope<T>()` 创建对象。
 - `Ref<T>` 只用于确实需要共享生命周期的对象，例如后续 asset cache 中的共享材质或纹理资源。
 - RHI 设备、swapchain、后端 RAII 对象默认使用 `Scope<T>`；GPU 资源后续优先收敛到 `ResourceManager + handle`，避免大量共享指针导致释放时机不清晰。
-- `RenderBackend` 是公共 RHI 层的运行期后端对象，统一持有 `RenderDevice + SwapChain`；具体 Vulkan 创建逻辑放在 `rhi/vulkan/VulkanRenderBackend.cpp`，避免 `renderer/` 直接包含 `rhi/vulkan/` 头文件。
+- `RenderBackend` 是公共 RHI 层的运行期后端对象，统一持有 `RenderDevice + SwapChain + DeviceContext`；具体 Vulkan 创建逻辑放在 `rhi/vulkan/VulkanBackendFactory.cpp`，避免 `renderer/` 直接包含 `rhi/vulkan/` 头文件。
 
 落地顺序：
 

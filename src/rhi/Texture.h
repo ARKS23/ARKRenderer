@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rhi/RHICommon.h"
+#include "rhi/ResourceBarrier.h"
 
 namespace ark::rhi {
     enum class TextureUsage : u32 {
@@ -24,5 +25,8 @@ namespace ark::rhi {
     class Texture {
     public:
         virtual ~Texture() = default;
+
+        virtual const TextureDesc& getDesc() const = 0;
+        virtual ResourceState getState() const = 0;
     };
 } // namespace ark::rhi

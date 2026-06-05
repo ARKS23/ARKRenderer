@@ -76,6 +76,13 @@ namespace ark {
     }
 
     rhi::Extent2D GlfwWindow::getExtent() const {
-        return m_Extent;
+        int width = 0;
+        int height = 0;
+        glfwGetFramebufferSize(static_cast<GLFWwindow*>(m_Window), &width, &height);
+
+        return rhi::Extent2D{
+            .width = width > 0 ? static_cast<u32>(width) : 0,
+            .height = height > 0 ? static_cast<u32>(height) : 0,
+        };
     }
 } // namespace ark

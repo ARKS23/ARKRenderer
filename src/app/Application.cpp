@@ -35,8 +35,17 @@ namespace ark {
 
             RenderScene scene;
             RenderView view;
+            rhi::Extent2D currentExtent = rendererDesc.extent;
             while (!m_Window->shouldClose()) {
                 m_Window->pollEvents();
+
+                // 窗口大小变化resize处理
+                const rhi::Extent2D windowExtent = m_Window->getExtent();
+                if (windowExtent.width != currentExtent.width || windowExtent.height != currentExtent.height) {
+                    currentExtent = windowExtent;
+                    m_Renderer->resize(currentExtent.width, currentExtent.height);
+                }
+
                 m_Renderer->render(scene, view);
             }
 

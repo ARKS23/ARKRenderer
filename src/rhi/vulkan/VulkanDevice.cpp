@@ -36,7 +36,7 @@ namespace ark::rhi::vulkan {
 
         std::vector<const char*> getRequiredGlfwInstanceExtensions() {
             u32 extensionCount = 0;
-            const char** extensions = glfwGetRequiredInstanceExtensions(&extensionCount);
+            const char** extensions = glfwGetRequiredInstanceExtensions(&extensionCount);   // 暂时GLFW Hardcode
             if (!extensions || extensionCount == 0) {
                 throw std::runtime_error("glfwGetRequiredInstanceExtensions failed");
             }
