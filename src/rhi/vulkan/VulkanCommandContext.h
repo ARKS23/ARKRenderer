@@ -40,6 +40,8 @@ namespace ark::rhi::vulkan {
         VulkanFrameResource* toVulkanFrameResource(FrameResource& frameResource);
         VulkanFrameResource* currentVulkanFrame();
         VkCommandBuffer currentCommandBuffer() const;
+        bool requireActiveCommandBuffer(const char* operation, VkCommandBuffer& commandBuffer) const;
+        bool requireActiveRendering(const char* operation) const;
 
         // VulkanDevice 拥有 VkDevice / queue 等设备级对象，CommandContext 只借用。
         VulkanDevice& m_Device;

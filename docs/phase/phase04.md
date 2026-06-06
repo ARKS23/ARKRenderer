@@ -105,15 +105,15 @@ src/
 |       `-- VulkanPipelineState.cpp
 |
 `-- shaders/
-    |-- triangle.vert
-    `-- triangle.frag
+    |-- triangle.vert.hlsl
+    `-- triangle.frag.hlsl
 ```
 
 说明：
 
 - `TrianglePass` 是阶段验证用 pass，不代表最终渲染架构中的正式 ForwardPass。
 - 如果希望命名更贴近最终架构，也可以用 `ForwardPass` 替代 `TrianglePass`，但实现内容仍应保持最小。
-- `shaders/` 下保留 GLSL 源文件，构建阶段输出 SPIR-V 到 build 目录或运行资源目录。
+- `shaders/` 下保留 HLSL 源文件，构建阶段通过 DXC 输出 SPIR-V 到 build 目录。
 
 ## RHI 接口设计
 
@@ -480,20 +480,21 @@ access = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
 
 ## Shader 构建策略
 
-建议第一版在 CMake 中增加 shader 编译目标：
+第一版在 CMake 中增加 shader 编译目标：
 
 ```text
-shaders/triangle.vert
-shaders/triangle.frag
+shaders/triangle.vert.hlsl
+shaders/triangle.frag.hlsl
     -> build/.../shaders/triangle.vert.spv
     -> build/.../shaders/triangle.frag.spv
 ```
 
-可选方案：
+当前方案：
 
-- 优先使用 Vulkan SDK 提供的 `glslc` 或 `glslangValidator`。
-- 如果环境中暂时没有 shader 编译器，可以先在文档中记录依赖，代码阶段再决定是否引入 `shaderc`。
-- 不建议第一版手写 SPIR-V 字节数组，后续维护成本太高。
+- 使用 vcpkg 中的 `directx-dxc`，通过 `DIRECTX_DXC_TOOL` 编译 HLSL。
+- CMake 输出目录为 `${CMAKE_CURRENT_BINARY_DIR}/shaders`，例如 `build/msvc-vcpkg/shaders`。
+- `ark_renderer` 编译时注入 `ARK_SHADER_OUTPUT_DIR`，`TrianglePass` 只读取 SPIR-V bytecode，不在 RHI 后端中硬编码项目路径。
+- 不手写 SPIR-V 字节数组，避免后续维护成本过高。
 
 运行时 shader 读取路径建议由 `apps/sandbox` 传入或由 `core/FileSystem` 提供资源目录查询，避免在 RHI 后端中硬编码项目路径。
 
@@ -512,7 +513,7 @@ shaders/triangle.frag
    - `RenderPass` 已补齐 `setup(RenderDevice&)` 和 `execute(FrameContext&)`，其中 `execute()` 返回 `bool`，便于 pass 失败时中止当前帧。
    - `FrameRenderer` 已落地为 RenderGraph 前的轻量手动调度器，当前固定执行 `ClearPass -> TrianglePass`。
    - `ClearPass` 已接管 Phase 0.3 的清屏命令，`Renderer` 不再直接调用 `clearRenderTarget()`。
-   - `TrianglePass` 已建立结构位置，当前暂不发出 draw；后续补齐 RHI buffer / shader / pipeline / draw path 后在这里创建三角形资源并绘制。
+   - `TrianglePass` 已建立结构位置，当前暂不发出 draw；RHI / Vulkan draw path 已补齐，后续补齐 shader、pipeline 和 vertex buffer 后在这里提交真实绘制。
    - `Renderer::render()` 现在只保留 acquire、begin、FrameRenderer 调度、end、submit、present 和 swapchain 状态处理，职责边界更接近后续 RenderGraph 替换路径。
 
 2. 补齐 RHI 资源描述：
@@ -577,15 +578,25 @@ shaders/triangle.frag
    - viewport / scissor。
    - draw call。
 
-   当前状态说明：
+   当前实现更新：
 
-   - 底层 `VulkanCommandContext` 命令已经具备上述能力。
-   - `TrianglePass` 尚未创建 shader / pipeline / vertex buffer，也暂未调用 `draw()`；这部分会和 shader 编译、sandbox 接入一起完成。
+   - `FrameRenderer` 已在 `beginRendering()` 后设置默认 viewport 和 scissor，尺寸来自当前 `FrameContext::extent`，resize 后不会沿用旧动态状态。
+   - `VulkanCommandContext` 的 viewport/scissor、pipeline bind、vertex/index buffer bind、draw/drawIndexed 都要求处于 active rendering 内，调用顺序错误会输出明确英文日志。
+   - `beginRendering()` 增加 extent 有效性检查，避免 0 尺寸 render area 进入 Vulkan 命令录制。
+   - `draw()` / `drawIndexed()` 增加非零 vertex/index count 与 instance count 检查，避免无意义 draw command 混入命令流。
+   - `TrianglePass` 已在第 6、7 项中接入 shader / pipeline / vertex buffer，并通过 `draw()` 提交三角形绘制。
 
 6. 新增 shader：
-   - `triangle.vert`
-   - `triangle.frag`
+   - `triangle.vert.hlsl`
+   - `triangle.frag.hlsl`
    - CMake shader 编译或复制输出规则。
+
+   当前实现更新：
+
+   - 新增 `shaders/triangle.vert.hlsl` 和 `shaders/triangle.frag.hlsl`。
+   - CMake 新增 `ark_shaders` target，使用 vcpkg 的 `directx-dxc` 编译 HLSL 到 SPIR-V。
+   - shader 输出到 `build/.../shaders/triangle.vert.spv` 和 `build/.../shaders/triangle.frag.spv`。
+   - `ark_renderer` 注入 `ARK_SHADER_OUTPUT_DIR`，运行时从该目录读取 SPIR-V。
 
 7. 接入 sandbox：
    - 创建一个固定三角形。
@@ -594,10 +605,25 @@ shaders/triangle.frag
    - 不使用 descriptor。
    - 窗口 resize 后 pipeline 和 backbuffer format 仍然保持正确。
 
+   当前实现更新：
+
+   - `TrianglePass::setup()` 已创建 CPU 可见 vertex buffer、vertex shader、fragment shader 和空 pipeline layout。
+   - `TrianglePass::execute()` 会根据当前 swapchain color format 懒创建 graphics pipeline，并在颜色格式变化时重建。
+   - 三角形顶点格式为 `float2 position + float3 color`，对应 shader location 0 和 1。
+   - 当前三角形不使用 uniform buffer、descriptor、index buffer 或 depth buffer。
+   - `TrianglePass` 在 `FrameRenderer` 打开的 dynamic rendering 作用域内绑定 pipeline / vertex buffer 并调用 `draw(3)`。
+
 8. 更新测试和文档：
    - 更新 `framework_headers_smoke.cpp` 覆盖新增 RHI 头文件。
    - 保留 dependency smoke。
    - 文档记录最终实现、限制和下一阶段计划。
+
+   当前实现更新：
+
+   - `framework_headers_smoke.cpp` 已覆盖新增 RHI 描述和 draw 描述结构。
+   - 新增 `shader_assets_smoke.cpp`，检查 CMake 输出的三角形 SPIR-V 文件存在且按 `u32` word 对齐。
+   - dependency smoke 保持通过，用于确认 DXC、SPIRV-Reflect、Vulkan 等第三方依赖仍可用。
+   - 本文档已记录 shader 构建方式、TrianglePass 接入方式、当前限制和后续 Phase 0.5 方向。
 
 ## 验收标准
 
@@ -669,3 +695,131 @@ Phase 0.5 建议进入“相机与常量数据”：
 - 绘制一个带深度的旋转 cube。
 
 如果 Phase 0.4 中 `FrameRenderer + Pass` 已经整理清楚，Phase 0.5 就可以专注资源绑定和 per-frame 数据，而不用继续调整基础绘制闭环。
+
+## 代码阅读指南
+
+建议按“应用层 -> renderer 调度 -> pass 资源 -> RHI 接口 -> Vulkan 后端”的顺序阅读，这样比较容易看清每一层的职责边界。
+
+### 1. 构建与 shader 资源
+
+先读 `CMakeLists.txt` 中的 `ark_compile_hlsl_shader()` 和 `ark_shaders` target。
+
+重点看三件事：
+
+- HLSL 源文件位于 `shaders/triangle.vert.hlsl` 和 `shaders/triangle.frag.hlsl`。
+- DXC 在构建阶段输出 `triangle.vert.spv` 和 `triangle.frag.spv`。
+- `ARK_SHADER_OUTPUT_DIR` 被注入到 `ark_renderer`，运行时 `TrianglePass` 通过它读取 SPIR-V。
+
+### 2. 一帧外壳
+
+从 `src/renderer/Renderer.cpp` 的 `DefaultRenderer::render()` 开始读。
+
+这一层只负责：
+
+- `SwapChain::acquireNextImage()`。
+- `DeviceContext::begin()` / `end()` / `submit()`。
+- 调用 `FrameRenderer::render()`。
+- `SwapChain::present()`。
+- resize / out-of-date / suboptimal 状态处理。
+
+这里不应该出现 Vulkan 类型，也不应该创建具体 GPU 资源。
+
+### 3. 一帧内部调度
+
+然后读 `src/renderer/FrameRenderer.cpp`。
+
+这层负责把 backbuffer 放进一次 render scope：
+
+```text
+backbuffer -> RenderTarget
+beginRendering(loadOp=Clear)
+setViewport / setScissorRect
+ClearPass
+TrianglePass
+endRendering
+backbuffer -> Present
+```
+
+`FrameRenderer` 当前是 RenderGraph 前的手动调度器。后续 RenderGraph 落地后，最可能替换的就是这里的 pass 顺序和 barrier 逻辑。
+
+### 4. 三角形 pass
+
+重点读 `src/renderer/passes/TrianglePass.cpp`。
+
+`setup()` 负责创建长期资源：
+
+- CPU 可见 vertex buffer。
+- vertex shader / fragment shader。
+- 空 pipeline layout。
+
+`execute()` 负责每帧绘制：
+
+- 确保 pipeline 存在。
+- 绑定 pipeline。
+- 绑定 vertex buffer。
+- 调用 `draw(3)`。
+
+`ensurePipeline()` 是本阶段最值得仔细看的函数。graphics pipeline 创建时需要固定 swapchain color format，所以这里按当前 swapchain format 懒创建 pipeline，并在 format 变化时重建。
+
+### 5. RHI 接口
+
+接着读这些公共接口：
+
+- `src/rhi/Buffer.h`
+- `src/rhi/Shader.h`
+- `src/rhi/PipelineLayout.h`
+- `src/rhi/PipelineState.h`
+- `src/rhi/DeviceContext.h`
+- `src/rhi/RHICommon.h`
+
+阅读重点：
+
+- `RenderDevice` 创建资源。
+- `DeviceContext` 使用资源并录制命令。
+- `SwapChain` 管理 backbuffer acquire / present / resize。
+- RHI 描述只表达引擎语义，不暴露 Vulkan 类型。
+
+### 6. Vulkan 资源对象
+
+再读 Vulkan 资源实现：
+
+- `src/rhi/vulkan/VulkanBuffer.cpp`
+- `src/rhi/vulkan/VulkanShader.cpp`
+- `src/rhi/vulkan/VulkanPipelineLayout.cpp`
+- `src/rhi/vulkan/VulkanPipelineState.cpp`
+- `src/rhi/vulkan/VulkanAllocator.cpp`
+- `src/rhi/vulkan/VulkanDevice.cpp`
+
+阅读重点：
+
+- `VulkanDevice` 是资源工厂。
+- `VulkanAllocator` 持有 VMA allocator。
+- `VulkanBuffer` 负责 `VkBuffer + VMA allocation`。
+- `VulkanShader` 负责 `VkShaderModule`。
+- `VulkanPipelineState` 把 `GraphicsPipelineDesc` 翻译成 Vulkan graphics pipeline，并使用 dynamic rendering。
+
+### 7. Vulkan 命令路径
+
+最后读 `src/rhi/vulkan/VulkanCommandContext.cpp`。
+
+建议按这个顺序看：
+
+1. `beginFrame()` / `begin()` / `end()` / `submit()`：每帧 command buffer 和同步。
+2. `beginRendering()` / `endRendering()`：RHI render scope 到 Vulkan dynamic rendering 的映射。
+3. `setViewport()` / `setScissorRect()`：动态状态。
+4. `setPipeline()` / `setVertexBuffer()` / `draw()`：最小三角形 draw path。
+5. `pipelineBarrier()`：backbuffer 状态转换。
+
+这里的 `requireActiveCommandBuffer()` 和 `requireActiveRendering()` 是调用顺序保护。后续如果某个 pass 在 `beginRendering()` 外调用 draw，会先在这里报错。
+
+### 8. 审核检查点
+
+审核这版代码时，可以重点看这些问题：
+
+- renderer/app 层是否仍然没有包含 Vulkan 头文件。
+- `TrianglePass` 是否只通过 RHI 接口创建和使用资源。
+- shader location 是否和 `VertexBufferLayoutDesc` 对齐。
+- pipeline color format 是否来自当前 swapchain。
+- resize 后是否会重新使用正确的 viewport / scissor。
+- Vulkan 对象是否用 RAII 管理，是否没有裸露的手动销毁遗漏。
+- 日志字符串是否保持英文，中文是否只出现在注释和文档中。

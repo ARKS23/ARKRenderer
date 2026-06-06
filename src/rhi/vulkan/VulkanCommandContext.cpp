@@ -263,9 +263,8 @@ namespace ark::rhi::vulkan {
     }
 
     bool VulkanCommandContext::beginRendering(const RenderingDesc& desc) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::beginRendering requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::beginRendering", commandBuffer)) {
             return false;
         }
 
@@ -274,6 +273,13 @@ namespace ark::rhi::vulkan {
             return false;
         }
 
+        if (!isValidExtent(desc.extent)) {
+            ARK_ERROR("VulkanCommandContext::beginRendering requires valid render extent");
+            return false;
+        }
+
+        // RHI 的 RenderingDesc 在这里翻译为 Vulkan dynamic rendering 的附件描述。
+        // 当前只接入一个 color attachment；depth/stencil 会在后续阶段扩展。
         VulkanTextureView* colorView = dynamic_cast<VulkanTextureView*>(desc.colorAttachment.view);
         if (!colorView || colorView->getHandle() == VK_NULL_HANDLE) {
             ARK_ERROR("VulkanCommandContext::beginRendering requires Vulkan color attachment view");
@@ -296,20 +302,19 @@ namespace ark::rhi::vulkan {
         renderingInfo.colorAttachmentCount = 1;
         renderingInfo.pColorAttachments = &colorAttachment;
 
+        // vkCmdBeginRendering 只录制命令，真正的附件读写发生在 GPU 执行 command buffer 时。
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
         m_IsRendering = true;
         return true;
     }
 
     void VulkanCommandContext::endRendering() {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::endRendering requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::endRendering", commandBuffer)) {
             return;
         }
 
-        if (!m_IsRendering) {
-            ARK_ERROR("VulkanCommandContext::endRendering called without active rendering");
+        if (!requireActiveRendering("VulkanCommandContext::endRendering")) {
             return;
         }
 
@@ -318,12 +323,13 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::setViewport(const Viewport& viewport) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::setViewport requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::setViewport", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::setViewport")) {
             return;
         }
 
+        // Pipeline 将 viewport 声明为 dynamic state，因此每帧由 FrameRenderer 按 backbuffer 尺寸设置。
         VkViewport vkViewport{};
         vkViewport.x = viewport.x;
         vkViewport.y = viewport.y;
@@ -335,9 +341,9 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::setScissorRect(const ScissorRect& rect) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::setScissorRect requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::setScissorRect", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::setScissorRect")) {
             return;
         }
 
@@ -348,12 +354,13 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::setPipeline(PipelineState& pipeline) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::setPipeline requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::setPipeline", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::setPipeline")) {
             return;
         }
 
+        // RHI 层只暴露 PipelineState；进入 Vulkan 后端时还原为 VulkanPipelineState 以取得 VkPipeline。
         VulkanPipelineState* vulkanPipeline = dynamic_cast<VulkanPipelineState*>(&pipeline);
         if (!vulkanPipeline || vulkanPipeline->getHandle() == VK_NULL_HANDLE) {
             ARK_ERROR("VulkanCommandContext::setPipeline requires VulkanPipelineState");
@@ -369,12 +376,13 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::setVertexBuffer requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::setVertexBuffer", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::setVertexBuffer")) {
             return;
         }
 
+        // 这里只绑定已经创建好的 VkBuffer；buffer 内存上传和生命周期由 RenderDevice / VulkanBuffer 负责。
         VulkanBuffer* vulkanBuffer = dynamic_cast<VulkanBuffer*>(&buffer);
         if (!vulkanBuffer || vulkanBuffer->getHandle() == VK_NULL_HANDLE) {
             ARK_ERROR("VulkanCommandContext::setVertexBuffer requires VulkanBuffer");
@@ -387,9 +395,9 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::setIndexBuffer(Buffer& buffer, IndexType indexType, u64 offset) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::setIndexBuffer requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::setIndexBuffer", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::setIndexBuffer")) {
             return;
         }
 
@@ -403,9 +411,15 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::draw(const DrawDesc& desc) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::draw requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::draw", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::draw")) {
+            return;
+        }
+
+        // draw 不做隐式状态修复；pipeline、vertex buffer、viewport/scissor 必须由上层按顺序绑定。
+        if (desc.vertexCount == 0 || desc.instanceCount == 0) {
+            ARK_ERROR("VulkanCommandContext::draw requires non-zero vertex and instance count");
             return;
         }
 
@@ -413,9 +427,14 @@ namespace ark::rhi::vulkan {
     }
 
     void VulkanCommandContext::drawIndexed(const DrawIndexedDesc& desc) {
-        const VkCommandBuffer commandBuffer = currentCommandBuffer();
-        if (commandBuffer == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::drawIndexed requires active command buffer");
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::drawIndexed", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::drawIndexed")) {
+            return;
+        }
+
+        if (desc.indexCount == 0 || desc.instanceCount == 0) {
+            ARK_ERROR("VulkanCommandContext::drawIndexed requires non-zero index and instance count");
             return;
         }
 
@@ -515,5 +534,26 @@ namespace ark::rhi::vulkan {
 
     VkCommandBuffer VulkanCommandContext::currentCommandBuffer() const {
         return m_RecordingFrame ? m_RecordingFrame->getCommandBuffer() : VK_NULL_HANDLE;
+    }
+
+    bool VulkanCommandContext::requireActiveCommandBuffer(const char* operation, VkCommandBuffer& commandBuffer) const {
+        // 统一检查当前是否处于 command recording，避免每个命令散落一份重复错误处理。
+        commandBuffer = currentCommandBuffer();
+        if (commandBuffer != VK_NULL_HANDLE) {
+            return true;
+        }
+
+        ARK_ERROR("{} requires active command buffer", operation);
+        return false;
+    }
+
+    bool VulkanCommandContext::requireActiveRendering(const char* operation) const {
+        // draw path 的状态绑定必须发生在 beginRendering/endRendering 之间。
+        if (m_IsRendering) {
+            return true;
+        }
+
+        ARK_ERROR("{} requires active rendering", operation);
+        return false;
     }
 } // namespace ark::rhi::vulkan

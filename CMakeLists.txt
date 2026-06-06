@@ -47,6 +47,43 @@ if(ARK_DXC_SUPPORTED)
     find_package(directx-dxc CONFIG REQUIRED)
 endif()
 
+set(ARK_SHADER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+file(TO_CMAKE_PATH "${ARK_SHADER_OUTPUT_DIR}" ARK_SHADER_OUTPUT_DIR_NORMALIZED)
+
+if(ARK_DXC_SUPPORTED)
+    set(ARK_COMPILED_SHADERS)
+
+    # Phase 0.4 使用 DXC 将 HLSL 编译为 SPIR-V，renderer 运行时只读取编译后的二进制。
+    function(ark_compile_hlsl_shader source_file shader_profile output_name)
+        set(output_file "${ARK_SHADER_OUTPUT_DIR}/${output_name}.spv")
+
+        add_custom_command(
+            OUTPUT "${output_file}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${ARK_SHADER_OUTPUT_DIR}"
+            COMMAND "${DIRECTX_DXC_TOOL}"
+                -spirv
+                -fspv-target-env=vulkan1.3
+                -E main
+                -T ${shader_profile}
+                "$<SHELL_PATH:${source_file}>"
+                -Fo "$<SHELL_PATH:${output_file}>"
+            DEPENDS "${source_file}"
+            COMMENT "Compiling shader ${output_name}"
+            VERBATIM)
+
+        list(APPEND ARK_COMPILED_SHADERS "${output_file}")
+        set(ARK_COMPILED_SHADERS "${ARK_COMPILED_SHADERS}" PARENT_SCOPE)
+    endfunction()
+
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/triangle.vert.hlsl" vs_6_0 triangle.vert)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/triangle.frag.hlsl" ps_6_0 triangle.frag)
+
+    add_custom_target(ark_shaders ALL DEPENDS ${ARK_COMPILED_SHADERS})
+else()
+    add_custom_target(ark_shaders)
+    message(WARNING "DXC is not available on this platform; Phase 0.4 triangle shaders will not be compiled.")
+endif()
+
 set(ARK_RENDERER_THIRD_PARTY_LIBS
     Vulkan::Vulkan
     GPUOpen::VulkanMemoryAllocator
@@ -104,6 +141,13 @@ target_compile_definitions(ark_renderer
         VMA_STATIC_VULKAN_FUNCTIONS=0
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0)
 
+target_compile_definitions(ark_renderer
+    PRIVATE
+        "ARK_SHADER_OUTPUT_DIR=\"${ARK_SHADER_OUTPUT_DIR_NORMALIZED}\"")
+
+# shader 编译必须早于 renderer 构建完成，确保 TrianglePass 启动时能找到 SPIR-V。
+add_dependencies(ark_renderer ark_shaders)
+
 if(ARK_DXC_SUPPORTED)
     target_compile_definitions(ark_renderer PUBLIC ARK_HAS_DXC=1)
 else()
@@ -140,4 +184,12 @@ endfunction()
 if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_dependency_smoke tests/dependency_smoke.cpp)
     ark_add_smoke_test(ark_framework_headers_smoke tests/framework_headers_smoke.cpp)
+
+    if(ARK_DXC_SUPPORTED)
+        ark_add_smoke_test(ark_shader_assets_smoke tests/shader_assets_smoke.cpp)
+        target_compile_definitions(ark_shader_assets_smoke
+            PRIVATE
+                "ARK_SHADER_OUTPUT_DIR=\"${ARK_SHADER_OUTPUT_DIR_NORMALIZED}\"")
+        add_dependencies(ark_shader_assets_smoke ark_shaders)
+    endif()
 endif()

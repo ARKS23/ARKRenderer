@@ -23,6 +23,7 @@ namespace ark {
             }
 
             void setup(rhi::RenderDevice& device) override {
+                // pass 私有 GPU 资源在 setup 阶段创建，避免每帧重复创建 buffer / shader / pipeline。
                 for (RenderPass* pass : m_Passes) {
                     pass->setup(device);
                 }
@@ -37,6 +38,8 @@ namespace ark {
 
                 rhi::Texture* backBuffer = frameContext.backBufferView->getTexture();
 
+                // FrameRenderer 负责一帧内的 render scope：资源状态转换 -> beginRendering -> pass -> endRendering。
+                // 这样 Renderer 只保留 acquire / submit / present 外壳，后续可以用 RenderGraph 替换这里的手动调度。
                 // backbuffer 进入渲染附件写入状态；清屏由 beginRendering 的 loadOp=Clear 表达。
                 const std::array<rhi::ResourceBarrier, 1> toRenderTarget{{
                     rhi::ResourceBarrier{
@@ -58,6 +61,18 @@ namespace ark {
                     return false;
                 }
 
+                // viewport / scissor 属于每帧动态状态，跟随当前 backbuffer 尺寸设置，避免 resize 后沿用旧状态。
+                rhi::Viewport viewport{};
+                viewport.width = static_cast<float>(frameContext.extent.width);
+                viewport.height = static_cast<float>(frameContext.extent.height);
+                frameContext.context->setViewport(viewport);
+
+                rhi::ScissorRect scissor{};
+                scissor.width = frameContext.extent.width;
+                scissor.height = frameContext.extent.height;
+                frameContext.context->setScissorRect(scissor);
+
+                // 目前 pass 顺序固定；RenderGraph 落地后，这里会变成按图调度 pass 和资源 barrier。
                 for (RenderPass* pass : m_Passes) {
                     if (!pass->execute(frameContext)) {
                         frameContext.context->endRendering();
