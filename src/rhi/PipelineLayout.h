@@ -1,10 +1,14 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace ark::rhi {
+    class DescriptorSetLayout;
+
     struct PipelineLayoutDesc {
         std::string debugName;
+        std::vector<DescriptorSetLayout*> descriptorSetLayouts;
     };
 
     class PipelineLayout {

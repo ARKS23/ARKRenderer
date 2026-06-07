@@ -19,11 +19,19 @@ namespace ark::rhi {
         ClearColor clearColor{};
     };
 
+    struct DepthStencilAttachmentDesc {
+        TextureView* view = nullptr;
+        LoadOp loadOp = LoadOp::Clear;
+        StoreOp storeOp = StoreOp::Store;
+        float clearDepth = 1.0f;
+        u32 clearStencil = 0;
+    };
+
     // dynamic rendering 的附件描述，renderer 只表达 RHI 语义，后端负责映射到 VkRenderingAttachmentInfo。
     struct RenderingDesc {
         Extent2D extent{};
         RenderingAttachmentDesc colorAttachment;
-        TextureView* depthStencilAttachment = nullptr;
+        DepthStencilAttachmentDesc depthStencilAttachment;
     };
 
     // 索引绘制参数保持 API 无关，由后端翻译成 vkCmdDrawIndexed 等调用。

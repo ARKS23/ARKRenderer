@@ -115,6 +115,17 @@ int main() {
     shaderDesc.debugName = "SmokeShader";
     shaderDesc.bytecode = {0x07230203};
 
+    ark::rhi::DescriptorBindingDesc descriptorBindingDesc{};
+    descriptorBindingDesc.binding = 0;
+    descriptorBindingDesc.type = ark::rhi::DescriptorType::UniformBuffer;
+    descriptorBindingDesc.stages = ark::rhi::ShaderStageFlags::Vertex | ark::rhi::ShaderStageFlags::Fragment;
+    const bool descriptorHasVertexStage =
+        ark::rhi::hasShaderStage(descriptorBindingDesc.stages, ark::rhi::ShaderStageFlags::Vertex);
+
+    ark::rhi::DescriptorSetLayoutDesc descriptorSetLayoutDesc{};
+    descriptorSetLayoutDesc.debugName = "SmokeDescriptorSetLayout";
+    descriptorSetLayoutDesc.bindings.push_back(descriptorBindingDesc);
+
     ark::rhi::PipelineLayoutDesc pipelineLayoutDesc{};
     pipelineLayoutDesc.debugName = "SmokePipelineLayout";
 
@@ -144,6 +155,8 @@ int main() {
     renderingDesc.extent = swapChainDesc.extent;
     renderingDesc.colorAttachment.loadOp = ark::rhi::LoadOp::Clear;
     renderingDesc.colorAttachment.storeOp = ark::rhi::StoreOp::Store;
+    renderingDesc.depthStencilAttachment.clearDepth = 1.0f;
+    renderingDesc.depthStencilAttachment.loadOp = ark::rhi::LoadOp::Clear;
 
     ark::rhi::Viewport viewport{};
     viewport.width = static_cast<float>(swapChainDesc.extent.width);
@@ -159,6 +172,8 @@ int main() {
     ark::rhi::DrawIndexedDesc drawIndexedDesc{};
     drawIndexedDesc.indexCount = 3;
     ark::rhi::IndexType indexType = ark::rhi::IndexType::UInt32;
+    ark::rhi::BufferDescriptor bufferDescriptor{};
+    bufferDescriptor.range = bufferDesc.size;
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -187,6 +202,9 @@ int main() {
     (void)bufferDesc;
     (void)bufferHasVertexUsage;
     (void)shaderDesc;
+    (void)descriptorBindingDesc;
+    (void)descriptorHasVertexStage;
+    (void)descriptorSetLayoutDesc;
     (void)pipelineLayoutDesc;
     (void)vertexInputLayout;
     (void)graphicsPipelineDesc;
@@ -196,6 +214,7 @@ int main() {
     (void)drawDesc;
     (void)drawIndexedDesc;
     (void)indexType;
+    (void)bufferDescriptor;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
