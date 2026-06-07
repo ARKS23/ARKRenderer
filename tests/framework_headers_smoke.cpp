@@ -3,6 +3,7 @@
 #include "app/Window.h"
 #include "asset/GltfLoader.h"
 #include "asset/ShaderCompiler.h"
+#include "asset/ShaderLoader.h"
 #include "asset/TextureLoader.h"
 #include "core/Assert.h"
 #include "core/FileSystem.h"

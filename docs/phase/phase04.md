@@ -493,7 +493,7 @@ shaders/triangle.frag.hlsl
 
 - 使用 vcpkg 中的 `directx-dxc`，通过 `DIRECTX_DXC_TOOL` 编译 HLSL。
 - CMake 输出目录为 `${CMAKE_CURRENT_BINARY_DIR}/shaders`，例如 `build/msvc-vcpkg/shaders`。
-- `ark_renderer` 编译时注入 `ARK_SHADER_OUTPUT_DIR`，`TrianglePass` 只读取 SPIR-V bytecode，不在 RHI 后端中硬编码项目路径。
+- `ark_renderer` 编译时注入 `ARK_SHADER_OUTPUT_DIR`，运行时由 `asset::ShaderLoader` 读取 SPIR-V bytecode，不在 RHI 后端中硬编码项目路径。
 - 不手写 SPIR-V 字节数组，避免后续维护成本过高。
 
 运行时 shader 读取路径建议由 `apps/sandbox` 传入或由 `core/FileSystem` 提供资源目录查询，避免在 RHI 后端中硬编码项目路径。
@@ -596,7 +596,7 @@ shaders/triangle.frag.hlsl
    - 新增 `shaders/triangle.vert.hlsl` 和 `shaders/triangle.frag.hlsl`。
    - CMake 新增 `ark_shaders` target，使用 vcpkg 的 `directx-dxc` 编译 HLSL 到 SPIR-V。
    - shader 输出到 `build/.../shaders/triangle.vert.spv` 和 `build/.../shaders/triangle.frag.spv`。
-   - `ark_renderer` 注入 `ARK_SHADER_OUTPUT_DIR`，运行时从该目录读取 SPIR-V。
+   - `ark_renderer` 注入 `ARK_SHADER_OUTPUT_DIR`，运行时由 `asset::ShaderLoader` 从该目录读取 SPIR-V。
 
 7. 接入 sandbox：
    - 创建一个固定三角形。
@@ -708,7 +708,7 @@ Phase 0.5 建议进入“相机与常量数据”：
 
 - HLSL 源文件位于 `shaders/triangle.vert.hlsl` 和 `shaders/triangle.frag.hlsl`。
 - DXC 在构建阶段输出 `triangle.vert.spv` 和 `triangle.frag.spv`。
-- `ARK_SHADER_OUTPUT_DIR` 被注入到 `ark_renderer`，运行时 `TrianglePass` 通过它读取 SPIR-V。
+- `ARK_SHADER_OUTPUT_DIR` 被注入到 `ark_renderer`，运行时 `TrianglePass` 通过 `asset::ShaderLoader` 读取 SPIR-V。
 
 ### 2. 一帧外壳
 

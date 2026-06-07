@@ -1,21 +1,21 @@
-#include <cstdint>
-#include <filesystem>
-#include <iostream>
+#include "asset/ShaderLoader.h"
 
-#ifndef ARK_SHADER_OUTPUT_DIR
-#define ARK_SHADER_OUTPUT_DIR "shaders"
-#endif
+#include <iostream>
+#include <string_view>
+#include <vector>
 
 namespace {
-    bool validateSpirvFile(const std::filesystem::path& path) {
-        if (!std::filesystem::exists(path)) {
-            std::cerr << "Missing shader asset: " << path.string() << '\n';
+    constexpr ark::u32 SpirvMagic = 0x07230203;
+
+    bool validateCompiledShader(std::string_view fileName) {
+        const std::vector<ark::u32> bytecode = ark::asset::loadCompiledShader(fileName);
+        if (bytecode.empty()) {
+            std::cerr << "Failed to load shader asset: " << fileName << '\n';
             return false;
         }
 
-        const std::uintmax_t size = std::filesystem::file_size(path);
-        if (size == 0 || size % sizeof(std::uint32_t) != 0) {
-            std::cerr << "Invalid shader asset size: " << path.string() << '\n';
+        if (bytecode.front() != SpirvMagic) {
+            std::cerr << "Invalid shader asset magic: " << fileName << '\n';
             return false;
         }
 
@@ -24,9 +24,8 @@ namespace {
 } // namespace
 
 int main() {
-    const std::filesystem::path shaderDir = ARK_SHADER_OUTPUT_DIR;
-    const bool vertexShaderValid = validateSpirvFile(shaderDir / "triangle.vert.spv");
-    const bool fragmentShaderValid = validateSpirvFile(shaderDir / "triangle.frag.spv");
+    const bool vertexShaderValid = validateCompiledShader("triangle.vert.spv");
+    const bool fragmentShaderValid = validateCompiledShader("triangle.frag.spv");
 
     return vertexShaderValid && fragmentShaderValid ? 0 : 1;
 }

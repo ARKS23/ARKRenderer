@@ -187,9 +187,6 @@ if(ARK_BUILD_TESTS AND BUILD_TESTING)
 
     if(ARK_DXC_SUPPORTED)
         ark_add_smoke_test(ark_shader_assets_smoke tests/shader_assets_smoke.cpp)
-        target_compile_definitions(ark_shader_assets_smoke
-            PRIVATE
-                "ARK_SHADER_OUTPUT_DIR=\"${ARK_SHADER_OUTPUT_DIR_NORMALIZED}\"")
         add_dependencies(ark_shader_assets_smoke ark_shaders)
     endif()
 endif()
