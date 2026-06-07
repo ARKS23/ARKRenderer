@@ -171,7 +171,7 @@ namespace ark {
         pipelineDesc.vertexShader = m_VertexShader.get();
         pipelineDesc.fragmentShader = m_FragmentShader.get();
         pipelineDesc.layout = m_PipelineLayout.get();
-        pipelineDesc.vertexBuffers.push_back(vertexLayout);
+        pipelineDesc.vertexInput.buffers.push_back(vertexLayout);
         pipelineDesc.topology = rhi::PrimitiveTopology::TriangleList;
         pipelineDesc.colorFormat = colorFormat;
 

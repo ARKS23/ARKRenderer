@@ -47,6 +47,7 @@
 #include "rhi/SwapChain.h"
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
+#include "rhi/VertexInput.h"
 #include "rhi/vulkan/VulkanAllocator.h"
 #include "rhi/vulkan/VulkanBindlessResourceManager.h"
 #include "rhi/vulkan/VulkanBuffer.h"
@@ -130,9 +131,12 @@ int main() {
         .offset = 12,
     });
 
+    ark::rhi::VertexInputLayoutDesc vertexInputLayout{};
+    vertexInputLayout.buffers.push_back(vertexLayout);
+
     ark::rhi::GraphicsPipelineDesc graphicsPipelineDesc{};
     graphicsPipelineDesc.debugName = "SmokePipeline";
-    graphicsPipelineDesc.vertexBuffers.push_back(vertexLayout);
+    graphicsPipelineDesc.vertexInput = vertexInputLayout;
     graphicsPipelineDesc.colorFormat = ark::rhi::Format::BGRA8Unorm;
 
     ark::rhi::RenderingDesc renderingDesc{};
@@ -183,6 +187,7 @@ int main() {
     (void)bufferHasVertexUsage;
     (void)shaderDesc;
     (void)pipelineLayoutDesc;
+    (void)vertexInputLayout;
     (void)graphicsPipelineDesc;
     (void)renderingDesc;
     (void)viewport;

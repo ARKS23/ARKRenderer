@@ -1,9 +1,9 @@
 #pragma once
 
 #include "rhi/RHICommon.h"
+#include "rhi/VertexInput.h"
 
 #include <string>
-#include <vector>
 
 namespace ark::rhi {
     class PipelineLayout;
@@ -15,11 +15,6 @@ namespace ark::rhi {
         LineStrip,
         TriangleList,
         TriangleStrip,
-    };
-
-    enum class VertexInputRate {
-        PerVertex,
-        PerInstance,
     };
 
     enum class PolygonMode {
@@ -49,19 +44,6 @@ namespace ark::rhi {
         Always,
     };
 
-    struct VertexAttributeDesc {
-        u32 location = 0;
-        Format format = Format::Unknown;
-        u32 offset = 0;
-    };
-
-    struct VertexBufferLayoutDesc {
-        u32 binding = 0;
-        u32 stride = 0;
-        VertexInputRate inputRate = VertexInputRate::PerVertex;
-        std::vector<VertexAttributeDesc> attributes;
-    };
-
     struct RasterStateDesc {
         PolygonMode polygonMode = PolygonMode::Fill;
         CullMode cullMode = CullMode::None;
@@ -88,7 +70,7 @@ namespace ark::rhi {
         Shader* fragmentShader = nullptr;
         PipelineLayout* layout = nullptr;
 
-        std::vector<VertexBufferLayoutDesc> vertexBuffers;
+        VertexInputLayoutDesc vertexInput;
         PrimitiveTopology topology = PrimitiveTopology::TriangleList;
         RasterStateDesc rasterState;
         DepthStencilStateDesc depthStencilState;

@@ -143,9 +143,9 @@ namespace ark::rhi::vulkan {
 
         std::vector<VkVertexInputBindingDescription> bindingDescriptions;
         std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
-        bindingDescriptions.reserve(m_Desc.vertexBuffers.size());
+        bindingDescriptions.reserve(m_Desc.vertexInput.buffers.size());
 
-        for (const VertexBufferLayoutDesc& vertexBuffer : m_Desc.vertexBuffers) {
+        for (const VertexBufferLayoutDesc& vertexBuffer : m_Desc.vertexInput.buffers) {
             bindingDescriptions.push_back(VkVertexInputBindingDescription{
                 .binding = vertexBuffer.binding,
                 .stride = vertexBuffer.stride,
