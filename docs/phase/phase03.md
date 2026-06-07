@@ -161,7 +161,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
 - `rhi/` 定义公共接口和资源语义。
 - `rhi/vulkan/` 实现具体 Vulkan 对象，并把 `Vk*` 生命周期封装在后端内部。
 
-![Phase 0.3 UML 类图](assets/phase03_class_diagram.svg)
+![Phase 0.3 UML 类图](assets/phase03.png)
 
 关系阅读顺序：
 
