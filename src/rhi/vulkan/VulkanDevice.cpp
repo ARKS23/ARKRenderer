@@ -4,6 +4,8 @@
 #include "core/Memory.h"
 #include "core/ScopeExit.h"
 #include "rhi/vulkan/VulkanBuffer.h"
+#include "rhi/vulkan/VulkanDescriptorSet.h"
+#include "rhi/vulkan/VulkanDescriptorSetLayout.h"
 #include "rhi/vulkan/VulkanPipelineLayout.h"
 #include "rhi/vulkan/VulkanPipelineState.h"
 #include "rhi/vulkan/VulkanShader.h"
@@ -175,15 +177,22 @@ namespace ark::rhi::vulkan {
     }
 
     Scope<DescriptorSetLayout> VulkanDevice::createDescriptorSetLayout(const DescriptorSetLayoutDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createDescriptorSetLayout");
-        return {};
+        return makeScope<VulkanDescriptorSetLayout>(m_Device, desc);
     }
 
     Scope<DescriptorSet> VulkanDevice::createDescriptorSet(const DescriptorSetLayout& layout) {
-        (void)layout;
-        throwUnsupportedFactory("VulkanDevice::createDescriptorSet");
-        return {};
+        const VulkanDescriptorSetLayout* vulkanLayout = dynamic_cast<const VulkanDescriptorSetLayout*>(&layout);
+        if (!vulkanLayout || vulkanLayout->getHandle() == VK_NULL_HANDLE) {
+            throw std::runtime_error("VulkanDevice::createDescriptorSet requires VulkanDescriptorSetLayout");
+        }
+
+        if (!m_DescriptorManager) {
+            throw std::runtime_error("VulkanDevice::createDescriptorSet requires VulkanDescriptorManager");
+        }
+
+        // Descriptor set 的底层分配来自 device 级 descriptor manager，wrapper 不拥有 descriptor pool。
+        VkDescriptorSet descriptorSet = m_DescriptorManager->allocateDescriptorSet(*vulkanLayout);
+        return makeScope<VulkanDescriptorSet>(m_Device, descriptorSet, *vulkanLayout);
     }
 
     Scope<Fence> VulkanDevice::createFence() {
@@ -281,10 +290,13 @@ namespace ark::rhi::vulkan {
         m_Caps.gpuName = properties.deviceName;
         m_Caps.apiVersion = properties.apiVersion;
         m_Allocator = makeScope<VulkanAllocator>(m_Instance, m_PhysicalDevice, m_Device, m_Caps.apiVersion);
+        // Descriptor pool 属于设备级资源，后续 pass 只通过 RenderDevice 分配 descriptor set。
+        m_DescriptorManager = makeScope<VulkanDescriptorManager>(m_Device);
     }
 
     void VulkanDevice::destroy() {
         // Vulkan 对象按依赖反序销毁：device -> surface/debug messenger -> instance。
+        m_DescriptorManager.reset();
         m_Allocator.reset();
 
         if (m_Device != VK_NULL_HANDLE) {

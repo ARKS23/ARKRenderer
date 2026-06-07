@@ -3,6 +3,7 @@
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "rhi/vulkan/VulkanBuffer.h"
+#include "rhi/vulkan/VulkanDescriptorSet.h"
 #include "rhi/vulkan/VulkanDevice.h"
 #include "rhi/vulkan/VulkanPipelineState.h"
 #include "rhi/vulkan/VulkanTexture.h"
@@ -177,6 +178,7 @@ namespace ark::rhi::vulkan {
         m_RecordingFrame = frame;
         m_IsRecording = true;
         m_IsRendering = false;
+        m_CurrentGraphicsPipelineLayout = VK_NULL_HANDLE;
         return true;
     }
 
@@ -197,6 +199,7 @@ namespace ark::rhi::vulkan {
         }
 
         m_IsRecording = false;
+        m_CurrentGraphicsPipelineLayout = VK_NULL_HANDLE;
         return true;
     }
 
@@ -253,6 +256,7 @@ namespace ark::rhi::vulkan {
         }
 
         m_RecordingFrame = nullptr;
+        m_CurrentGraphicsPipelineLayout = VK_NULL_HANDLE;
         return true;
     }
 
@@ -367,12 +371,38 @@ namespace ark::rhi::vulkan {
             return;
         }
 
+        const VkPipelineLayout pipelineLayout = vulkanPipeline->getLayoutHandle();
+        if (pipelineLayout == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::setPipeline requires pipeline layout");
+            return;
+        }
+
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->getHandle());
+        // descriptor set 绑定需要使用当前 graphics pipeline layout，避免上层直接接触 Vulkan handle。
+        m_CurrentGraphicsPipelineLayout = pipelineLayout;
     }
 
     void VulkanCommandContext::bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) {
-        (void)setIndex;
-        (void)descriptorSet;
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::bindDescriptorSet", commandBuffer) ||
+            !requireActiveRendering("VulkanCommandContext::bindDescriptorSet")) {
+            return;
+        }
+
+        if (m_CurrentGraphicsPipelineLayout == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::bindDescriptorSet requires a bound graphics pipeline");
+            return;
+        }
+
+        VulkanDescriptorSet* vulkanDescriptorSet = dynamic_cast<VulkanDescriptorSet*>(&descriptorSet);
+        if (!vulkanDescriptorSet || vulkanDescriptorSet->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::bindDescriptorSet requires VulkanDescriptorSet");
+            return;
+        }
+
+        const VkDescriptorSet vkDescriptorSet = vulkanDescriptorSet->getHandle();
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_CurrentGraphicsPipelineLayout,
+                                setIndex, 1, &vkDescriptorSet, 0, nullptr);
     }
 
     void VulkanCommandContext::setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) {

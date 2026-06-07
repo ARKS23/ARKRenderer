@@ -3,6 +3,7 @@
 #include "rhi/RenderDevice.h"
 #include "rhi/vulkan/VulkanAllocator.h"
 #include "rhi/vulkan/VulkanCommon.h"
+#include "rhi/vulkan/VulkanDescriptorManager.h"
 
 namespace ark::rhi::vulkan {
     class VulkanDevice final : public RenderDevice {
@@ -53,5 +54,6 @@ namespace ark::rhi::vulkan {
         VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
         VkQueue m_PresentQueue = VK_NULL_HANDLE;
         Scope<VulkanAllocator> m_Allocator;
+        Scope<VulkanDescriptorManager> m_DescriptorManager;
     };
 } // namespace ark::rhi::vulkan

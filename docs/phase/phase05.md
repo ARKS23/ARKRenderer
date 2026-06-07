@@ -543,6 +543,15 @@ backbuffer -> Present
 - 能把 uniform buffer 写入 descriptor set。
 - descriptor pool 生命周期集中在 `VulkanDescriptorManager`。
 
+当前实现更新：
+
+- 已实现 `VulkanDescriptorSetLayout`，负责创建、持有和销毁 `VkDescriptorSetLayout`。
+- 已实现 `VulkanDescriptorManager`，第一版创建固定容量 descriptor pool，支持分配 uniform buffer descriptor set。
+- 已实现 `VulkanDescriptorSet`，支持 `updateUniformBuffer()` 写入 `VkDescriptorSet`。
+- `VulkanDevice::createDescriptorSetLayout()` 和 `VulkanDevice::createDescriptorSet()` 已接入真实 Vulkan 对象创建。
+- `VkDescriptorPool` 由 `VulkanDescriptorManager` 统一拥有；`VulkanDescriptorSet` 不单独 free descriptor set，pool 销毁时统一释放。
+- `PipelineLayoutDesc.descriptorSetLayouts` 到 `VkPipelineLayout` 的接入，以及命令录制阶段的 `bindDescriptorSet()` 已在 0.5.3 完成。
+
 ### 0.5.3 PipelineLayout 与 bindDescriptorSet
 
 在 descriptor 对象能创建之后，再接入 pipeline layout 和命令绑定。
@@ -559,6 +568,14 @@ backbuffer -> Present
 - `PipelineLayoutDesc` 能创建带 set layout 的 Vulkan pipeline layout。
 - `bindDescriptorSet(0, descriptorSet)` 会调用 `vkCmdBindDescriptorSets()`。
 - renderer/pass 仍然不接触 Vulkan 类型。
+
+当前实现更新：
+
+- `VulkanPipelineLayout` 已经从 `PipelineLayoutDesc.descriptorSetLayouts` 收集 `VkDescriptorSetLayout`，创建带 descriptor set layout 的 `VkPipelineLayout`。
+- `VulkanPipelineLayout` 仍然只拥有 `VkPipelineLayout`，不拥有 `DescriptorSetLayout`；公共层继续约定 descriptor set layout 生命周期长于 pipeline layout 和 pipeline。
+- `VulkanCommandContext::setPipeline()` 会记录当前图形 pipeline 的 `VkPipelineLayout`，供后续 descriptor set 绑定使用。
+- `VulkanCommandContext::bindDescriptorSet()` 已实现，会在 active command buffer 和 active rendering 内调用 `vkCmdBindDescriptorSets()`。
+- renderer/pass 层仍然只通过 `DeviceContext::bindDescriptorSet()` 使用 descriptor set，不包含 Vulkan 头文件。
 
 ### 0.5.4 Uniform Buffer 更新路径
 

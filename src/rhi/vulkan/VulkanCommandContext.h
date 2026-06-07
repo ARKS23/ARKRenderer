@@ -55,5 +55,7 @@ namespace ark::rhi::vulkan {
         VulkanFrameResource* m_RecordingFrame = nullptr;
         bool m_IsRecording = false;
         bool m_IsRendering = false;
+        // 当前命令录制中已绑定的 graphics pipeline layout，用于 descriptor set 绑定。
+        VkPipelineLayout m_CurrentGraphicsPipelineLayout = VK_NULL_HANDLE;
     };
 } // namespace ark::rhi::vulkan
