@@ -18,6 +18,8 @@ namespace ark::rhi::vulkan {
         VulkanDescriptorSet& operator=(VulkanDescriptorSet&& other) noexcept;
 
         void updateUniformBuffer(u32 binding, const BufferDescriptor& buffer) override;
+        void updateSampledImage(u32 binding, const SampledImageDescriptor& image) override;
+        void updateSampler(u32 binding, const SamplerDescriptor& sampler) override;
 
         VkDescriptorSet getHandle() const;
 

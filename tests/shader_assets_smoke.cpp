@@ -28,6 +28,11 @@ int main() {
     const bool fragmentShaderValid = validateCompiledShader("triangle.frag.spv");
     const bool cubeVertexShaderValid = validateCompiledShader("cube.vert.spv");
     const bool cubeFragmentShaderValid = validateCompiledShader("cube.frag.spv");
+    const bool texturedCubeVertexShaderValid = validateCompiledShader("textured_cube.vert.spv");
+    const bool texturedCubeFragmentShaderValid = validateCompiledShader("textured_cube.frag.spv");
 
-    return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid ? 0 : 1;
+    return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
+                   texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid
+               ? 0
+               : 1;
 }

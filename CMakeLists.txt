@@ -79,6 +79,8 @@ if(ARK_DXC_SUPPORTED)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/triangle.frag.hlsl" ps_6_0 triangle.frag)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/cube.vert.hlsl" vs_6_0 cube.vert)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/cube.frag.hlsl" ps_6_0 cube.frag)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/textured_cube.vert.hlsl" vs_6_0 textured_cube.vert)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/textured_cube.frag.hlsl" ps_6_0 textured_cube.frag)
 
     add_custom_target(ark_shaders ALL DEPENDS ${ARK_COMPILED_SHADERS})
 else()

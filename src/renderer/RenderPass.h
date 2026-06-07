@@ -14,6 +14,7 @@ namespace ark {
 
         // setup 用于创建 pass 私有 GPU 资源；默认空实现方便早期占位 pass 渐进落地。
         virtual void setup(rhi::RenderDevice& device);
+        virtual bool prepare(FrameContext& frameContext);
         virtual bool execute(FrameContext& frameContext) = 0;
     };
 } // namespace ark

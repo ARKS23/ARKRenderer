@@ -9,6 +9,8 @@ namespace ark::rhi::vulkan {
     namespace {
         constexpr u32 MaxDescriptorSets = 256;
         constexpr u32 MaxUniformBufferDescriptors = 256;
+        constexpr u32 MaxSampledImageDescriptors = 256;
+        constexpr u32 MaxSamplerDescriptors = 256;
     } // namespace
 
     VulkanDescriptorManager::VulkanDescriptorManager(VkDevice device) : m_Device(device) {
@@ -16,11 +18,19 @@ namespace ark::rhi::vulkan {
             throw std::runtime_error("VulkanDescriptorManager requires a valid VkDevice");
         }
 
-        // Phase 0.5 只支持 uniform buffer，先用固定 pool，后续再扩展为可增长 pool。
-        const std::array<VkDescriptorPoolSize, 1> poolSizes{{
+        // Phase 0.6 仍使用固定 pool，后续再扩展为可增长或 frame-local pool。
+        const std::array<VkDescriptorPoolSize, 3> poolSizes{{
             VkDescriptorPoolSize{
                 .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = MaxUniformBufferDescriptors,
+            },
+            VkDescriptorPoolSize{
+                .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                .descriptorCount = MaxSampledImageDescriptors,
+            },
+            VkDescriptorPoolSize{
+                .type = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .descriptorCount = MaxSamplerDescriptors,
             },
         }};
 

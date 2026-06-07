@@ -6,9 +6,11 @@
 #include <vector>
 
 namespace ark::rhi {
-    // DescriptorType 描述 shader 可见资源的绑定类型；Phase 0.5 先只接入 uniform buffer。
+    // DescriptorType 描述 shader 可见资源的绑定类型。
     enum class DescriptorType {
         UniformBuffer,
+        SampledImage,
+        Sampler,
     };
 
     // ShaderStageFlags 表达一个 binding 对哪些 shader stage 可见，后端会映射到对应 API 的 stage flags。

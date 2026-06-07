@@ -4,6 +4,8 @@
 
 namespace ark::rhi {
     class Buffer;
+    class Sampler;
+    class TextureView;
 
     struct BufferDescriptor {
         Buffer* buffer = nullptr;
@@ -11,11 +13,20 @@ namespace ark::rhi {
         u64 range = 0;
     };
 
+    struct SampledImageDescriptor {
+        TextureView* view = nullptr;
+    };
+
+    struct SamplerDescriptor {
+        Sampler* sampler = nullptr;
+    };
+
     class DescriptorSet {
     public:
         virtual ~DescriptorSet() = default;
 
-        // Phase 0.5 第一版只需要 uniform buffer，后续再扩展为通用 WriteDescriptorSetDesc。
         virtual void updateUniformBuffer(u32 binding, const BufferDescriptor& buffer) = 0;
+        virtual void updateSampledImage(u32 binding, const SampledImageDescriptor& image) = 0;
+        virtual void updateSampler(u32 binding, const SamplerDescriptor& sampler) = 0;
     };
 } // namespace ark::rhi

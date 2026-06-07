@@ -8,6 +8,7 @@
 #include "rhi/vulkan/VulkanDescriptorSetLayout.h"
 #include "rhi/vulkan/VulkanPipelineLayout.h"
 #include "rhi/vulkan/VulkanPipelineState.h"
+#include "rhi/vulkan/VulkanSampler.h"
 #include "rhi/vulkan/VulkanShader.h"
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
@@ -161,9 +162,7 @@ namespace ark::rhi::vulkan {
     }
 
     Scope<Sampler> VulkanDevice::createSampler(const SamplerDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createSampler");
-        return {};
+        return makeScope<VulkanSampler>(m_Device, desc);
     }
 
     Scope<Shader> VulkanDevice::createShader(const ShaderDesc& desc) {

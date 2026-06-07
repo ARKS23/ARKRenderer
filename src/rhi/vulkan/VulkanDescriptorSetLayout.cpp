@@ -9,6 +9,10 @@ namespace ark::rhi::vulkan {
             switch (type) {
             case DescriptorType::UniformBuffer:
                 return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            case DescriptorType::SampledImage:
+                return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            case DescriptorType::Sampler:
+                return VK_DESCRIPTOR_TYPE_SAMPLER;
             }
 
             return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;

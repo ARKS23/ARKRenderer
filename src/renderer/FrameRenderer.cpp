@@ -62,6 +62,13 @@ namespace ark {
                 }};
                 frameContext.context->pipelineBarrier(toRenderTarget);
 
+                // prepare 阶段专门记录 upload/copy 等 render scope 外命令，避免把 texture copy 放进 dynamic rendering。
+                for (RenderPass* pass : m_Passes) {
+                    if (!pass->prepare(frameContext)) {
+                        return false;
+                    }
+                }
+
                 rhi::RenderingDesc renderingDesc{};
                 renderingDesc.extent = frameContext.extent;
                 renderingDesc.colorAttachment.view = frameContext.backBufferView;

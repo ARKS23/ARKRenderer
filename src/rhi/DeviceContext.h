@@ -10,6 +10,7 @@ namespace ark::rhi {
     class DescriptorSet;
     struct FrameResource;
     class PipelineState;
+    class Texture;
     class TextureView;
 
     struct RenderingAttachmentDesc {
@@ -50,6 +51,15 @@ namespace ark::rhi {
         u32 firstInstance = 0;
     };
 
+    struct TextureUploadDesc {
+        Buffer* sourceBuffer = nullptr;
+        Texture* texture = nullptr;
+        u64 sourceOffset = 0;
+        Extent2D extent{};
+        u32 mipLevel = 0;
+        u32 arrayLayer = 0;
+    };
+
     // submit 描述当前只覆盖 swapchain 最小同步，后续可以扩展为多 semaphore / timeline semaphore。
     struct SubmitDesc {
         FrameResource* frameResource = nullptr;
@@ -82,6 +92,7 @@ namespace ark::rhi {
         virtual void bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) = 0;
         // CPU 可见 buffer 的直接更新路径；调用方需要保证不会覆盖 GPU 仍在读取的 in-flight 数据。
         virtual bool updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset = 0) = 0;
+        virtual bool uploadTextureData(const TextureUploadDesc& desc) = 0;
         virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset = 0) = 0;
         virtual void setIndexBuffer(Buffer& buffer, IndexType indexType = IndexType::UInt32, u64 offset = 0) = 0;
         virtual void draw(const DrawDesc& desc) = 0;

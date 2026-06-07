@@ -9,6 +9,7 @@
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
 
+#include <array>
 #include <limits>
 
 namespace ark::rhi::vulkan {
@@ -31,6 +32,8 @@ namespace ark::rhi::vulkan {
                 return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
             case ResourceState::CopyDst:
                 return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            case ResourceState::ShaderResource:
+                return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             default:
                 return VK_IMAGE_LAYOUT_GENERAL;
             }
@@ -47,6 +50,8 @@ namespace ark::rhi::vulkan {
                 return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
             case ResourceState::CopyDst:
                 return VK_ACCESS_TRANSFER_WRITE_BIT;
+            case ResourceState::ShaderResource:
+                return VK_ACCESS_SHADER_READ_BIT;
             case ResourceState::Present:
             case ResourceState::Undefined:
                 return 0;
@@ -65,6 +70,8 @@ namespace ark::rhi::vulkan {
                 return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             case ResourceState::CopyDst:
                 return VK_PIPELINE_STAGE_TRANSFER_BIT;
+            case ResourceState::ShaderResource:
+                return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             case ResourceState::RenderTarget:
                 return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             case ResourceState::DepthStencilWrite:
@@ -83,6 +90,8 @@ namespace ark::rhi::vulkan {
                 return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
             case ResourceState::CopyDst:
                 return VK_PIPELINE_STAGE_TRANSFER_BIT;
+            case ResourceState::ShaderResource:
+                return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             case ResourceState::RenderTarget:
                 return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             case ResourceState::DepthStencilWrite:
@@ -460,6 +469,75 @@ namespace ark::rhi::vulkan {
 
         // 这里只处理 CPU 可见内存的直接写入；GPU-only 上传后续由 upload system 接管。
         return vulkanBuffer->updateData(data, size, offset);
+    }
+
+    bool VulkanCommandContext::uploadTextureData(const TextureUploadDesc& desc) {
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::uploadTextureData", commandBuffer)) {
+            return false;
+        }
+
+        if (m_IsRendering) {
+            // Vulkan copy 命令不能录在 vkCmdBeginRendering/vkCmdEndRendering 之间。
+            ARK_ERROR("VulkanCommandContext::uploadTextureData must be recorded outside rendering scope");
+            return false;
+        }
+
+        VulkanBuffer* sourceBuffer = dynamic_cast<VulkanBuffer*>(desc.sourceBuffer);
+        if (!sourceBuffer || sourceBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData requires VulkanBuffer source");
+            return false;
+        }
+
+        VulkanTexture* texture = dynamic_cast<VulkanTexture*>(desc.texture);
+        if (!texture || texture->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData requires VulkanTexture target");
+            return false;
+        }
+
+        if (!isValidExtent(desc.extent)) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData requires valid extent");
+            return false;
+        }
+
+        if (desc.mipLevel >= texture->getDesc().mipLevels || desc.arrayLayer >= texture->getDesc().arrayLayers) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData subresource is out of range");
+            return false;
+        }
+
+        // 首次上传从 Undefined 转为 CopyDst，允许 transfer stage 写入 image。
+        const std::array<ResourceBarrier, 1> toCopyDst{{
+            ResourceBarrier{
+                .texture = texture,
+                .before = texture->getState(),
+                .after = ResourceState::CopyDst,
+            },
+        }};
+        pipelineBarrier(toCopyDst);
+
+        VkBufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = desc.sourceOffset;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = desc.mipLevel;
+        copyRegion.imageSubresource.baseArrayLayer = desc.arrayLayer;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageExtent = VkExtent3D{desc.extent.width, desc.extent.height, 1};
+
+        vkCmdCopyBufferToImage(commandBuffer, sourceBuffer->getHandle(), texture->getHandle(),
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        // copy 完成后转为 shader 只读布局，descriptor 中使用同一个 ShaderResource 语义。
+        const std::array<ResourceBarrier, 1> toShaderResource{{
+            ResourceBarrier{
+                .texture = texture,
+                .before = texture->getState(),
+                .after = ResourceState::ShaderResource,
+            },
+        }};
+        pipelineBarrier(toShaderResource);
+        return true;
     }
 
     void VulkanCommandContext::setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) {
