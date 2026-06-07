@@ -405,6 +405,17 @@ namespace ark::rhi::vulkan {
                                 setIndex, 1, &vkDescriptorSet, 0, nullptr);
     }
 
+    bool VulkanCommandContext::updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset) {
+        VulkanBuffer* vulkanBuffer = dynamic_cast<VulkanBuffer*>(&buffer);
+        if (!vulkanBuffer || vulkanBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::updateBuffer requires VulkanBuffer");
+            return false;
+        }
+
+        // 这里只处理 CPU 可见内存的直接写入；GPU-only 上传后续由 upload system 接管。
+        return vulkanBuffer->updateData(data, size, offset);
+    }
+
     void VulkanCommandContext::setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) {
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
         if (!requireActiveCommandBuffer("VulkanCommandContext::setVertexBuffer", commandBuffer) ||

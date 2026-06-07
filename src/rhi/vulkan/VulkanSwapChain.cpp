@@ -257,18 +257,37 @@ namespace ark::rhi::vulkan {
                                                                      m_BackBufferTextures.back().get(), viewDesc));
         }
 
+        createDepthResources();
+
         m_CurrentBackBufferIndex = InvalidBackBufferIndex;
 
         ARK_INFO("Vulkan swapchain created: extent={}x{}, images={}, format={}, presentMode={}", m_Desc.extent.width,
                  m_Desc.extent.height, m_BackBufferCount, vkFormatName(m_ColorFormat), presentModeName(m_PresentMode));
-        ARK_INFO("Default depth buffer is owned by SwapChain and will be allocated before the first clear pass");
 
         cleanupOnFailure.release();
+    }
+
+    void VulkanSwapChain::createDepthResources() {
+        TextureDesc depthTextureDesc{};
+        depthTextureDesc.extent = m_Desc.extent;
+        depthTextureDesc.format = m_Desc.depthFormat == Format::Unknown ? Format::D32Float : m_Desc.depthFormat;
+        depthTextureDesc.usage = TextureUsage::DepthStencil;
+        m_Desc.depthFormat = depthTextureDesc.format;
+
+        m_DepthBufferTexture = makeScope<VulkanTexture>(m_Device->getAllocator(), depthTextureDesc);
+
+        TextureViewDesc depthViewDesc{};
+        depthViewDesc.format = depthTextureDesc.format;
+        m_DepthBufferView = makeScope<VulkanTextureView>(m_Device->getDevice(), *m_DepthBufferTexture, depthViewDesc);
+
+        ARK_INFO("Vulkan depth buffer created: extent={}x{}, format={}", m_Desc.extent.width, m_Desc.extent.height,
+                 formatName(m_Desc.depthFormat));
     }
 
     void VulkanSwapChain::destroy() {
         // image view 必须早于 VkSwapchainKHR 销毁。
         m_DepthBufferView.reset();
+        m_DepthBufferTexture.reset();
         m_BackBufferViews.clear();
         m_BackBufferTextures.clear();
         m_BackBufferImages.clear();

@@ -25,6 +25,7 @@
 #include "renderer/material/MaterialSystem.h"
 #include "renderer/passes/BloomPass.h"
 #include "renderer/passes/ClearPass.h"
+#include "renderer/passes/CubePass.h"
 #include "renderer/passes/ForwardPass.h"
 #include "renderer/passes/ImGuiPass.h"
 #include "renderer/passes/ShadowPass.h"
@@ -110,6 +111,9 @@ int main() {
     bufferDesc.size = 256;
     bufferDesc.usage = ark::rhi::BufferUsage::Vertex | ark::rhi::BufferUsage::TransferDst;
     const bool bufferHasVertexUsage = ark::rhi::hasBufferUsage(bufferDesc.usage, ark::rhi::BufferUsage::Vertex);
+    const ark::rhi::TextureUsage textureUsage =
+        ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::DepthStencil;
+    const bool textureHasDepthUsage = ark::rhi::hasTextureUsage(textureUsage, ark::rhi::TextureUsage::DepthStencil);
 
     ark::rhi::ShaderDesc shaderDesc{};
     shaderDesc.debugName = "SmokeShader";
@@ -201,6 +205,8 @@ int main() {
     (void)colorFormatName;
     (void)bufferDesc;
     (void)bufferHasVertexUsage;
+    (void)textureUsage;
+    (void)textureHasDepthUsage;
     (void)shaderDesc;
     (void)descriptorBindingDesc;
     (void)descriptorHasVertexStage;

@@ -514,7 +514,7 @@ backbuffer -> Present
 - 已补齐 `BufferDescriptor` 和 `DescriptorSet::updateUniformBuffer()`。
 - `PipelineLayoutDesc` 已支持 descriptor set layout 引用列表。
 - `RenderingDesc` 已将 depth attachment 整理为 `DepthStencilAttachmentDesc`。
-- 当前暂不新增 `DeviceContext::updateBuffer()`，该接口留到 `0.5.4 Uniform Buffer 更新路径` 落地。
+- `DeviceContext::updateBuffer()` 已在 0.5.4 落地，用于 CPU 可见 buffer 的直接更新。
 - `ResourceState` 沿用既有 `DepthStencilWrite` / `DepthStencilRead`，不新增重复命名。
 - `framework_headers_smoke.cpp` 已覆盖新增 RHI 描述。
 
@@ -594,6 +594,14 @@ backbuffer -> Present
 - 每帧能写入 `CameraUniform`。
 - 日志字符串使用英文，注释说明非显然内存同步规则。
 
+当前实现更新：
+
+- `DeviceContext` 已新增 `updateBuffer(Buffer&, const void*, u64, u64)`，作为 CPU 写入 buffer 的公共 RHI 入口。
+- `VulkanCommandContext::updateBuffer()` 已接入，会校验目标对象是 `VulkanBuffer` 后转交给 buffer 自身处理。
+- `VulkanBuffer::updateData()` 已支持 `MemoryUsage::CpuToGpu` buffer 的 map / copy / flush 路径，并检查空数据、有效 allocation 和 offset / size 边界。
+- 当前不支持通过该接口更新 `GpuOnly` buffer；GPU-only 资源上传仍留给后续 upload system。
+- 同步边界由调用方负责：更新 per-frame uniform 时应避免覆盖 GPU 仍在读取的 in-flight 数据。
+
 ### 0.5.5 Cube Shader 与 CMake 接入
 
 资源绑定通路具备后，再新增 shader。
@@ -610,6 +618,14 @@ backbuffer -> Present
 
 - `ark_shaders` 能输出 `cube.vert.spv` 和 `cube.frag.spv`。
 - `shader_assets_smoke` 覆盖 cube shader 文件存在和 magic number。
+
+当前实现更新：
+
+- 已新增 `shaders/cube.vert.hlsl` 和 `shaders/cube.frag.hlsl`。
+- `cube.vert.hlsl` 定义 `CameraUniform`，使用 descriptor set 0 / binding 0 读取 model、view、projection 矩阵。
+- CMake 已把 cube vertex / fragment shader 加入 `ark_shaders` 编译目标，输出 `cube.vert.spv` 和 `cube.frag.spv`。
+- `shader_assets_smoke` 已覆盖 triangle 和 cube 四个 SPIR-V 产物的加载与 magic number 校验。
+- 本小阶段只完成 shader 资产闭环，实际创建 cube 资源和调用 `drawIndexed(36)` 留到 0.5.6。
 
 ### 0.5.6 CubePass：先不接 depth
 
@@ -633,6 +649,15 @@ backbuffer -> Present
 - sandbox 能看到 cube 或至少能看到随时间变化的几何体。
 - `drawIndexed()` 路径被真实使用。
 - descriptor / uniform 绑定没有 validation error。
+
+当前实现更新：
+
+- 已新增 `CubePass`，它拥有 cube vertex buffer、index buffer、per-frame uniform buffer、descriptor set layout、descriptor set、pipeline layout 和 graphics pipeline。
+- `CubePass` 使用两个 frame slot 的 uniform buffer / descriptor set，避免一帧更新常量数据时覆盖 GPU 仍在读取的上一帧数据。
+- `CubePass` 每帧通过 `DeviceContext::updateBuffer()` 写入 model / view / projection 矩阵，并通过 descriptor set 0 / binding 0 绑定给 vertex shader。
+- `CubePass` 使用 `setVertexBuffer()`、`setIndexBuffer()` 和 `drawIndexed(36)` 走 indexed draw 路径。
+- 默认 `FrameRenderer` 已从 `TrianglePass` 切换到 `CubePass`；`TrianglePass` 继续保留为 Phase 0.4 的最小三角形示例。
+- 本小阶段暂不接入 depth attachment，因此 cube 面遮挡仍不作为验收标准。
 
 ### 0.5.7 Owned Texture 与 SwapChain Depth
 
@@ -658,6 +683,16 @@ cube 基础绘制稳定后，再接 depth 资源。
 - `SwapChain::getDepthBufferView()` 返回有效 depth view。
 - resize 后 depth buffer 随尺寸重建。
 - borrowed swapchain image 不被 `VulkanTexture` 销毁。
+
+当前实现更新：
+
+- `TextureUsage` 已补齐位标志工具函数，便于公共 RHI 描述组合 usage。
+- `VulkanTexture` 已支持 owned image 创建，owned image 使用 VMA allocation 管理；borrowed swapchain image 仍然只包装外部 `VkImage`，不会销毁它。
+- `VulkanDevice::createTexture()` 和 `VulkanDevice::createTextureView()` 已接入真实 Vulkan texture / image view 创建。
+- `VulkanTextureView` 创建 image view 时会根据 format 选择 color / depth / depth-stencil aspect mask。
+- `VulkanSwapChain` 已在 create / resize 时创建默认 depth texture 和 depth view，`getDepthBufferView()` 返回有效 view。
+- depth texture 由 swapchain 语义拥有，销毁顺序为 depth view -> depth texture -> swapchain color views / swapchain。
+- 本小阶段只完成 depth 资源生命周期；depth barrier、dynamic rendering depth attachment 和 depth test 仍留到 0.5.8。
 
 ### 0.5.8 Dynamic Rendering Depth 接入
 

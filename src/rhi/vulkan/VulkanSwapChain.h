@@ -27,6 +27,7 @@ namespace ark::rhi::vulkan {
 
     private:
         void create();
+        void createDepthResources();
         void destroy();
 
         VulkanDevice* m_Device = nullptr;
@@ -40,6 +41,7 @@ namespace ark::rhi::vulkan {
         std::vector<VkImage> m_BackBufferImages;
         std::vector<Scope<VulkanTexture>> m_BackBufferTextures;
         std::vector<Scope<VulkanTextureView>> m_BackBufferViews;
+        Scope<VulkanTexture> m_DepthBufferTexture;
         Scope<VulkanTextureView> m_DepthBufferView;
     };
 } // namespace ark::rhi::vulkan

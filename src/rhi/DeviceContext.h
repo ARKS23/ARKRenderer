@@ -80,6 +80,8 @@ namespace ark::rhi {
         // 下面是绘制需要的状态绑定和 draw 接口；资源创建仍由 RenderDevice 负责。
         virtual void setPipeline(PipelineState& pipeline) = 0;
         virtual void bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) = 0;
+        // CPU 可见 buffer 的直接更新路径；调用方需要保证不会覆盖 GPU 仍在读取的 in-flight 数据。
+        virtual bool updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset = 0) = 0;
         virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset = 0) = 0;
         virtual void setIndexBuffer(Buffer& buffer, IndexType indexType = IndexType::UInt32, u64 offset = 0) = 0;
         virtual void draw(const DrawDesc& desc) = 0;

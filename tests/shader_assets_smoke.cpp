@@ -26,6 +26,8 @@ namespace {
 int main() {
     const bool vertexShaderValid = validateCompiledShader("triangle.vert.spv");
     const bool fragmentShaderValid = validateCompiledShader("triangle.frag.spv");
+    const bool cubeVertexShaderValid = validateCompiledShader("cube.vert.spv");
+    const bool cubeFragmentShaderValid = validateCompiledShader("cube.frag.spv");
 
-    return vertexShaderValid && fragmentShaderValid ? 0 : 1;
+    return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid ? 0 : 1;
 }

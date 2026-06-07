@@ -14,6 +14,18 @@ namespace ark::rhi {
         TransferDst = 1 << 5,
     };
 
+    constexpr TextureUsage operator|(TextureUsage lhs, TextureUsage rhs) {
+        return static_cast<TextureUsage>(static_cast<u32>(lhs) | static_cast<u32>(rhs));
+    }
+
+    constexpr TextureUsage operator&(TextureUsage lhs, TextureUsage rhs) {
+        return static_cast<TextureUsage>(static_cast<u32>(lhs) & static_cast<u32>(rhs));
+    }
+
+    constexpr bool hasTextureUsage(TextureUsage value, TextureUsage flag) {
+        return static_cast<u32>(value & flag) != 0;
+    }
+
     struct TextureDesc {
         Extent2D extent;
         Format format = Format::Unknown;

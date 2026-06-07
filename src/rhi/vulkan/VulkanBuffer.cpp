@@ -1,5 +1,7 @@
 #include "rhi/vulkan/VulkanBuffer.h"
 
+#include "core/Log.h"
+
 #include <cstring>
 #include <stdexcept>
 
@@ -130,6 +132,55 @@ namespace ark::rhi::vulkan {
 
     const BufferDesc& VulkanBuffer::getDesc() const {
         return m_Desc;
+    }
+
+    bool VulkanBuffer::updateData(const void* data, u64 size, u64 offset) {
+        if (!data || size == 0) {
+            ARK_ERROR("VulkanBuffer::updateData requires non-empty data");
+            return false;
+        }
+
+        if (m_Allocator == VK_NULL_HANDLE || m_Allocation == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanBuffer::updateData requires a valid allocation");
+            return false;
+        }
+
+        if (m_Desc.memoryUsage != MemoryUsage::CpuToGpu) {
+            ARK_ERROR("VulkanBuffer::updateData only supports CpuToGpu buffers");
+            return false;
+        }
+
+        if (offset > m_Desc.size || size > m_Desc.size - offset) {
+            ARK_ERROR("VulkanBuffer::updateData range is out of bounds");
+            return false;
+        }
+
+        VmaAllocationInfo allocationInfo{};
+        vmaGetAllocationInfo(m_Allocator, m_Allocation, &allocationInfo);
+
+        void* mappedData = allocationInfo.pMappedData;
+        bool mappedForUpdate = false;
+        if (!mappedData) {
+            if (!ARK_VK_CHECK(vmaMapMemory(m_Allocator, m_Allocation, &mappedData))) {
+                return false;
+            }
+            mappedForUpdate = true;
+        }
+
+        std::memcpy(static_cast<u8*>(mappedData) + offset, data, static_cast<usize>(size));
+        // VMA 会根据内存类型处理 flush；对 coherent 内存这一步通常是轻量 no-op。
+        if (!ARK_VK_CHECK(vmaFlushAllocation(m_Allocator, m_Allocation, offset, size))) {
+            if (mappedForUpdate) {
+                vmaUnmapMemory(m_Allocator, m_Allocation);
+            }
+            return false;
+        }
+
+        if (mappedForUpdate) {
+            vmaUnmapMemory(m_Allocator, m_Allocation);
+        }
+
+        return true;
     }
 
     VkBuffer VulkanBuffer::getHandle() const {

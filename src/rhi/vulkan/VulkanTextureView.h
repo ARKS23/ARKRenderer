@@ -10,6 +10,7 @@ namespace ark::rhi::vulkan {
     public:
         VulkanTextureView() = default;
         VulkanTextureView(VkDevice device, VkImageView imageView, VulkanTexture* texture, const TextureViewDesc& desc);
+        VulkanTextureView(VkDevice device, VulkanTexture& texture, const TextureViewDesc& desc);
         ~VulkanTextureView() override;
 
         VulkanTextureView(const VulkanTextureView&) = delete;

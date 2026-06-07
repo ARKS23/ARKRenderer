@@ -18,6 +18,8 @@ namespace ark::rhi::vulkan {
 
         const BufferDesc& getDesc() const override;
 
+        bool updateData(const void* data, u64 size, u64 offset);
+
         VkBuffer getHandle() const;
         VmaAllocation getAllocation() const;
 

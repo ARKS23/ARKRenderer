@@ -53,7 +53,7 @@ file(TO_CMAKE_PATH "${ARK_SHADER_OUTPUT_DIR}" ARK_SHADER_OUTPUT_DIR_NORMALIZED)
 if(ARK_DXC_SUPPORTED)
     set(ARK_COMPILED_SHADERS)
 
-    # Phase 0.4 使用 DXC 将 HLSL 编译为 SPIR-V，renderer 运行时只读取编译后的二进制。
+    # 使用 DXC 将 HLSL 编译为 SPIR-V，renderer 运行时只读取编译后的二进制。
     function(ark_compile_hlsl_shader source_file shader_profile output_name)
         set(output_file "${ARK_SHADER_OUTPUT_DIR}/${output_name}.spv")
 
@@ -77,11 +77,13 @@ if(ARK_DXC_SUPPORTED)
 
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/triangle.vert.hlsl" vs_6_0 triangle.vert)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/triangle.frag.hlsl" ps_6_0 triangle.frag)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/cube.vert.hlsl" vs_6_0 cube.vert)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/cube.frag.hlsl" ps_6_0 cube.frag)
 
     add_custom_target(ark_shaders ALL DEPENDS ${ARK_COMPILED_SHADERS})
 else()
     add_custom_target(ark_shaders)
-    message(WARNING "DXC is not available on this platform; Phase 0.4 triangle shaders will not be compiled.")
+    message(WARNING "DXC is not available on this platform; renderer shaders will not be compiled.")
 endif()
 
 set(ARK_RENDERER_THIRD_PARTY_LIBS
@@ -145,7 +147,7 @@ target_compile_definitions(ark_renderer
     PRIVATE
         "ARK_SHADER_OUTPUT_DIR=\"${ARK_SHADER_OUTPUT_DIR_NORMALIZED}\"")
 
-# shader 编译必须早于 renderer 构建完成，确保 TrianglePass 启动时能找到 SPIR-V。
+# shader 编译必须早于 renderer 构建完成，确保渲染 pass 启动时能找到 SPIR-V。
 add_dependencies(ark_renderer ark_shaders)
 
 if(ARK_DXC_SUPPORTED)

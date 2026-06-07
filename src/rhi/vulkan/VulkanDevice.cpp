@@ -9,6 +9,8 @@
 #include "rhi/vulkan/VulkanPipelineLayout.h"
 #include "rhi/vulkan/VulkanPipelineState.h"
 #include "rhi/vulkan/VulkanShader.h"
+#include "rhi/vulkan/VulkanTexture.h"
+#include "rhi/vulkan/VulkanTextureView.h"
 
 #include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
@@ -146,16 +148,16 @@ namespace ark::rhi::vulkan {
     }
 
     Scope<Texture> VulkanDevice::createTexture(const TextureDesc& desc) {
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createTexture");
-        return {};
+        return makeScope<VulkanTexture>(getAllocator(), desc);
     }
 
     Scope<TextureView> VulkanDevice::createTextureView(Texture& texture, const TextureViewDesc& desc) {
-        (void)texture;
-        (void)desc;
-        throwUnsupportedFactory("VulkanDevice::createTextureView");
-        return {};
+        VulkanTexture* vulkanTexture = dynamic_cast<VulkanTexture*>(&texture);
+        if (!vulkanTexture || vulkanTexture->getHandle() == VK_NULL_HANDLE) {
+            throw std::runtime_error("VulkanDevice::createTextureView requires VulkanTexture");
+        }
+
+        return makeScope<VulkanTextureView>(m_Device, *vulkanTexture, desc);
     }
 
     Scope<Sampler> VulkanDevice::createSampler(const SamplerDesc& desc) {
