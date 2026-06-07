@@ -40,5 +40,6 @@ namespace ark {
         Scope<rhi::PipelineLayout> m_PipelineLayout;
         Scope<rhi::PipelineState> m_Pipeline;
         rhi::Format m_PipelineColorFormat = rhi::Format::Unknown;
+        rhi::Format m_PipelineDepthFormat = rhi::Format::Unknown;
     };
 } // namespace ark

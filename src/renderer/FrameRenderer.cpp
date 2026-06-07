@@ -8,6 +8,7 @@
 #include "renderer/passes/CubePass.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/ResourceBarrier.h"
+#include "rhi/SwapChain.h"
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
@@ -30,22 +31,33 @@ namespace ark {
             }
 
             bool render(FrameContext& frameContext) override {
-                if (!frameContext.context || !frameContext.backBufferView ||
+                if (!frameContext.context || !frameContext.swapChain || !frameContext.backBufferView ||
                     !frameContext.backBufferView->getTexture()) {
-                    ARK_ERROR("FrameRenderer requires DeviceContext and backbuffer");
+                    ARK_ERROR("FrameRenderer requires DeviceContext, SwapChain and backbuffer");
                     return false;
                 }
 
                 rhi::Texture* backBuffer = frameContext.backBufferView->getTexture();
+                rhi::TextureView* depthBufferView = frameContext.swapChain->getDepthBufferView();
+                if (!depthBufferView || !depthBufferView->getTexture()) {
+                    ARK_ERROR("FrameRenderer requires swapchain depth buffer");
+                    return false;
+                }
+                rhi::Texture* depthBuffer = depthBufferView->getTexture();
 
                 // FrameRenderer 负责一帧内的 render scope：资源状态转换 -> beginRendering -> pass -> endRendering。
                 // 这样 Renderer 只保留 acquire / submit / present 外壳，后续可以用 RenderGraph 替换这里的手动调度。
-                // backbuffer 进入渲染附件写入状态；清屏由 beginRendering 的 loadOp=Clear 表达。
-                const std::array<rhi::ResourceBarrier, 1> toRenderTarget{{
+                // color/depth attachment 进入可写状态；清屏由 beginRendering 的 loadOp=Clear 表达。
+                const std::array<rhi::ResourceBarrier, 2> toRenderTarget{{
                     rhi::ResourceBarrier{
                         .texture = backBuffer,
                         .before = backBuffer->getState(),
                         .after = rhi::ResourceState::RenderTarget,
+                    },
+                    rhi::ResourceBarrier{
+                        .texture = depthBuffer,
+                        .before = depthBuffer->getState(),
+                        .after = rhi::ResourceState::DepthStencilWrite,
                     },
                 }};
                 frameContext.context->pipelineBarrier(toRenderTarget);
@@ -56,6 +68,11 @@ namespace ark {
                 renderingDesc.colorAttachment.loadOp = rhi::LoadOp::Clear;
                 renderingDesc.colorAttachment.storeOp = rhi::StoreOp::Store;
                 renderingDesc.colorAttachment.clearColor = frameContext.clearColor;
+                renderingDesc.depthStencilAttachment.view = depthBufferView;
+                renderingDesc.depthStencilAttachment.loadOp = rhi::LoadOp::Clear;
+                renderingDesc.depthStencilAttachment.storeOp = rhi::StoreOp::DontCare;
+                renderingDesc.depthStencilAttachment.clearDepth = 1.0f;
+                renderingDesc.depthStencilAttachment.clearStencil = 0;
 
                 if (!frameContext.context->beginRendering(renderingDesc)) {
                     return false;

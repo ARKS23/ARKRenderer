@@ -713,6 +713,15 @@ cube 基础绘制稳定后，再接 depth 资源。
 - resize 后仍能正常绘制。
 - Debug 构建下无明显 validation error。
 
+当前实现更新：
+
+- `VulkanCommandContext::pipelineBarrier()` 已支持 `DepthStencilWrite` / `DepthStencilRead` 的 layout、access mask 和 pipeline stage 映射。
+- texture barrier 的 image aspect 已从固定 color aspect 改为按 texture format 选择，depth image 会使用 depth aspect。
+- `VulkanCommandContext::beginRendering()` 已支持可选 depth attachment，并从 `DepthStencilAttachmentDesc` 读取 load/store 和 clear depth/stencil。
+- `FrameRenderer` 每帧会把 swapchain depth buffer transition 到 `DepthStencilWrite`，并传入 `RenderingDesc.depthStencilAttachment`。
+- `CubePass` 创建 graphics pipeline 时已经传入 swapchain depth format，并开启 depth test / depth write。
+- 目前默认 depth format 为 `D32Float`，stencil attachment 仍未启用；`D24S8` 的 stencil 写入留到后续阶段再细化。
+
 ### 0.5.9 收尾与文档同步
 
 工作内容：
@@ -728,7 +737,85 @@ cube 基础绘制稳定后，再接 depth 资源。
 - `ctest --preset msvc-vcpkg-local-debug` 通过。
 - sandbox 手动或隐藏窗口烟测通过。
 
-重要建议：先让 cube 在无 depth 情况下能通过 uniform 旋转，再接 depth。这样可以把“descriptor/uniform 问题”和“depth image/barrier 问题”分开定位。
+当前实现更新：
+
+- `phase05.md` 已记录 0.5.0 到 0.5.8 的当前实现状态和阶段边界。
+- `framework_headers_smoke.cpp` 已覆盖 depth texture 描述、depth resource barrier、depth pipeline state 和 cube pass 头文件。
+- `shader_assets_smoke.cpp` 已覆盖 triangle / cube 四个 SPIR-V shader 产物。
+- `TrianglePass` 保留为 Phase 0.4 的最小三角形示例；默认 `FrameRenderer` 当前使用 `CubePass`。
+- 已通过 Debug 构建、CTest 和隐藏窗口 sandbox smoke。
+
+## Phase 0.5 完成摘要
+
+Phase 0.5 已经完成从固定三角形到带 uniform、descriptor、indexed draw 和 depth test 的默认 cube 渲染闭环：
+
+```text
+Renderer
+    -> FrameRenderer
+        -> backbuffer/depth barrier
+        -> beginRendering(color + depth)
+        -> ClearPass
+        -> CubePass
+            -> update camera uniform
+            -> bind pipeline
+            -> bind descriptor set
+            -> bind vertex/index buffer
+            -> drawIndexed(36)
+        -> endRendering
+        -> backbuffer barrier to Present
+```
+
+当前默认帧流程已经验证以下能力：
+
+- `DeviceContext::updateBuffer()` 可以更新 `CpuToGpu` uniform buffer。
+- `DescriptorSetLayout` / `DescriptorSet` / `PipelineLayout` / `bindDescriptorSet()` 已形成最小 Vulkan descriptor 闭环。
+- `CubePass` 使用 per-frame uniform buffer 和 descriptor set，避免覆盖 GPU 仍在读取的上一帧数据。
+- `VulkanTexture` 支持 VMA owned image；swapchain color image 继续保持 borrowed。
+- `VulkanSwapChain` 拥有默认 depth texture / depth view，并在 resize 时重建。
+- dynamic rendering 同时接入 color attachment 和 depth attachment。
+- `CubePass` pipeline 已开启 depth test / depth write。
+
+## 代码阅读指南
+
+建议按下面顺序阅读 Phase 0.5 的代码：
+
+1. `src/renderer/Renderer.cpp`
+
+   先看一帧外壳：`beginFrame()`、`acquireNextImage()`、`context.begin()`、`FrameRenderer::render()`、`context.end()`、`submit()`、`present()`。这里负责帧生命周期，不直接做具体 draw。
+
+2. `src/renderer/FrameRenderer.cpp`
+
+   再看 render scope：backbuffer 和 depth buffer 的 barrier、`RenderingDesc` 组装、`beginRendering()`、固定 pass 顺序、`endRendering()`、present 前 barrier。这个文件是 RenderGraph 落地前的手动一帧调度器。
+
+3. `src/renderer/passes/CubePass.cpp`
+
+   看 pass 自己拥有的资源：vertex/index buffer、per-frame uniform buffer、descriptor set layout、descriptor set、pipeline layout、shader 和 pipeline。重点看 `setup()`、`execute()`、`ensurePipeline()`、`updateCameraUniform()`。
+
+4. `src/rhi/DeviceContext.h`
+
+   看 renderer 层能使用的命令接口边界。Phase 0.5 新增的关键接口是 `updateBuffer()`、`bindDescriptorSet()`、`setIndexBuffer()` 和 `drawIndexed()`。
+
+5. `src/rhi/vulkan/VulkanCommandContext.cpp`
+
+   看 Vulkan 命令录制细节：dynamic rendering attachment 转换、descriptor set 绑定、buffer 更新转发、depth barrier 映射。这里是 RHI 命令语义落到 Vulkan command buffer 的地方。
+
+6. `src/rhi/vulkan/VulkanDescriptorSetLayout.cpp`、`VulkanDescriptorSet.cpp`、`VulkanDescriptorManager.cpp`
+
+   看 descriptor 最小闭环：layout 创建、pool 管理、descriptor set 分配、uniform buffer 写入。
+
+7. `src/rhi/vulkan/VulkanPipelineLayout.cpp` 和 `VulkanPipelineState.cpp`
+
+   看 descriptor set layout 如何进入 `VkPipelineLayout`，以及 dynamic rendering 的 color/depth format 如何进入 graphics pipeline。
+
+8. `src/rhi/vulkan/VulkanTexture.cpp`、`VulkanTextureView.cpp`、`VulkanSwapChain.cpp`
+
+   最后看 texture 生命周期：swapchain color image 是 borrowed，default depth image 是 owned；depth view 跟随 swapchain create / resize / destroy。
+
+阅读时可以抓住三条主线：
+
+- 资源创建主线：`CubePass::setup()` -> `RenderDevice` -> `VulkanDevice` -> Vulkan RAII wrapper。
+- 每帧命令主线：`Renderer::render()` -> `FrameRenderer::render()` -> `CubePass::execute()` -> `VulkanCommandContext`。
+- depth 主线：`VulkanSwapChain::createDepthResources()` -> `FrameRenderer` depth barrier / attachment -> `VulkanCommandContext::beginRendering()` -> `CubePass` depth pipeline state。
 
 ## 与设计文档对齐检查
 

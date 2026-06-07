@@ -25,6 +25,10 @@ namespace ark::rhi::vulkan {
                 return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
             case ResourceState::RenderTarget:
                 return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            case ResourceState::DepthStencilWrite:
+                return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            case ResourceState::DepthStencilRead:
+                return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
             case ResourceState::CopyDst:
                 return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             default:
@@ -37,6 +41,10 @@ namespace ark::rhi::vulkan {
             switch (state) {
             case ResourceState::RenderTarget:
                 return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            case ResourceState::DepthStencilWrite:
+                return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            case ResourceState::DepthStencilRead:
+                return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
             case ResourceState::CopyDst:
                 return VK_ACCESS_TRANSFER_WRITE_BIT;
             case ResourceState::Present:
@@ -59,6 +67,9 @@ namespace ark::rhi::vulkan {
                 return VK_PIPELINE_STAGE_TRANSFER_BIT;
             case ResourceState::RenderTarget:
                 return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            case ResourceState::DepthStencilWrite:
+            case ResourceState::DepthStencilRead:
+                return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
             default:
                 return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
             }
@@ -74,8 +85,22 @@ namespace ark::rhi::vulkan {
                 return VK_PIPELINE_STAGE_TRANSFER_BIT;
             case ResourceState::RenderTarget:
                 return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            case ResourceState::DepthStencilWrite:
+            case ResourceState::DepthStencilRead:
+                return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
             default:
                 return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            }
+        }
+
+        VkImageAspectFlags toImageAspectMask(Format format) {
+            switch (format) {
+            case Format::D24UnormS8UInt:
+                return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            case Format::D32Float:
+                return VK_IMAGE_ASPECT_DEPTH_BIT;
+            default:
+                return VK_IMAGE_ASPECT_COLOR_BIT;
             }
         }
 
@@ -298,6 +323,23 @@ namespace ark::rhi::vulkan {
         colorAttachment.storeOp = toVkStoreOp(desc.colorAttachment.storeOp);
         colorAttachment.clearValue = toVkClearValue(desc.colorAttachment.clearColor);
 
+        VkRenderingAttachmentInfo depthAttachment{};
+        if (desc.depthStencilAttachment.view) {
+            VulkanTextureView* depthView = dynamic_cast<VulkanTextureView*>(desc.depthStencilAttachment.view);
+            if (!depthView || depthView->getHandle() == VK_NULL_HANDLE) {
+                ARK_ERROR("VulkanCommandContext::beginRendering requires Vulkan depth attachment view");
+                return false;
+            }
+
+            depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            depthAttachment.imageView = depthView->getHandle();
+            depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depthAttachment.loadOp = toVkLoadOp(desc.depthStencilAttachment.loadOp);
+            depthAttachment.storeOp = toVkStoreOp(desc.depthStencilAttachment.storeOp);
+            depthAttachment.clearValue.depthStencil.depth = desc.depthStencilAttachment.clearDepth;
+            depthAttachment.clearValue.depthStencil.stencil = desc.depthStencilAttachment.clearStencil;
+        }
+
         VkRenderingInfo renderingInfo{};
         renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
         renderingInfo.renderArea.offset = VkOffset2D{0, 0};
@@ -305,6 +347,10 @@ namespace ark::rhi::vulkan {
         renderingInfo.layerCount = 1;
         renderingInfo.colorAttachmentCount = 1;
         renderingInfo.pColorAttachments = &colorAttachment;
+        if (desc.depthStencilAttachment.view) {
+            // stencil attachment 暂不参与默认 D32Float 路径；D24S8 后续再按格式拆分接入。
+            renderingInfo.pDepthAttachment = &depthAttachment;
+        }
 
         // vkCmdBeginRendering 只录制命令，真正的附件读写发生在 GPU 执行 command buffer 时。
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
@@ -512,8 +558,8 @@ namespace ark::rhi::vulkan {
             imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             imageBarrier.image = texture->getHandle();
-            // 当前只处理整张 color image；mip/layer 范围来自 TextureDesc。
-            imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            // barrier 的 aspect 必须与 image format 对齐，depth image 不能使用 color aspect。
+            imageBarrier.subresourceRange.aspectMask = toImageAspectMask(texture->getDesc().format);
             imageBarrier.subresourceRange.baseMipLevel = 0;
             imageBarrier.subresourceRange.levelCount = texture->getDesc().mipLevels;
             imageBarrier.subresourceRange.baseArrayLayer = 0;

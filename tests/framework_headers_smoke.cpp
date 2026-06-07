@@ -114,6 +114,14 @@ int main() {
     const ark::rhi::TextureUsage textureUsage =
         ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::DepthStencil;
     const bool textureHasDepthUsage = ark::rhi::hasTextureUsage(textureUsage, ark::rhi::TextureUsage::DepthStencil);
+    ark::rhi::TextureDesc depthTextureDesc{};
+    depthTextureDesc.extent = swapChainDesc.extent;
+    depthTextureDesc.format = ark::rhi::Format::D32Float;
+    depthTextureDesc.usage = ark::rhi::TextureUsage::DepthStencil;
+
+    ark::rhi::ResourceBarrier depthBarrier{};
+    depthBarrier.before = ark::rhi::ResourceState::Undefined;
+    depthBarrier.after = ark::rhi::ResourceState::DepthStencilWrite;
 
     ark::rhi::ShaderDesc shaderDesc{};
     shaderDesc.debugName = "SmokeShader";
@@ -154,6 +162,10 @@ int main() {
     graphicsPipelineDesc.debugName = "SmokePipeline";
     graphicsPipelineDesc.vertexInput = vertexInputLayout;
     graphicsPipelineDesc.colorFormat = ark::rhi::Format::BGRA8Unorm;
+    graphicsPipelineDesc.depthFormat = ark::rhi::Format::D32Float;
+    graphicsPipelineDesc.depthStencilState.enableDepthTest = true;
+    graphicsPipelineDesc.depthStencilState.enableDepthWrite = true;
+    graphicsPipelineDesc.depthStencilState.depthCompareOp = ark::rhi::CompareOp::Less;
 
     ark::rhi::RenderingDesc renderingDesc{};
     renderingDesc.extent = swapChainDesc.extent;
@@ -207,6 +219,8 @@ int main() {
     (void)bufferHasVertexUsage;
     (void)textureUsage;
     (void)textureHasDepthUsage;
+    (void)depthTextureDesc;
+    (void)depthBarrier;
     (void)shaderDesc;
     (void)descriptorBindingDesc;
     (void)descriptorHasVertexStage;

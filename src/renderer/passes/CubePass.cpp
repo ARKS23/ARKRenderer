@@ -171,8 +171,10 @@ namespace ark {
             return false;
         }
 
-        const rhi::Format colorFormat = frameContext.swapChain->getDesc().colorFormat;
-        if (m_Pipeline && m_PipelineColorFormat == colorFormat) {
+        const rhi::SwapChainDesc& swapChainDesc = frameContext.swapChain->getDesc();
+        const rhi::Format colorFormat = swapChainDesc.colorFormat;
+        const rhi::Format depthFormat = swapChainDesc.depthFormat;
+        if (m_Pipeline && m_PipelineColorFormat == colorFormat && m_PipelineDepthFormat == depthFormat) {
             return true;
         }
 
@@ -203,10 +205,15 @@ namespace ark {
         pipelineDesc.vertexInput.buffers.push_back(vertexLayout);
         pipelineDesc.topology = rhi::PrimitiveTopology::TriangleList;
         pipelineDesc.rasterState.cullMode = rhi::CullMode::None;
+        pipelineDesc.depthStencilState.enableDepthTest = true;
+        pipelineDesc.depthStencilState.enableDepthWrite = true;
+        pipelineDesc.depthStencilState.depthCompareOp = rhi::CompareOp::Less;
         pipelineDesc.colorFormat = colorFormat;
+        pipelineDesc.depthFormat = depthFormat;
 
         m_Pipeline = m_Device->createGraphicsPipeline(pipelineDesc);
         m_PipelineColorFormat = colorFormat;
+        m_PipelineDepthFormat = depthFormat;
         return m_Pipeline != nullptr;
     }
 
