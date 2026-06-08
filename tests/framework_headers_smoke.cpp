@@ -2,6 +2,7 @@
 #include "app/GlfwWindow.h"
 #include "app/Window.h"
 #include "asset/GltfLoader.h"
+#include "asset/MeshData.h"
 #include "asset/ShaderCompiler.h"
 #include "asset/ShaderLoader.h"
 #include "asset/TextureLoader.h"
@@ -15,6 +16,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/MeshResource.h"
 #include "renderer/RenderGraph.h"
 #include "renderer/RenderPass.h"
 #include "renderer/RenderQueue.h"
@@ -210,6 +212,16 @@ int main() {
     imageData.height = 2;
     imageData.format = ark::asset::ImageFormat::Rgba8Unorm;
     imageData.bytesPerPixel = 4;
+    ark::asset::MeshVertex meshVertex{};
+    meshVertex.position[0] = 1.0f;
+    ark::asset::MeshPrimitiveData meshPrimitive{};
+    meshPrimitive.vertices.push_back(meshVertex);
+    meshPrimitive.indices.push_back(0);
+    ark::asset::MaterialData materialData{};
+    materialData.baseColorTexturePath = "assets/textures/xiaowei.png";
+    ark::asset::ModelData modelData{};
+    modelData.meshes.push_back(meshPrimitive);
+    modelData.materials.push_back(materialData);
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -219,6 +231,7 @@ int main() {
     rendererDesc.extent = swapChainDesc.extent;
 
     ark::FrameContext frameContext{};
+    ark::MeshResource meshResource{};
     ark::RenderGraph renderGraph;
     const bool renderGraphExecuted = renderGraph.execute(frameContext);
     ark::Scope<ark::FrameRenderer> frameRenderer = ark::createFrameRenderer();
@@ -260,9 +273,11 @@ int main() {
     (void)samplerDesc;
     (void)textureUploadDesc;
     (void)imageData;
+    (void)modelData;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
+    (void)meshResource;
     (void)renderGraphExecuted;
     (void)frameRenderer;
 

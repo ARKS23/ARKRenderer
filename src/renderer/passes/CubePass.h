@@ -1,6 +1,8 @@
 #pragma once
 
+#include "asset/MeshData.h"
 #include "core/Memory.h"
+#include "renderer/MeshResource.h"
 #include "renderer/RenderPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
@@ -38,10 +40,7 @@ namespace ark {
         bool uploadTexture(FrameContext& frameContext);
 
         rhi::RenderDevice* m_Device = nullptr;
-        Scope<rhi::Buffer> m_VertexBuffer;
-        Scope<rhi::Buffer> m_IndexBuffer;
-        Scope<rhi::Buffer> m_VertexStagingBuffer;
-        Scope<rhi::Buffer> m_IndexStagingBuffer;
+        MeshResource m_Mesh;
         Scope<rhi::Buffer> m_TextureStagingBuffer;
         Scope<rhi::Texture> m_Texture;
         Scope<rhi::TextureView> m_TextureView;
@@ -58,7 +57,6 @@ namespace ark {
         rhi::Extent2D m_TextureExtent{};
         u32 m_TextureRowPitch = 0;
         u32 m_TextureBytesPerPixel = 0;
-        bool m_MeshUploaded = false;
         bool m_TextureUploaded = false;
     };
 } // namespace ark

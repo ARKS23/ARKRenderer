@@ -193,6 +193,7 @@ endfunction()
 if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_dependency_smoke tests/dependency_smoke.cpp)
     ark_add_smoke_test(ark_framework_headers_smoke tests/framework_headers_smoke.cpp)
+    ark_add_smoke_test(ark_mesh_data_smoke tests/mesh_data_smoke.cpp)
     ark_add_smoke_test(ark_texture_loader_smoke tests/texture_loader_smoke.cpp)
 
     if(ARK_DXC_SUPPORTED)

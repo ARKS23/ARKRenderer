@@ -1,5 +1,6 @@
 #include "renderer/passes/CubePass.h"
 
+#include "asset/MeshData.h"
 #include "asset/ShaderLoader.h"
 #include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
@@ -18,11 +19,6 @@
 
 namespace ark {
     namespace {
-        struct CubeVertex {
-            float position[3];
-            float uv[2];
-        };
-
         struct CheckerPixel {
             u8 r = 0;
             u8 g = 0;
@@ -42,40 +38,60 @@ namespace ark {
         constexpr u32 CheckerboardTileSize = 16;
         constexpr const char* CubeTextureAssetPath = "assets/textures/xiaowei.png";
 
+        constexpr asset::MeshVertex makeCubeVertex(float x,
+                                                   float y,
+                                                   float z,
+                                                   float nx,
+                                                   float ny,
+                                                   float nz,
+                                                   float u,
+                                                   float v) {
+            asset::MeshVertex vertex{};
+            vertex.position[0] = x;
+            vertex.position[1] = y;
+            vertex.position[2] = z;
+            vertex.normal[0] = nx;
+            vertex.normal[1] = ny;
+            vertex.normal[2] = nz;
+            vertex.uv0[0] = u;
+            vertex.uv0[1] = v;
+            return vertex;
+        }
+
         // 每个面使用独立 4 个顶点，保证 UV 不会被 8 个共享角点错误复用。
-        constexpr std::array<CubeVertex, 24> CubeVertices{{
-            CubeVertex{{-1.0f, -1.0f, -1.0f}, {0.0f, 1.0f}},
-            CubeVertex{{1.0f, -1.0f, -1.0f}, {1.0f, 1.0f}},
-            CubeVertex{{1.0f, 1.0f, -1.0f}, {1.0f, 0.0f}},
-            CubeVertex{{-1.0f, 1.0f, -1.0f}, {0.0f, 0.0f}},
+        constexpr std::array<asset::MeshVertex, 24> CubeVertices{{
+            makeCubeVertex(-1.0f, -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f),
+            makeCubeVertex(1.0f, -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f),
+            makeCubeVertex(1.0f, 1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f),
+            makeCubeVertex(-1.0f, 1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f),
 
-            CubeVertex{{1.0f, -1.0f, 1.0f}, {0.0f, 1.0f}},
-            CubeVertex{{-1.0f, -1.0f, 1.0f}, {1.0f, 1.0f}},
-            CubeVertex{{-1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}},
-            CubeVertex{{1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
+            makeCubeVertex(1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f),
+            makeCubeVertex(-1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f),
+            makeCubeVertex(-1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f),
+            makeCubeVertex(1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f),
 
-            CubeVertex{{-1.0f, -1.0f, 1.0f}, {0.0f, 1.0f}},
-            CubeVertex{{-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f}},
-            CubeVertex{{-1.0f, 1.0f, -1.0f}, {1.0f, 0.0f}},
-            CubeVertex{{-1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
+            makeCubeVertex(-1.0f, -1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
+            makeCubeVertex(-1.0f, -1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
+            makeCubeVertex(-1.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
+            makeCubeVertex(-1.0f, 1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
 
-            CubeVertex{{1.0f, -1.0f, -1.0f}, {0.0f, 1.0f}},
-            CubeVertex{{1.0f, -1.0f, 1.0f}, {1.0f, 1.0f}},
-            CubeVertex{{1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}},
-            CubeVertex{{1.0f, 1.0f, -1.0f}, {0.0f, 0.0f}},
+            makeCubeVertex(1.0f, -1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
+            makeCubeVertex(1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
+            makeCubeVertex(1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
+            makeCubeVertex(1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
 
-            CubeVertex{{-1.0f, 1.0f, -1.0f}, {0.0f, 1.0f}},
-            CubeVertex{{1.0f, 1.0f, -1.0f}, {1.0f, 1.0f}},
-            CubeVertex{{1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}},
-            CubeVertex{{-1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
+            makeCubeVertex(-1.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+            makeCubeVertex(1.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
+            makeCubeVertex(1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
+            makeCubeVertex(-1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
 
-            CubeVertex{{-1.0f, -1.0f, 1.0f}, {0.0f, 1.0f}},
-            CubeVertex{{1.0f, -1.0f, 1.0f}, {1.0f, 1.0f}},
-            CubeVertex{{1.0f, -1.0f, -1.0f}, {1.0f, 0.0f}},
-            CubeVertex{{-1.0f, -1.0f, -1.0f}, {0.0f, 0.0f}},
+            makeCubeVertex(-1.0f, -1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f),
+            makeCubeVertex(1.0f, -1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f),
+            makeCubeVertex(1.0f, -1.0f, -1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
+            makeCubeVertex(-1.0f, -1.0f, -1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f),
         }};
 
-        constexpr std::array<u16, 36> CubeIndices{{
+        constexpr std::array<u32, 36> CubeIndices{{
             0, 1, 2, 0, 2, 3,
             4, 5, 6, 4, 6, 7,
             8, 9, 10, 8, 10, 11,
@@ -106,6 +122,14 @@ namespace ark {
             }
 
             return image;
+        }
+
+        asset::MeshPrimitiveData makeCubeMesh() {
+            asset::MeshPrimitiveData mesh{};
+            mesh.debugName = "CubeMesh";
+            mesh.vertices.assign(CubeVertices.begin(), CubeVertices.end());
+            mesh.indices.assign(CubeIndices.begin(), CubeIndices.end());
+            return mesh;
         }
 
         Path findCubeTextureFile() {
@@ -230,7 +254,7 @@ namespace ark {
     }
 
     bool CubePass::execute(FrameContext& frameContext) {
-        if (!frameContext.context || !m_VertexBuffer || !m_IndexBuffer || !m_MeshUploaded || !m_TextureUploaded) {
+        if (!frameContext.context || !m_Mesh.isReady() || !m_TextureUploaded) {
             ARK_ERROR("CubePass requires DeviceContext and mesh buffers");
             return false;
         }
@@ -244,12 +268,8 @@ namespace ark {
         // 每个 frame slot 使用独立 uniform buffer / descriptor set，避免覆盖 GPU 仍在读取的数据。
         frameContext.context->setPipeline(*m_Pipeline);
         frameContext.context->bindDescriptorSet(0, *m_DescriptorSets[frameSlot]);
-        frameContext.context->setVertexBuffer(0, *m_VertexBuffer);
-        frameContext.context->setIndexBuffer(*m_IndexBuffer, rhi::IndexType::UInt16);
-
-        rhi::DrawIndexedDesc drawDesc{};
-        drawDesc.indexCount = static_cast<u32>(CubeIndices.size());
-        frameContext.context->drawIndexed(drawDesc);
+        m_Mesh.bind(*frameContext.context);
+        frameContext.context->drawIndexed(m_Mesh.makeDrawIndexedDesc());
         return true;
     }
 
@@ -259,38 +279,7 @@ namespace ark {
             return false;
         }
 
-        rhi::BufferDesc vertexBufferDesc{};
-        vertexBufferDesc.debugName = "CubeVertexBuffer";
-        vertexBufferDesc.size = sizeof(CubeVertices);
-        vertexBufferDesc.usage = rhi::BufferUsage::Vertex | rhi::BufferUsage::TransferDst;
-        vertexBufferDesc.memoryUsage = rhi::MemoryUsage::GpuOnly;
-        m_VertexBuffer = m_Device->createBuffer(vertexBufferDesc);
-
-        rhi::BufferDesc indexBufferDesc{};
-        indexBufferDesc.debugName = "CubeIndexBuffer";
-        indexBufferDesc.size = sizeof(CubeIndices);
-        indexBufferDesc.usage = rhi::BufferUsage::Index | rhi::BufferUsage::TransferDst;
-        indexBufferDesc.memoryUsage = rhi::MemoryUsage::GpuOnly;
-        m_IndexBuffer = m_Device->createBuffer(indexBufferDesc);
-
-        // 静态 mesh 数据先写入 staging，后续在 prepare() 中 copy 到 GPU-only buffer。
-        rhi::BufferDesc vertexStagingBufferDesc{};
-        vertexStagingBufferDesc.debugName = "CubeVertexStagingBuffer";
-        vertexStagingBufferDesc.size = sizeof(CubeVertices);
-        vertexStagingBufferDesc.usage = rhi::BufferUsage::TransferSrc;
-        vertexStagingBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
-        vertexStagingBufferDesc.initialData = CubeVertices.data();
-        m_VertexStagingBuffer = m_Device->createBuffer(vertexStagingBufferDesc);
-
-        rhi::BufferDesc indexStagingBufferDesc{};
-        indexStagingBufferDesc.debugName = "CubeIndexStagingBuffer";
-        indexStagingBufferDesc.size = sizeof(CubeIndices);
-        indexStagingBufferDesc.usage = rhi::BufferUsage::TransferSrc;
-        indexStagingBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
-        indexStagingBufferDesc.initialData = CubeIndices.data();
-        m_IndexStagingBuffer = m_Device->createBuffer(indexStagingBufferDesc);
-
-        return m_VertexBuffer && m_IndexBuffer && m_VertexStagingBuffer && m_IndexStagingBuffer;
+        return m_Mesh.create(*m_Device, makeCubeMesh());
     }
 
     bool CubePass::createPipelineResources() {
@@ -381,16 +370,16 @@ namespace ark {
 
         rhi::VertexBufferLayoutDesc vertexLayout{};
         vertexLayout.binding = 0;
-        vertexLayout.stride = sizeof(CubeVertex);
+        vertexLayout.stride = sizeof(asset::MeshVertex);
         vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
             .location = 0,
             .format = rhi::Format::R32G32B32Float,
-            .offset = offsetof(CubeVertex, position),
+            .offset = offsetof(asset::MeshVertex, position),
         });
         vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
             .location = 1,
             .format = rhi::Format::R32G32Float,
-            .offset = offsetof(CubeVertex, uv),
+            .offset = offsetof(asset::MeshVertex, uv0),
         });
 
         rhi::GraphicsPipelineDesc pipelineDesc{};
@@ -424,40 +413,12 @@ namespace ark {
     }
 
     bool CubePass::uploadMesh(FrameContext& frameContext) {
-        if (m_MeshUploaded) {
-            return true;
-        }
-
-        if (!frameContext.context || !m_VertexStagingBuffer || !m_IndexStagingBuffer || !m_VertexBuffer ||
-            !m_IndexBuffer) {
+        if (!frameContext.context) {
             ARK_ERROR("CubePass requires mesh upload resources");
             return false;
         }
 
-        rhi::BufferUploadDesc vertexUploadDesc{};
-        vertexUploadDesc.sourceBuffer = m_VertexStagingBuffer.get();
-        vertexUploadDesc.destinationBuffer = m_VertexBuffer.get();
-        vertexUploadDesc.size = sizeof(CubeVertices);
-
-        rhi::BufferUploadDesc indexUploadDesc{};
-        indexUploadDesc.sourceBuffer = m_IndexStagingBuffer.get();
-        indexUploadDesc.destinationBuffer = m_IndexBuffer.get();
-        indexUploadDesc.size = sizeof(CubeIndices);
-
-        // 首帧上传后目标 buffer 只作为 vertex/index 读取，staging 交给当前 frame 延迟释放。
-        const bool vertexUploaded = frameContext.context->uploadBufferData(vertexUploadDesc);
-        const bool indexUploaded = frameContext.context->uploadBufferData(indexUploadDesc);
-        if (vertexUploaded && indexUploaded) {
-            if (!frameContext.context->deferReleaseBuffer(m_VertexStagingBuffer) ||
-                !frameContext.context->deferReleaseBuffer(m_IndexStagingBuffer)) {
-                ARK_ERROR("CubePass failed to defer mesh staging buffers");
-                return false;
-            }
-
-            m_MeshUploaded = true;
-        }
-
-        return m_MeshUploaded;
+        return m_Mesh.upload(*frameContext.context);
     }
 
     bool CubePass::uploadTexture(FrameContext& frameContext) {
