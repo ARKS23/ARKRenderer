@@ -135,6 +135,11 @@ namespace ark::rhi::vulkan {
         if (result.status == SwapChainStatus::Ready || result.status == SwapChainStatus::Suboptimal) {
             m_CurrentBackBufferIndex = imageIndex;
             result.imageIndex = imageIndex;
+            if (imageIndex < m_RenderFinishedSemaphores.size() && m_RenderFinishedSemaphores[imageIndex]) {
+                // present 等待的 binary semaphore 按 swapchain image 复用，避免上一张 image 的 present 尚未释放时重用。
+                vulkanFrameResource->setSwapChainRenderFinishedSemaphore(
+                    m_RenderFinishedSemaphores[imageIndex]->getSemaphore());
+            }
         }
 
         return result;
@@ -241,6 +246,7 @@ namespace ark::rhi::vulkan {
         std::vector<VkImageView> imageViews = imageViewsResult.value();
         m_BackBufferTextures.reserve(m_BackBufferImages.size());
         m_BackBufferViews.reserve(imageViews.size());
+        m_RenderFinishedSemaphores.reserve(m_BackBufferImages.size());
 
         TextureDesc textureDesc{};
         textureDesc.extent = m_Desc.extent;
@@ -255,6 +261,10 @@ namespace ark::rhi::vulkan {
                                                                     textureDesc, VulkanTextureOwnership::Borrowed));
             m_BackBufferViews.push_back(makeScope<VulkanTextureView>(m_Device->getDevice(), imageViews[index],
                                                                      m_BackBufferTextures.back().get(), viewDesc));
+
+            VulkanSyncDesc renderFinishedDesc{};
+            renderFinishedDesc.type = VulkanSyncType::Semaphore;
+            m_RenderFinishedSemaphores.push_back(makeScope<VulkanSync>(m_Device->getDevice(), renderFinishedDesc));
         }
 
         createDepthResources();
@@ -291,6 +301,7 @@ namespace ark::rhi::vulkan {
         m_BackBufferViews.clear();
         m_BackBufferTextures.clear();
         m_BackBufferImages.clear();
+        m_RenderFinishedSemaphores.clear();
         m_BackBufferCount = 0;
         m_CurrentBackBufferIndex = InvalidBackBufferIndex;
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Memory.h"
 #include "rhi/RHICommon.h"
 #include "rhi/ResourceBarrier.h"
 
@@ -62,6 +63,14 @@ namespace ark::rhi {
         u32 arrayLayer = 0;             // 目标 array layer，当前只支持 0。
     };
 
+    struct BufferUploadDesc {
+        Buffer* sourceBuffer = nullptr;      // CPU 可写 staging buffer，必须支持 TransferSrc usage。
+        Buffer* destinationBuffer = nullptr; // 目标 GPU buffer，必须支持 TransferDst usage。
+        u64 sourceOffset = 0;                // 源 buffer 中数据起始偏移，单位为 byte。
+        u64 destinationOffset = 0;           // 目标 buffer 中写入起始偏移，单位为 byte。
+        u64 size = 0;                        // 本次上传的字节数。
+    };
+
     // submit 描述当前只覆盖 swapchain 最小同步，后续可以扩展为多 semaphore / timeline semaphore。
     struct SubmitDesc {
         FrameResource* frameResource = nullptr;
@@ -95,6 +104,8 @@ namespace ark::rhi {
         // CPU 可见 buffer 的直接更新路径；调用方需要保证不会覆盖 GPU 仍在读取的 in-flight 数据。
         virtual bool updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset = 0) = 0;
         virtual bool uploadTextureData(const TextureUploadDesc& desc) = 0;
+        virtual bool uploadBufferData(const BufferUploadDesc& desc) = 0;
+        virtual bool deferReleaseBuffer(Scope<Buffer>& buffer) = 0;
         virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset = 0) = 0;
         virtual void setIndexBuffer(Buffer& buffer, IndexType indexType = IndexType::UInt32, u64 offset = 0) = 0;
         virtual void draw(const DrawDesc& desc) = 0;

@@ -11,6 +11,7 @@
 
 #include <array>
 #include <limits>
+#include <utility>
 
 namespace ark::rhi::vulkan {
     namespace {
@@ -165,6 +166,44 @@ namespace ark::rhi::vulkan {
             result = lhs * rhs;
             return true;
         }
+
+        VkAccessFlags toBufferUploadReadAccessMask(BufferUsage usage) {
+            VkAccessFlags accessMask = 0;
+
+            if (hasBufferUsage(usage, BufferUsage::Vertex)) {
+                accessMask |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            }
+            if (hasBufferUsage(usage, BufferUsage::Index)) {
+                accessMask |= VK_ACCESS_INDEX_READ_BIT;
+            }
+            if (hasBufferUsage(usage, BufferUsage::Uniform)) {
+                accessMask |= VK_ACCESS_UNIFORM_READ_BIT;
+            }
+            if (hasBufferUsage(usage, BufferUsage::Storage)) {
+                accessMask |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            }
+            if (hasBufferUsage(usage, BufferUsage::TransferSrc)) {
+                accessMask |= VK_ACCESS_TRANSFER_READ_BIT;
+            }
+
+            return accessMask != 0 ? accessMask : VK_ACCESS_MEMORY_READ_BIT;
+        }
+
+        VkPipelineStageFlags toBufferUploadReadStageMask(BufferUsage usage) {
+            VkPipelineStageFlags stageMask = 0;
+
+            if (hasBufferUsage(usage, BufferUsage::Vertex) || hasBufferUsage(usage, BufferUsage::Index)) {
+                stageMask |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+            }
+            if (hasBufferUsage(usage, BufferUsage::Uniform) || hasBufferUsage(usage, BufferUsage::Storage)) {
+                stageMask |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            }
+            if (hasBufferUsage(usage, BufferUsage::TransferSrc)) {
+                stageMask |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+            }
+
+            return stageMask != 0 ? stageMask : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        }
     } // namespace
 
     VulkanCommandContext::VulkanCommandContext(VulkanDevice& device) : m_Device(device) {
@@ -190,6 +229,11 @@ namespace ark::rhi::vulkan {
         const VkFence fence = frame->getInFlightFence();
         if (fence != VK_NULL_HANDLE) {
             ARK_VK_CHECK(vkWaitForFences(m_Device.getDevice(), 1, &fence, VK_TRUE, std::numeric_limits<u64>::max()));
+        }
+
+        if (frame->deferredDeletion) {
+            // fence signal 后才能释放上一轮提交中仍可能被 GPU 使用的上传 staging 资源。
+            frame->deferredDeletion->flush();
         }
 
         return *frame;
@@ -607,6 +651,105 @@ namespace ark::rhi::vulkan {
             },
         }};
         pipelineBarrier(toShaderResource);
+        return true;
+    }
+
+    bool VulkanCommandContext::uploadBufferData(const BufferUploadDesc& desc) {
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::uploadBufferData", commandBuffer)) {
+            return false;
+        }
+
+        if (m_IsRendering) {
+            // buffer copy 同样必须发生在 dynamic rendering scope 外。
+            ARK_ERROR("VulkanCommandContext::uploadBufferData must be recorded outside rendering scope");
+            return false;
+        }
+
+        VulkanBuffer* sourceBuffer = dynamic_cast<VulkanBuffer*>(desc.sourceBuffer);
+        if (!sourceBuffer || sourceBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData requires VulkanBuffer source");
+            return false;
+        }
+
+        VulkanBuffer* destinationBuffer = dynamic_cast<VulkanBuffer*>(desc.destinationBuffer);
+        if (!destinationBuffer || destinationBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData requires VulkanBuffer destination");
+            return false;
+        }
+
+        if (desc.size == 0) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData requires non-zero size");
+            return false;
+        }
+
+        const BufferDesc& sourceDesc = sourceBuffer->getDesc();
+        if (!hasBufferUsage(sourceDesc.usage, BufferUsage::TransferSrc)) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData source buffer requires TransferSrc usage");
+            return false;
+        }
+
+        const BufferDesc& destinationDesc = destinationBuffer->getDesc();
+        if (!hasBufferUsage(destinationDesc.usage, BufferUsage::TransferDst)) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData destination buffer requires TransferDst usage");
+            return false;
+        }
+
+        if (desc.sourceOffset > sourceDesc.size || desc.size > sourceDesc.size - desc.sourceOffset) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData source range is out of bounds");
+            return false;
+        }
+
+        if (desc.destinationOffset > destinationDesc.size || desc.size > destinationDesc.size - desc.destinationOffset) {
+            ARK_ERROR("VulkanCommandContext::uploadBufferData destination range is out of bounds");
+            return false;
+        }
+
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset = desc.sourceOffset;
+        copyRegion.dstOffset = desc.destinationOffset;
+        copyRegion.size = desc.size;
+        vkCmdCopyBuffer(commandBuffer, sourceBuffer->getHandle(), destinationBuffer->getHandle(), 1, &copyRegion);
+
+        // copy 后让 transfer write 对后续 vertex/index/uniform 等读取可见。
+        VkBufferMemoryBarrier bufferBarrier{};
+        bufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        bufferBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        bufferBarrier.dstAccessMask = toBufferUploadReadAccessMask(destinationDesc.usage);
+        bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        bufferBarrier.buffer = destinationBuffer->getHandle();
+        bufferBarrier.offset = desc.destinationOffset;
+        bufferBarrier.size = desc.size;
+
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             toBufferUploadReadStageMask(destinationDesc.usage), 0, 0, nullptr, 1, &bufferBarrier, 0,
+                             nullptr);
+        return true;
+    }
+
+    bool VulkanCommandContext::deferReleaseBuffer(Scope<Buffer>& buffer) {
+        if (!buffer) {
+            return true;
+        }
+
+        if (!m_RecordingFrame || !m_IsRecording) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseBuffer requires active frame recording");
+            return false;
+        }
+
+        if (!m_RecordingFrame->deferredDeletion) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseBuffer requires deferred deletion queue");
+            return false;
+        }
+
+        VulkanBuffer* vulkanBuffer = dynamic_cast<VulkanBuffer*>(buffer.get());
+        if (!vulkanBuffer || vulkanBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseBuffer requires VulkanBuffer");
+            return false;
+        }
+
+        m_RecordingFrame->deferredDeletion->deferReleaseBuffer(std::move(buffer));
         return true;
     }
 

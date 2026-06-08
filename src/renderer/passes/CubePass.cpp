@@ -119,21 +119,7 @@ namespace ark {
     void CubePass::setup(rhi::RenderDevice& device) {
         m_Device = &device;
 
-        rhi::BufferDesc vertexBufferDesc{};
-        vertexBufferDesc.debugName = "CubeVertexBuffer";
-        vertexBufferDesc.size = sizeof(CubeVertices);
-        vertexBufferDesc.usage = rhi::BufferUsage::Vertex;
-        vertexBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
-        vertexBufferDesc.initialData = CubeVertices.data();
-        m_VertexBuffer = device.createBuffer(vertexBufferDesc);
-
-        rhi::BufferDesc indexBufferDesc{};
-        indexBufferDesc.debugName = "CubeIndexBuffer";
-        indexBufferDesc.size = sizeof(CubeIndices);
-        indexBufferDesc.usage = rhi::BufferUsage::Index;
-        indexBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
-        indexBufferDesc.initialData = CubeIndices.data();
-        m_IndexBuffer = device.createBuffer(indexBufferDesc);
+        createMeshResources();
 
         rhi::DescriptorSetLayoutDesc descriptorSetLayoutDesc{};
         descriptorSetLayoutDesc.debugName = "CubeDescriptorSetLayout";
@@ -202,11 +188,11 @@ namespace ark {
     }
 
     bool CubePass::prepare(FrameContext& frameContext) {
-        return uploadTexture(frameContext);
+        return uploadMesh(frameContext) && uploadTexture(frameContext);
     }
 
     bool CubePass::execute(FrameContext& frameContext) {
-        if (!frameContext.context || !m_VertexBuffer || !m_IndexBuffer || !m_TextureUploaded) {
+        if (!frameContext.context || !m_VertexBuffer || !m_IndexBuffer || !m_MeshUploaded || !m_TextureUploaded) {
             ARK_ERROR("CubePass requires DeviceContext and mesh buffers");
             return false;
         }
@@ -227,6 +213,46 @@ namespace ark {
         drawDesc.indexCount = static_cast<u32>(CubeIndices.size());
         frameContext.context->drawIndexed(drawDesc);
         return true;
+    }
+
+    bool CubePass::createMeshResources() {
+        if (!m_Device) {
+            ARK_ERROR("CubePass requires device for mesh resources");
+            return false;
+        }
+
+        rhi::BufferDesc vertexBufferDesc{};
+        vertexBufferDesc.debugName = "CubeVertexBuffer";
+        vertexBufferDesc.size = sizeof(CubeVertices);
+        vertexBufferDesc.usage = rhi::BufferUsage::Vertex | rhi::BufferUsage::TransferDst;
+        vertexBufferDesc.memoryUsage = rhi::MemoryUsage::GpuOnly;
+        m_VertexBuffer = m_Device->createBuffer(vertexBufferDesc);
+
+        rhi::BufferDesc indexBufferDesc{};
+        indexBufferDesc.debugName = "CubeIndexBuffer";
+        indexBufferDesc.size = sizeof(CubeIndices);
+        indexBufferDesc.usage = rhi::BufferUsage::Index | rhi::BufferUsage::TransferDst;
+        indexBufferDesc.memoryUsage = rhi::MemoryUsage::GpuOnly;
+        m_IndexBuffer = m_Device->createBuffer(indexBufferDesc);
+
+        // 静态 mesh 数据先写入 staging，后续在 prepare() 中 copy 到 GPU-only buffer。
+        rhi::BufferDesc vertexStagingBufferDesc{};
+        vertexStagingBufferDesc.debugName = "CubeVertexStagingBuffer";
+        vertexStagingBufferDesc.size = sizeof(CubeVertices);
+        vertexStagingBufferDesc.usage = rhi::BufferUsage::TransferSrc;
+        vertexStagingBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+        vertexStagingBufferDesc.initialData = CubeVertices.data();
+        m_VertexStagingBuffer = m_Device->createBuffer(vertexStagingBufferDesc);
+
+        rhi::BufferDesc indexStagingBufferDesc{};
+        indexStagingBufferDesc.debugName = "CubeIndexStagingBuffer";
+        indexStagingBufferDesc.size = sizeof(CubeIndices);
+        indexStagingBufferDesc.usage = rhi::BufferUsage::TransferSrc;
+        indexStagingBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+        indexStagingBufferDesc.initialData = CubeIndices.data();
+        m_IndexStagingBuffer = m_Device->createBuffer(indexStagingBufferDesc);
+
+        return m_VertexBuffer && m_IndexBuffer && m_VertexStagingBuffer && m_IndexStagingBuffer;
     }
 
     bool CubePass::createPipelineResources() {
@@ -346,6 +372,43 @@ namespace ark {
         return frameContext.context->updateBuffer(*m_CameraBuffers[frameSlot], &cameraUniform, sizeof(cameraUniform));
     }
 
+    bool CubePass::uploadMesh(FrameContext& frameContext) {
+        if (m_MeshUploaded) {
+            return true;
+        }
+
+        if (!frameContext.context || !m_VertexStagingBuffer || !m_IndexStagingBuffer || !m_VertexBuffer ||
+            !m_IndexBuffer) {
+            ARK_ERROR("CubePass requires mesh upload resources");
+            return false;
+        }
+
+        rhi::BufferUploadDesc vertexUploadDesc{};
+        vertexUploadDesc.sourceBuffer = m_VertexStagingBuffer.get();
+        vertexUploadDesc.destinationBuffer = m_VertexBuffer.get();
+        vertexUploadDesc.size = sizeof(CubeVertices);
+
+        rhi::BufferUploadDesc indexUploadDesc{};
+        indexUploadDesc.sourceBuffer = m_IndexStagingBuffer.get();
+        indexUploadDesc.destinationBuffer = m_IndexBuffer.get();
+        indexUploadDesc.size = sizeof(CubeIndices);
+
+        // 首帧上传后目标 buffer 只作为 vertex/index 读取，staging 交给当前 frame 延迟释放。
+        const bool vertexUploaded = frameContext.context->uploadBufferData(vertexUploadDesc);
+        const bool indexUploaded = frameContext.context->uploadBufferData(indexUploadDesc);
+        if (vertexUploaded && indexUploaded) {
+            if (!frameContext.context->deferReleaseBuffer(m_VertexStagingBuffer) ||
+                !frameContext.context->deferReleaseBuffer(m_IndexStagingBuffer)) {
+                ARK_ERROR("CubePass failed to defer mesh staging buffers");
+                return false;
+            }
+
+            m_MeshUploaded = true;
+        }
+
+        return m_MeshUploaded;
+    }
+
     bool CubePass::uploadTexture(FrameContext& frameContext) {
         if (m_TextureUploaded) {
             return true;
@@ -365,6 +428,11 @@ namespace ark {
 
         // 只在首次可录制命令帧上传；之后 texture 保持 ShaderResource 状态供 fragment shader 采样。
         m_TextureUploaded = frameContext.context->uploadTextureData(uploadDesc);
+        if (m_TextureUploaded && !frameContext.context->deferReleaseBuffer(m_TextureStagingBuffer)) {
+            ARK_ERROR("CubePass failed to defer texture staging buffer");
+            return false;
+        }
+
         return m_TextureUploaded;
     }
 } // namespace ark

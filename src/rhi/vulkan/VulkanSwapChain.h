@@ -2,6 +2,7 @@
 
 #include "rhi/SwapChain.h"
 #include "rhi/vulkan/VulkanCommon.h"
+#include "rhi/vulkan/VulkanSync.h"
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
 
@@ -41,6 +42,7 @@ namespace ark::rhi::vulkan {
         std::vector<VkImage> m_BackBufferImages;
         std::vector<Scope<VulkanTexture>> m_BackBufferTextures;
         std::vector<Scope<VulkanTextureView>> m_BackBufferViews;
+        std::vector<Scope<VulkanSync>> m_RenderFinishedSemaphores;
         Scope<VulkanTexture> m_DepthBufferTexture;
         Scope<VulkanTextureView> m_DepthBufferView;
     };

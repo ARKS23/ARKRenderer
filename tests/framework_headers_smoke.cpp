@@ -200,6 +200,11 @@ int main() {
     textureUploadDesc.extent = ark::rhi::Extent2D{128, 128};
     textureUploadDesc.rowPitch = textureUploadDesc.extent.width * 4;
     textureUploadDesc.bytesPerPixel = 4;
+    ark::rhi::BufferUploadDesc bufferUploadDesc{};
+    bufferUploadDesc.sourceOffset = 0;
+    bufferUploadDesc.destinationOffset = 0;
+    bufferUploadDesc.size = bufferDesc.size;
+    ark::Scope<ark::rhi::Buffer> deferredBuffer;
     ark::asset::ImageData imageData{};
     imageData.width = 2;
     imageData.height = 2;

@@ -15,11 +15,11 @@ CubePass
 
 这说明 RHI descriptor、sampler、texture view、shader binding 和 `vkCmdCopyBufferToImage` 路径已经可用。接下来不应该直接跳到 glTF、PBR 或完整材质系统，因为当前资源上传和生命周期仍然是阶段性实现：
 
-- texture upload 由 `CubePass` 自己持有 staging buffer，尚未形成可复用上传路径。
+- texture upload 已有 `TextureUploadDesc` 路径；upload staging buffer 已可交给 frame-level deferred deletion，尚未迁移到统一 upload allocator。
 - `TextureUploadDesc` 已在 0.7.2 显式表达 `rowPitch` / `bytesPerPixel`，但实现仍只覆盖 tightly packed RGBA8、2D、mip0、array layer 0。
-- `VulkanBuffer` 对 `GpuOnly initialData` 仍然显式报错，GPU-only buffer 上传没有闭环。
+- `VulkanBuffer` 对 `GpuOnly initialData` 仍然显式报错；0.7.3 已补齐 staging + `uploadBufferData()` 的最小上传闭环。
 - `TextureLoader` 已在 0.7.1 输出 CPU 侧 `ImageData` 和 LDR RGBA8 加载路径；HDR 路径仍保留 TODO。
-- `VulkanDeletionQueue` 仍是占位类，等待 GPU 完成后再释放资源的策略尚未落地。
+- `VulkanDeletionQueue` 已用于 upload staging buffer 的延迟释放；完整 Vulkan 对象 deferred destruction 仍未覆盖。
 - `VulkanDescriptorManager` 仍是固定容量 descriptor pool，资源数量增长后会遇到分配上限。
 
 因此 Phase 0.7 的主线应是资源上传与生命周期收口，为后续真实纹理、mesh、material 和 glTF 做准备。
@@ -273,6 +273,22 @@ DeviceContext::uploadBufferData(staging -> gpu buffer)
 - `VulkanBuffer` 可以继续拒绝 `GpuOnly initialData`，但文档和调用路径必须说明正确做法。
 - 后续 mesh upload 可以复用该接口。
 
+当前实现状态：
+
+- 已新增 `rhi::BufferUploadDesc`，显式表达 source/destination buffer、source/destination offset 和 upload size。
+- 已新增 `DeviceContext::uploadBufferData()`，资源创建仍由 `RenderDevice` 负责，buffer copy 命令仍由 `DeviceContext` 录制。
+- `VulkanCommandContext::uploadBufferData()` 已实现：
+  - upload 必须在 active command buffer 中录制。
+  - upload 必须在 dynamic rendering scope 外录制。
+  - source buffer 必须是 Vulkan buffer 且包含 `TransferSrc` usage。
+  - destination buffer 必须是 Vulkan buffer 且包含 `TransferDst` usage。
+  - source/destination offset + size 必须在 buffer 范围内。
+  - 通过 `vkCmdCopyBuffer` 执行 copy。
+  - copy 后根据 destination buffer usage 插入最小 buffer barrier，使 transfer write 对后续 vertex/index/uniform/storage 等读取可见。
+- `CubePass` 的 vertex/index buffer 已迁移为 `GpuOnly | TransferDst` 目标 buffer，初始数据通过 `CpuToGpu | TransferSrc` staging buffer 在 `prepare()` 中首次上传。
+- mesh staging buffer 在 0.7.4 中交给当前 frame 的 deferred deletion queue；统一 upload allocator 仍留到后续阶段。
+- `VulkanBuffer` 仍显式拒绝 `GpuOnly initialData`，这是当前正确行为；调用方必须走 staging + `uploadBufferData()`。
+
 ### 0.7.4 staging 生命周期与 deferred deletion
 
 工作内容：
@@ -301,6 +317,16 @@ flush deferred deletion list
 - upload 资源不会在 GPU copy 执行前释放。
 - resize / shutdown 不会留下明显 lifetime 风险。
 - 文档明确哪些资源已经走 deferred deletion，哪些仍是阶段性保守策略。
+
+当前实现状态：
+
+- `VulkanDeletionQueue` 已从占位类变成最小延迟释放队列，当前只持有 `Scope<rhi::Buffer>`。
+- `VulkanFrameResource` 继续持有 per-frame `deferredDeletion`，释放时机和 frame slot fence 对齐。
+- `VulkanCommandContext::beginFrame()` 在等待当前 frame slot 的 in-flight fence signal 后 flush `deferredDeletion`，确保上一轮提交引用的 staging buffer 不会提前析构。
+- 已新增 `DeviceContext::deferReleaseBuffer(Scope<Buffer>&)`，调用成功后当前 frame 的 deletion queue 接管 buffer 所有权，调用方的 `Scope` 置空。
+- `CubePass` 的 vertex/index staging buffer 和 texture staging buffer 在首次 upload 成功后都会交给 `deferReleaseBuffer()`，不再由 pass 长期持有。
+- sandbox validation 暴露了 swapchain binary semaphore 复用风险；已改为每个 swapchain image 持有独立 render-finished semaphore，并在 acquire 成功后交给当前 frame submit/present 使用。
+- 当前 deferred deletion 只覆盖 upload staging buffer；texture、texture view、sampler、pipeline 等一般 GPU 对象仍依赖 owner 生命周期和 shutdown / resize 前的 `waitIdle()` 保守策略。
 
 ### 0.7.5 CubePass 迁移与纹理来源整理
 

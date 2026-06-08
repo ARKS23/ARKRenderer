@@ -30,6 +30,8 @@ namespace ark::rhi::vulkan {
         void bindDescriptorSet(u32 setIndex, DescriptorSet& descriptorSet) override;
         bool updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset) override;
         bool uploadTextureData(const TextureUploadDesc& desc) override;
+        bool uploadBufferData(const BufferUploadDesc& desc) override;
+        bool deferReleaseBuffer(Scope<Buffer>& buffer) override;
         void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) override;
         void setIndexBuffer(Buffer& buffer, IndexType indexType, u64 offset) override;
         void draw(const DrawDesc& desc) override;

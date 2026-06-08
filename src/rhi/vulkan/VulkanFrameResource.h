@@ -20,13 +20,22 @@ namespace ark::rhi::vulkan {
         Scope<VulkanSync> renderFinishedSemaphore;
         Scope<VulkanSync> inFlightFence;
         Scope<VulkanDeletionQueue> deferredDeletion;
+        VkSemaphore swapChainRenderFinishedSemaphore = VK_NULL_HANDLE;
 
         VkSemaphore getImageAvailableSemaphore() const {
             return imageAvailableSemaphore ? imageAvailableSemaphore->getSemaphore() : VK_NULL_HANDLE;
         }
 
         VkSemaphore getRenderFinishedSemaphore() const {
+            if (swapChainRenderFinishedSemaphore != VK_NULL_HANDLE) {
+                return swapChainRenderFinishedSemaphore;
+            }
+
             return renderFinishedSemaphore ? renderFinishedSemaphore->getSemaphore() : VK_NULL_HANDLE;
+        }
+
+        void setSwapChainRenderFinishedSemaphore(VkSemaphore semaphore) {
+            swapChainRenderFinishedSemaphore = semaphore;
         }
 
         VkFence getInFlightFence() const {

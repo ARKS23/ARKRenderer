@@ -29,15 +29,19 @@ namespace ark {
     private:
         static constexpr u32 FramesInFlight = 2;
 
+        bool createMeshResources();
         bool createPipelineResources();
         bool createTextureResources();
         bool ensurePipeline(FrameContext& frameContext);
         bool updateCameraUniform(FrameContext& frameContext, u32 frameSlot);
+        bool uploadMesh(FrameContext& frameContext);
         bool uploadTexture(FrameContext& frameContext);
 
         rhi::RenderDevice* m_Device = nullptr;
         Scope<rhi::Buffer> m_VertexBuffer;
         Scope<rhi::Buffer> m_IndexBuffer;
+        Scope<rhi::Buffer> m_VertexStagingBuffer;
+        Scope<rhi::Buffer> m_IndexStagingBuffer;
         Scope<rhi::Buffer> m_TextureStagingBuffer;
         Scope<rhi::Texture> m_Texture;
         Scope<rhi::TextureView> m_TextureView;
@@ -51,6 +55,7 @@ namespace ark {
         Scope<rhi::PipelineState> m_Pipeline;
         rhi::Format m_PipelineColorFormat = rhi::Format::Unknown;
         rhi::Format m_PipelineDepthFormat = rhi::Format::Unknown;
+        bool m_MeshUploaded = false;
         bool m_TextureUploaded = false;
     };
 } // namespace ark
