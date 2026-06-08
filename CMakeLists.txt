@@ -174,6 +174,11 @@ add_executable(ark_sandbox apps/sandbox/main.cpp)
 target_link_libraries(ark_sandbox PRIVATE ARKRenderer::ark_renderer)
 set_target_properties(ark_sandbox PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+add_custom_command(TARGET ark_sandbox POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory
+        "${PROJECT_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:ark_sandbox>/assets"
+    COMMENT "Copying runtime assets for ark_sandbox")
 
 # ------------------------------------------------------------------------------
 # 测试

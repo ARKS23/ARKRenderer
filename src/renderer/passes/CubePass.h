@@ -55,6 +55,9 @@ namespace ark {
         Scope<rhi::PipelineState> m_Pipeline;
         rhi::Format m_PipelineColorFormat = rhi::Format::Unknown;
         rhi::Format m_PipelineDepthFormat = rhi::Format::Unknown;
+        rhi::Extent2D m_TextureExtent{};
+        u32 m_TextureRowPitch = 0;
+        u32 m_TextureBytesPerPixel = 0;
         bool m_MeshUploaded = false;
         bool m_TextureUploaded = false;
     };

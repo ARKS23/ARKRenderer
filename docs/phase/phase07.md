@@ -350,6 +350,16 @@ set 0 binding 2: Sampler
 
 - descriptor layout、descriptor writes 和 HLSL binding 完全一致。
 
+当前实现状态：
+
+- `CubePass` 的程序生成 checkerboard 已整理为 `asset::ImageData`，保持 CPU 数据语义。
+- `CubePass` 优先通过 `asset::loadImageRgba8()` 加载 `assets/textures/xiaowei.png`，成功后按图片实际尺寸创建 RGBA8 texture 和 staging buffer。
+- 如果真实图片不存在或解码失败，`CubePass` 会记录英文日志并 fallback 到程序生成 checkerboard，默认 sandbox 仍可运行。
+- texture upload 继续使用 `TextureUploadDesc`，row pitch / bytes per pixel 由 `ImageData` 推导。
+- texture staging buffer 在首次 upload 成功后继续交给 `deferReleaseBuffer()`，保持 0.7.4 的 deferred deletion 策略。
+- `ark_sandbox` 构建后会把 `assets/` 复制到可执行文件目录，支持直接从 build output 运行 exe。
+- 当前真实图片路径仍是阶段性硬编码；后续 asset root / resource handle 进入更完整资源系统时再统一整理。
+
 ### 0.7.6 DescriptorManager 可增长 pool
 
 工作内容：

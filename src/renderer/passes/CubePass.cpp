@@ -1,6 +1,8 @@
 #include "renderer/passes/CubePass.h"
 
 #include "asset/ShaderLoader.h"
+#include "asset/TextureLoader.h"
+#include "core/FileSystem.h"
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
 #include "rhi/DeviceContext.h"
@@ -12,6 +14,7 @@
 
 #include <array>
 #include <cstddef>
+#include <limits>
 
 namespace ark {
     namespace {
@@ -37,6 +40,7 @@ namespace ark {
         constexpr u32 CheckerboardWidth = 128;
         constexpr u32 CheckerboardHeight = 128;
         constexpr u32 CheckerboardTileSize = 16;
+        constexpr const char* CubeTextureAssetPath = "assets/textures/xiaowei.png";
 
         // 每个面使用独立 4 个顶点，保证 UV 不会被 8 个共享角点错误复用。
         constexpr std::array<CubeVertex, 24> CubeVertices{{
@@ -80,8 +84,15 @@ namespace ark {
             20, 21, 22, 20, 22, 23,
         }};
 
-        std::array<CheckerPixel, CheckerboardWidth * CheckerboardHeight> makeCheckerboardTexture() {
-            std::array<CheckerPixel, CheckerboardWidth * CheckerboardHeight> pixels{};
+        asset::ImageData makeCheckerboardTexture() {
+            asset::ImageData image{};
+            image.width = CheckerboardWidth;
+            image.height = CheckerboardHeight;
+            image.format = asset::ImageFormat::Rgba8Unorm;
+            image.bytesPerPixel = sizeof(CheckerPixel);
+            image.debugName = "GeneratedCheckerboard";
+            image.pixels.resize(static_cast<usize>(image.width) * static_cast<usize>(image.height) * image.bytesPerPixel);
+            auto* pixels = reinterpret_cast<CheckerPixel*>(image.pixels.data());
 
             for (u32 y = 0; y < CheckerboardHeight; ++y) {
                 for (u32 x = 0; x < CheckerboardWidth; ++x) {
@@ -94,7 +105,34 @@ namespace ark {
                 }
             }
 
-            return pixels;
+            return image;
+        }
+
+        Path findCubeTextureFile() {
+            const std::array<Path, 3> candidates{
+                Path{CubeTextureAssetPath},
+                Path{"../"} / CubeTextureAssetPath,
+                Path{"../../"} / CubeTextureAssetPath,
+            };
+
+            return findFirstExistingPath(candidates);
+        }
+
+        asset::ImageData loadCubeTextureImage() {
+            const Path texturePath = findCubeTextureFile();
+            if (!texturePath.empty()) {
+                asset::ImageData image = asset::loadImageRgba8(texturePath);
+                if (!image.empty()) {
+                    ARK_INFO("Loaded cube texture: {}", texturePath.string());
+                    return image;
+                }
+
+                ARK_WARN("Failed to load cube texture, fallback to checkerboard: {}", texturePath.string());
+            } else {
+                ARK_WARN("Cube texture file not found, fallback to checkerboard: {}", CubeTextureAssetPath);
+            }
+
+            return makeCheckerboardTexture();
         }
 
         CameraUniform makeCameraUniform(const FrameContext& frameContext) {
@@ -274,19 +312,32 @@ namespace ark {
             return false;
         }
 
-        const std::array<CheckerPixel, CheckerboardWidth * CheckerboardHeight> checkerboard = makeCheckerboardTexture();
+        const asset::ImageData textureImage = loadCubeTextureImage();
+        if (textureImage.empty() || textureImage.format != asset::ImageFormat::Rgba8Unorm ||
+            textureImage.bytesPerPixel != sizeof(CheckerPixel)) {
+            ARK_ERROR("CubePass requires RGBA8 texture image");
+            return false;
+        }
 
-        // staging buffer 保持为 pass-local 资源，避免 copy 提交后 GPU 尚未执行完成时提前释放。
+        if (textureImage.width > std::numeric_limits<u32>::max() / textureImage.bytesPerPixel) {
+            ARK_ERROR("CubePass texture row pitch overflow: {}", textureImage.debugName);
+            return false;
+        }
+
+        m_TextureExtent = rhi::Extent2D{textureImage.width, textureImage.height};
+        m_TextureBytesPerPixel = textureImage.bytesPerPixel;
+        m_TextureRowPitch = textureImage.width * textureImage.bytesPerPixel;
+
         rhi::BufferDesc stagingBufferDesc{};
         stagingBufferDesc.debugName = "CubeTextureStagingBuffer";
-        stagingBufferDesc.size = sizeof(checkerboard);
+        stagingBufferDesc.size = textureImage.byteSize();
         stagingBufferDesc.usage = rhi::BufferUsage::TransferSrc;
         stagingBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
-        stagingBufferDesc.initialData = checkerboard.data();
+        stagingBufferDesc.initialData = textureImage.pixels.data();
         m_TextureStagingBuffer = m_Device->createBuffer(stagingBufferDesc);
 
         rhi::TextureDesc textureDesc{};
-        textureDesc.extent = rhi::Extent2D{CheckerboardWidth, CheckerboardHeight};
+        textureDesc.extent = m_TextureExtent;
         textureDesc.format = rhi::Format::RGBA8Unorm;
         textureDesc.mipLevels = 1;
         textureDesc.arrayLayers = 1;
@@ -422,9 +473,9 @@ namespace ark {
         rhi::TextureUploadDesc uploadDesc{};
         uploadDesc.sourceBuffer = m_TextureStagingBuffer.get();
         uploadDesc.texture = m_Texture.get();
-        uploadDesc.extent = rhi::Extent2D{CheckerboardWidth, CheckerboardHeight};
-        uploadDesc.rowPitch = CheckerboardWidth * static_cast<u32>(sizeof(CheckerPixel));
-        uploadDesc.bytesPerPixel = static_cast<u32>(sizeof(CheckerPixel));
+        uploadDesc.extent = m_TextureExtent;
+        uploadDesc.rowPitch = m_TextureRowPitch;
+        uploadDesc.bytesPerPixel = m_TextureBytesPerPixel;
 
         // 只在首次可录制命令帧上传；之后 texture 保持 ShaderResource 状态供 fragment shader 采样。
         m_TextureUploaded = frameContext.context->uploadTextureData(uploadDesc);
