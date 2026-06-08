@@ -3,6 +3,8 @@
 #include "core/Types.h"
 #include "rhi/vulkan/VulkanCommon.h"
 
+#include <vector>
+
 namespace ark::rhi::vulkan {
     class VulkanDescriptorSetLayout;
 
@@ -21,9 +23,11 @@ namespace ark::rhi::vulkan {
         VkDescriptorSet allocateDescriptorSet(const VulkanDescriptorSetLayout& layout);
 
     private:
+        VkDescriptorPool createPool() const;
+        VkDescriptorSet allocateFromPool(VkDescriptorPool pool, VkDescriptorSetLayout layout, VkResult& result) const;
         void reset();
 
         VkDevice m_Device = VK_NULL_HANDLE;
-        VkDescriptorPool m_Pool = VK_NULL_HANDLE;
+        std::vector<VkDescriptorPool> m_Pools;
     };
 } // namespace ark::rhi::vulkan

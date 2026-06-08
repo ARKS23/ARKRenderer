@@ -20,7 +20,7 @@ CubePass
 - `VulkanBuffer` 对 `GpuOnly initialData` 仍然显式报错；0.7.3 已补齐 staging + `uploadBufferData()` 的最小上传闭环。
 - `TextureLoader` 已在 0.7.1 输出 CPU 侧 `ImageData` 和 LDR RGBA8 加载路径；HDR 路径仍保留 TODO。
 - `VulkanDeletionQueue` 已用于 upload staging buffer 的延迟释放；完整 Vulkan 对象 deferred destruction 仍未覆盖。
-- `VulkanDescriptorManager` 仍是固定容量 descriptor pool，资源数量增长后会遇到分配上限。
+- `VulkanDescriptorManager` 已在 0.7.6 支持简单多 pool 增长；单个 descriptor set 超出单 pool 配额、pool reset/free 策略仍留到后续阶段。
 
 因此 Phase 0.7 的主线应是资源上传与生命周期收口，为后续真实纹理、mesh、material 和 glTF 做准备。
 
@@ -374,6 +374,15 @@ set 0 binding 2: Sampler
 - 普通 descriptor set 分配不再被单个固定 256 pool 卡死。
 - pool 生命周期仍集中在 `VulkanDescriptorManager`。
 - renderer/RHI 不知道 pool 增长细节。
+
+当前实现状态：
+
+- `VulkanDescriptorManager` 已从单个 `VkDescriptorPool` 改为内部持有 `std::vector<VkDescriptorPool>`。
+- 构造时创建第一个 pool；普通分配优先使用当前最后一个 pool。
+- 当 `vkAllocateDescriptorSets` 返回 `VK_ERROR_OUT_OF_POOL_MEMORY` 或 `VK_ERROR_FRAGMENTED_POOL` 时，创建新 pool 并重试一次。
+- 每个 pool 仍沿用当前阶段固定容量：256 sets、256 uniform buffer、256 sampled image、256 sampler。
+- descriptor set 不单独 free，descriptor pool 销毁时统一释放其分配出的 sets。
+- 该策略只解决“set 数量增长导致当前 pool 耗尽”；如果单个 descriptor set 本身超过单 pool 配额，仍会明确失败。
 
 ## 代码阅读建议
 
