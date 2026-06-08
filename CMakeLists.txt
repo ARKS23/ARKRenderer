@@ -197,6 +197,7 @@ if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_framework_headers_smoke tests/framework_headers_smoke.cpp)
     ark_add_smoke_test(ark_gltf_loader_smoke tests/gltf_loader_smoke.cpp)
     ark_add_smoke_test(ark_mesh_data_smoke tests/mesh_data_smoke.cpp)
+    ark_add_smoke_test(ark_render_scene_queue_smoke tests/render_scene_queue_smoke.cpp)
     ark_add_smoke_test(ark_texture_loader_smoke tests/texture_loader_smoke.cpp)
 
     if(ARK_DXC_SUPPORTED)

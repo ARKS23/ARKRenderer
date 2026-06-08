@@ -237,6 +237,8 @@ int main() {
     ark::MeshResource meshResource{};
     ark::RenderGraph renderGraph;
     const bool renderGraphExecuted = renderGraph.execute(frameContext);
+    ark::RenderScene renderScene{};
+    ark::RenderQueue renderQueue{};
     ark::Scope<ark::FrameRenderer> frameRenderer = ark::createFrameRenderer();
 
     ark::Timer timer;
@@ -284,6 +286,8 @@ int main() {
     (void)rendererDesc;
     (void)meshResource;
     (void)renderGraphExecuted;
+    (void)renderScene;
+    (void)renderQueue;
     (void)frameRenderer;
 
     return EXIT_SUCCESS;
