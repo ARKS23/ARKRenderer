@@ -198,6 +198,11 @@ int main() {
     samplerDesc.minFilter = ark::rhi::FilterMode::Nearest;
     ark::rhi::TextureUploadDesc textureUploadDesc{};
     textureUploadDesc.extent = ark::rhi::Extent2D{128, 128};
+    ark::asset::ImageData imageData{};
+    imageData.width = 2;
+    imageData.height = 2;
+    imageData.format = ark::asset::ImageFormat::Rgba8Unorm;
+    imageData.bytesPerPixel = 4;
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -247,6 +252,7 @@ int main() {
     (void)samplerDescriptor;
     (void)samplerDesc;
     (void)textureUploadDesc;
+    (void)imageData;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
