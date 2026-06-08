@@ -198,6 +198,8 @@ int main() {
     samplerDesc.minFilter = ark::rhi::FilterMode::Nearest;
     ark::rhi::TextureUploadDesc textureUploadDesc{};
     textureUploadDesc.extent = ark::rhi::Extent2D{128, 128};
+    textureUploadDesc.rowPitch = textureUploadDesc.extent.width * 4;
+    textureUploadDesc.bytesPerPixel = 4;
     ark::asset::ImageData imageData{};
     imageData.width = 2;
     imageData.height = 2;

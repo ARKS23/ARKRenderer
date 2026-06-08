@@ -156,6 +156,15 @@ namespace ark::rhi::vulkan {
             clearValue.color.float32[3] = color.a;
             return clearValue;
         }
+
+        bool checkedMultiply(u64 lhs, u64 rhs, u64& result) {
+            if (lhs != 0 && rhs > std::numeric_limits<u64>::max() / lhs) {
+                return false;
+            }
+
+            result = lhs * rhs;
+            return true;
+        }
     } // namespace
 
     VulkanCommandContext::VulkanCommandContext(VulkanDevice& device) : m_Device(device) {
@@ -505,6 +514,66 @@ namespace ark::rhi::vulkan {
             return false;
         }
 
+        const TextureDesc& textureDesc = texture->getDesc();
+        if (textureDesc.format != Format::RGBA8Unorm) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports RGBA8Unorm textures only");
+            return false;
+        }
+
+        if (!hasTextureUsage(textureDesc.usage, TextureUsage::TransferDst)) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData target texture requires TransferDst usage");
+            return false;
+        }
+
+        const BufferDesc& sourceDesc = sourceBuffer->getDesc();
+        if (!hasBufferUsage(sourceDesc.usage, BufferUsage::TransferSrc)) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData source buffer requires TransferSrc usage");
+            return false;
+        }
+
+        if (desc.mipLevel != 0 || desc.arrayLayer != 0) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports only mip 0 and array layer 0");
+            return false;
+        }
+
+        if (desc.extent.width > textureDesc.extent.width || desc.extent.height > textureDesc.extent.height) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData extent exceeds target texture extent");
+            return false;
+        }
+
+        if (desc.bytesPerPixel != 4) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports 4 bytes per pixel only");
+            return false;
+        }
+
+        if (desc.sourceOffset % desc.bytesPerPixel != 0) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData source offset must align to pixel size");
+            return false;
+        }
+
+        u64 tightlyPackedRowPitch = 0;
+        if (!checkedMultiply(desc.extent.width, desc.bytesPerPixel, tightlyPackedRowPitch)) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData row pitch overflow");
+            return false;
+        }
+
+        const u64 resolvedRowPitch = desc.rowPitch == 0 ? tightlyPackedRowPitch : desc.rowPitch;
+        if (resolvedRowPitch != tightlyPackedRowPitch) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports tightly packed rows only");
+            return false;
+        }
+
+        u64 uploadByteSize = 0;
+        if (!checkedMultiply(resolvedRowPitch, desc.extent.height, uploadByteSize)) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData upload size overflow");
+            return false;
+        }
+
+        if (desc.sourceOffset > sourceDesc.size || uploadByteSize > sourceDesc.size - desc.sourceOffset) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData source range is out of bounds");
+            return false;
+        }
+
         // 首次上传从 Undefined 转为 CopyDst，允许 transfer stage 写入 image。
         const std::array<ResourceBarrier, 1> toCopyDst{{
             ResourceBarrier{
@@ -517,6 +586,7 @@ namespace ark::rhi::vulkan {
 
         VkBufferImageCopy copyRegion{};
         copyRegion.bufferOffset = desc.sourceOffset;
+        // Phase 0.7.2 先只接收 tightly packed 数据；非 0 row length 留给后续 rowPitch 扩展。
         copyRegion.bufferRowLength = 0;
         copyRegion.bufferImageHeight = 0;
         copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;

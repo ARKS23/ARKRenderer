@@ -16,7 +16,7 @@ CubePass
 这说明 RHI descriptor、sampler、texture view、shader binding 和 `vkCmdCopyBufferToImage` 路径已经可用。接下来不应该直接跳到 glTF、PBR 或完整材质系统，因为当前资源上传和生命周期仍然是阶段性实现：
 
 - texture upload 由 `CubePass` 自己持有 staging buffer，尚未形成可复用上传路径。
-- `TextureUploadDesc` 只覆盖 tightly packed RGBA8、2D、mip0、array layer 0。
+- `TextureUploadDesc` 已在 0.7.2 显式表达 `rowPitch` / `bytesPerPixel`，但实现仍只覆盖 tightly packed RGBA8、2D、mip0、array layer 0。
 - `VulkanBuffer` 对 `GpuOnly initialData` 仍然显式报错，GPU-only buffer 上传没有闭环。
 - `TextureLoader` 已在 0.7.1 输出 CPU 侧 `ImageData` 和 LDR RGBA8 加载路径；HDR 路径仍保留 TODO。
 - `VulkanDeletionQueue` 仍是占位类，等待 GPU 完成后再释放资源的策略尚未落地。
@@ -227,6 +227,28 @@ ctest --preset msvc-vcpkg-local-debug
 - RHI 公共层仍无 Vulkan 类型。
 - upload API 能表达当前限制，不隐含 magic layout。
 - `CubePass` 的 texture upload 使用新描述仍能正常工作。
+
+当前实现状态：
+
+- 已扩展 `rhi::TextureUploadDesc`，新增 `rowPitch` 和 `bytesPerPixel`。
+- `rowPitch = 0` 表示 tightly packed，即 `extent.width * bytesPerPixel`。
+- `CubePass` 上传 checkerboard 时已显式填写 `rowPitch` 和 `bytesPerPixel`。
+- `VulkanCommandContext::uploadTextureData()` 已校验：
+  - upload 必须在 dynamic rendering scope 外记录。
+  - source buffer 必须是 Vulkan buffer 且包含 `TransferSrc` usage。
+  - target texture 必须是 Vulkan texture 且包含 `TransferDst` usage。
+  - 当前只支持 `Format::RGBA8Unorm`、`bytesPerPixel = 4`。
+  - 当前只支持 mip 0 和 array layer 0。
+  - 当前只支持 tightly packed rows；非紧密 row pitch 后续再扩展。
+  - upload 范围不能越过 source buffer 大小。
+- `framework_headers_smoke` 已触碰新增字段。
+- 仍保留 `Undefined -> CopyDst -> ShaderResource` texture barrier 语义。
+
+限制：
+
+- 当前还没有实现真正的 padded row upload；`rowPitch` 只是先进入 RHI 描述和校验。
+- 当前仍不支持 HDR / RGBA16F / RGBA32F texture upload。
+- 当前仍不支持 mipmap、array texture 或 image offset。
 
 ### 0.7.3 GPU-only buffer upload 最小闭环
 

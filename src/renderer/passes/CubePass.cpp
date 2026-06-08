@@ -26,6 +26,7 @@ namespace ark {
             u8 b = 0;
             u8 a = 255;
         };
+        static_assert(sizeof(CheckerPixel) == 4, "CheckerPixel must be tightly packed RGBA8");
 
         struct alignas(16) CameraUniform {
             glm::mat4 model;
@@ -359,6 +360,8 @@ namespace ark {
         uploadDesc.sourceBuffer = m_TextureStagingBuffer.get();
         uploadDesc.texture = m_Texture.get();
         uploadDesc.extent = rhi::Extent2D{CheckerboardWidth, CheckerboardHeight};
+        uploadDesc.rowPitch = CheckerboardWidth * static_cast<u32>(sizeof(CheckerPixel));
+        uploadDesc.bytesPerPixel = static_cast<u32>(sizeof(CheckerPixel));
 
         // 只在首次可录制命令帧上传；之后 texture 保持 ShaderResource 状态供 fragment shader 采样。
         m_TextureUploaded = frameContext.context->uploadTextureData(uploadDesc);

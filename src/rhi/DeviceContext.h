@@ -52,12 +52,14 @@ namespace ark::rhi {
     };
 
     struct TextureUploadDesc {
-        Buffer* sourceBuffer = nullptr;
-        Texture* texture = nullptr;
-        u64 sourceOffset = 0;
-        Extent2D extent{};
-        u32 mipLevel = 0;
-        u32 arrayLayer = 0;
+        Buffer* sourceBuffer = nullptr; // CPU 可写 staging buffer，作为 texture upload 的数据源。
+        Texture* texture = nullptr;     // 目标 GPU texture，必须支持 TransferDst usage。
+        u64 sourceOffset = 0;           // 源 buffer 中像素数据起始偏移，单位为 byte。
+        Extent2D extent{};              // 本次上传的二维范围，当前只支持 mip0/layer0 的 2D 区域。
+        u32 rowPitch = 0;               // 每行像素在 sourceBuffer 中占用的 byte 数；0 表示紧密排列。
+        u32 bytesPerPixel = 4;          // 单个像素占用的 byte 数，当前最小路径固定为 RGBA8 = 4。
+        u32 mipLevel = 0;               // 目标 mip level，当前只支持 0。
+        u32 arrayLayer = 0;             // 目标 array layer，当前只支持 0。
     };
 
     // submit 描述当前只覆盖 swapchain 最小同步，后续可以扩展为多 semaphore / timeline semaphore。
