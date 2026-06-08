@@ -247,6 +247,14 @@ Phase 0.8 不引入 transfer queue 或 timeline semaphore。
 - HDR 输入仍不会静默进入 RGBA8 路径。
 - descriptor layout / descriptor write / shader binding 一致。
 
+当前实现状态：
+
+- 已新增 `src/renderer/material/MaterialResource.h/.cpp`，作为 renderer 层最小 textured material resource。
+- `MaterialResource::create()` 消费 `asset::MaterialData`，通过 `asset::loadImageRgba8()` 加载 base color texture，并创建 GPU texture、texture view、sampler 和 texture staging buffer。
+- `MaterialResource::upload()` 在 render scope 外通过 `DeviceContext::uploadTextureData()` 上传 texture，并通过 `deferReleaseBuffer()` 交出 texture staging 生命周期。
+- `MaterialResource::updateDescriptorSet()` 只写入 sampled image / sampler binding，不拥有 per-frame camera uniform。
+- 当前只支持 LDR RGBA8 base color texture；HDR、mipmap、sRGB、压缩纹理仍未进入 Phase 0.8 最小实现。
+
 ### 0.8.4 ForwardPass 最小落地
 
 工作内容：
@@ -270,6 +278,22 @@ set 0 binding 2: Sampler
 - upload 仍在 `prepare()` 阶段发生，dynamic rendering scope 内只做 draw。
 - 默认 sandbox 可运行。
 
+当前实现状态：
+
+- 已落地 `src/renderer/passes/ForwardPass.h/.cpp`，默认消费 `MeshResource` 和 `MaterialResource`。
+- `ForwardPass` 当前使用 generated cube fixture 构造 `asset::MeshPrimitiveData`，后续 0.8.5 再替换为 glTF 2.0 loader 输出。
+- 已新增 `shaders/mesh.vert.hlsl` 和 `shaders/mesh.frag.hlsl`，shader binding 继续保持：
+
+```text
+set 0 binding 0: UniformBuffer
+set 0 binding 1: SampledImage
+set 0 binding 2: Sampler
+```
+
+- mesh shader 输入当前为 location 0 position、location 1 normal、location 2 uv0；fragment shader 当前只采样 base color texture。
+- `FrameRenderer` 默认调度已从 `CubePass` 切换到 `ForwardPass`，`CubePass` 仍保留为阶段回归/对照代码。
+- `ForwardPass::prepare()` 负责 mesh/material upload，`ForwardPass::execute()` 只负责更新 camera uniform、绑定 pipeline/descriptor/mesh 并 drawIndexed。
+
 ### 0.8.5 glTF 2.0 单 mesh + 单材质加载
 
 工作内容：
@@ -287,6 +311,17 @@ set 0 binding 2: Sampler
 - 外部 texture 相对路径基于 glTF 2.0 文件所在目录解析。
 - 缺失关键 attribute 时行为明确，不假装加载成功。
 
+当前实现状态：
+
+- 已实现 `src/asset/GltfLoader.h/.cpp`，通过 `tinygltf` 加载 glTF 2.0 core profile 的最小子集。
+- 当前支持第一个 mesh 的第一个 primitive，primitive mode 必须为 TRIANGLES。
+- 当前要求 POSITION、NORMAL、TEXCOORD_0 和 indices 全部存在，attribute 数据类型必须为 float vec3 / float vec2。
+- indices 支持 unsigned byte / unsigned short / unsigned int，并在 asset 层统一转换为 `std::vector<u32>`。
+- baseColorTexture 当前要求外部 image URI，路径基于 glTF 文件所在目录解析；图片像素仍交给 `TextureLoader` 解码。
+- `tinygltf` 图片解码被禁用，避免和 `asset::TextureLoader` 形成两套图片加载路径。
+- 已新增 `assets/models/forward_fixture.gltf` 作为 Phase 0.8 默认 sandbox glTF fixture，引用现有 `assets/textures/xiaowei.png`。
+- 已新增 `tests/gltf_loader_smoke.cpp` 并接入 `ark_gltf_loader_smoke`，验证 fixture 的 mesh/material 数据输出。
+
 ### 0.8.6 默认 sandbox 迁移
 
 工作内容：
@@ -301,6 +336,13 @@ set 0 binding 2: Sampler
 - 从仓库根目录运行和从 build output 运行 sandbox 都能找到资源。
 - sandbox smoke 通过。
 - validation layer 无明显 descriptor、barrier、lifetime 错误。
+
+当前实现状态：
+
+- `ForwardPass` 当前优先查找并加载 `assets/models/forward_fixture.gltf`。
+- glTF 加载失败或文件缺失时，`ForwardPass` 会 fallback 到 generated mesh + `assets/textures/xiaowei.png`，保证 sandbox 仍可运行。
+- 默认渲染路径已在 0.8.4 切换到 `ForwardPass`；0.8.6 保持该路径，并让其优先走 glTF fixture。
+- 现有 CMake post-build assets copy 会把 `assets/models/forward_fixture.gltf` 和 texture 一起复制到 sandbox 输出目录。
 
 ## 代码阅读建议
 

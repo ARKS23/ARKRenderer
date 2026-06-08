@@ -24,6 +24,7 @@
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
 #include "renderer/material/Material.h"
+#include "renderer/material/MaterialResource.h"
 #include "renderer/material/MaterialSystem.h"
 #include "renderer/passes/BloomPass.h"
 #include "renderer/passes/ClearPass.h"
@@ -222,6 +223,8 @@ int main() {
     ark::asset::ModelData modelData{};
     modelData.meshes.push_back(meshPrimitive);
     modelData.materials.push_back(materialData);
+    ark::asset::GltfLoader gltfLoader{};
+    ark::MaterialResource materialResource{};
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -274,6 +277,8 @@ int main() {
     (void)textureUploadDesc;
     (void)imageData;
     (void)modelData;
+    (void)gltfLoader;
+    (void)materialResource;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;

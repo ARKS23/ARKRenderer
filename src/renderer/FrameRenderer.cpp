@@ -5,7 +5,7 @@
 #include "renderer/FrameContext.h"
 #include "renderer/RenderPass.h"
 #include "renderer/passes/ClearPass.h"
-#include "renderer/passes/CubePass.h"
+#include "renderer/passes/ForwardPass.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/ResourceBarrier.h"
 #include "rhi/SwapChain.h"
@@ -19,8 +19,8 @@ namespace ark {
         class DefaultFrameRenderer final : public FrameRenderer {
         public:
             DefaultFrameRenderer()
-                : m_ClearPass(makeScope<ClearPass>()), m_CubePass(makeScope<CubePass>()),
-                  m_Passes{m_ClearPass.get(), m_CubePass.get()} {
+                : m_ClearPass(makeScope<ClearPass>()), m_ForwardPass(makeScope<ForwardPass>()),
+                  m_Passes{m_ClearPass.get(), m_ForwardPass.get()} {
             }
 
             void setup(rhi::RenderDevice& device) override {
@@ -125,7 +125,7 @@ namespace ark {
 
         private:
             Scope<ClearPass> m_ClearPass;
-            Scope<CubePass> m_CubePass;
+            Scope<ForwardPass> m_ForwardPass;
             std::array<RenderPass*, 2> m_Passes{};
             rhi::Extent2D m_Extent{};
         };

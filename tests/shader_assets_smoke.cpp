@@ -30,9 +30,12 @@ int main() {
     const bool cubeFragmentShaderValid = validateCompiledShader("cube.frag.spv");
     const bool texturedCubeVertexShaderValid = validateCompiledShader("textured_cube.vert.spv");
     const bool texturedCubeFragmentShaderValid = validateCompiledShader("textured_cube.frag.spv");
+    const bool meshVertexShaderValid = validateCompiledShader("mesh.vert.spv");
+    const bool meshFragmentShaderValid = validateCompiledShader("mesh.frag.spv");
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
-                   texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid
+                   texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
+                   meshFragmentShaderValid
                ? 0
                : 1;
 }
