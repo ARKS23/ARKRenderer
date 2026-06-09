@@ -12,6 +12,12 @@ namespace ark {
             return false;
         }
 
+        // factors 是 draw 级 uniform 的来源；texture resource 仍由 TextureResource 独立管理。
+        for (usize i = 0; i < 4; ++i) {
+            m_Factors.baseColorFactor[i] = material.baseColorFactor[i];
+        }
+        m_Factors.metallicFactor = material.metallicFactor;
+        m_Factors.roughnessFactor = material.roughnessFactor;
         m_BaseColorTexture = &baseColorTexture;
         return true;
     }

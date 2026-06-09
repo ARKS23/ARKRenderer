@@ -2,10 +2,15 @@
 #include "core/FileSystem.h"
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
 namespace {
+    bool near(float lhs, float rhs) {
+        return std::fabs(lhs - rhs) < 0.0001f;
+    }
+
     ark::Path findFixturePath(const ark::Path& relative) {
         const std::array<ark::Path, 3> candidates{
             relative,
@@ -55,6 +60,13 @@ namespace {
         const ark::asset::MaterialData& material = model.materials.front();
         if (!material.hasBaseColorTexture() || material.baseColorTexturePath.filename() != "xiaowei.png") {
             std::cerr << "Unexpected glTF material texture path\n";
+            return false;
+        }
+
+        if (!near(material.baseColorFactor[0], 0.25f) || !near(material.baseColorFactor[1], 0.5f) ||
+            !near(material.baseColorFactor[2], 0.75f) || !near(material.baseColorFactor[3], 0.8f) ||
+            !near(material.metallicFactor, 0.35f) || !near(material.roughnessFactor, 0.65f)) {
+            std::cerr << "Unexpected glTF material factors\n";
             return false;
         }
 
@@ -130,6 +142,14 @@ namespace {
         const float rightScaleX = model.instances[1].localTransform.matrix[0];
         if (leftTranslation != -1.25f || rightTranslation != 1.25f || rightScaleX != 0.5f) {
             std::cerr << "Unexpected multinode transforms\n";
+            return false;
+        }
+
+        const ark::asset::MaterialData& material = model.materials.front();
+        if (!near(material.baseColorFactor[0], 1.0f) || !near(material.baseColorFactor[1], 1.0f) ||
+            !near(material.baseColorFactor[2], 1.0f) || !near(material.baseColorFactor[3], 1.0f) ||
+            !near(material.metallicFactor, 1.0f) || !near(material.roughnessFactor, 1.0f)) {
+            std::cerr << "Unexpected default glTF material factors\n";
             return false;
         }
 

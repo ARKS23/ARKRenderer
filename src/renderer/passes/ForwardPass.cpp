@@ -26,6 +26,13 @@ namespace ark {
             glm::mat4 model;
         };
 
+        struct alignas(16) MaterialUniform {
+            glm::vec4 baseColorFactor;
+            float metallicFactor = 1.0f;
+            float roughnessFactor = 1.0f;
+            float padding[2]{};
+        };
+
         CameraUniform makeCameraUniform(const FrameContext& frameContext) {
             CameraUniform uniform{};
             if (frameContext.view) {
@@ -36,6 +43,21 @@ namespace ark {
 
             uniform.view = glm::mat4{1.0f};
             uniform.projection = glm::mat4{1.0f};
+            return uniform;
+        }
+
+        MaterialUniform makeMaterialUniform(const MaterialResource& material) {
+            const MaterialFactors& factors = material.factors();
+
+            MaterialUniform uniform{};
+            uniform.baseColorFactor = glm::vec4{
+                factors.baseColorFactor[0],
+                factors.baseColorFactor[1],
+                factors.baseColorFactor[2],
+                factors.baseColorFactor[3],
+            };
+            uniform.metallicFactor = factors.metallicFactor;
+            uniform.roughnessFactor = factors.roughnessFactor;
             return uniform;
         }
     } // namespace
@@ -159,6 +181,12 @@ namespace ark {
             .count = 1,
             .stages = rhi::ShaderStageFlags::Vertex,
         });
+        descriptorSetLayoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 4,
+            .type = rhi::DescriptorType::UniformBuffer,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -239,9 +267,16 @@ namespace ark {
             objectBufferDesc.usage = rhi::BufferUsage::Uniform;
             objectBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
             resources.objectBuffer = m_Device->createBuffer(objectBufferDesc);
+
+            rhi::BufferDesc materialBufferDesc{};
+            materialBufferDesc.debugName = "ForwardMaterialUniformBuffer." + std::to_string(drawIndex);
+            materialBufferDesc.size = sizeof(MaterialUniform);
+            materialBufferDesc.usage = rhi::BufferUsage::Uniform;
+            materialBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+            resources.materialBuffer = m_Device->createBuffer(materialBufferDesc);
             resources.descriptorSet = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
 
-            if (!resources.objectBuffer || !resources.descriptorSet) {
+            if (!resources.objectBuffer || !resources.materialBuffer || !resources.descriptorSet) {
                 ARK_ERROR("ForwardPass failed to create draw descriptor resources");
                 return false;
             }
@@ -335,9 +370,25 @@ namespace ark {
                                                   &objectUniform, sizeof(objectUniform));
     }
 
+    bool ForwardPass::updateMaterialUniform(FrameContext& frameContext,
+                                            u32 frameSlot,
+                                            usize drawIndex,
+                                            const MaterialResource& material) {
+        if (!frameContext.context || frameSlot >= m_DrawDescriptors.size() ||
+            drawIndex >= m_DrawDescriptors[frameSlot].size() || !m_DrawDescriptors[frameSlot][drawIndex].materialBuffer) {
+            ARK_ERROR("ForwardPass requires per-draw material buffer");
+            return false;
+        }
+
+        const MaterialUniform materialUniform = makeMaterialUniform(material);
+        return frameContext.context->updateBuffer(*m_DrawDescriptors[frameSlot][drawIndex].materialBuffer,
+                                                  &materialUniform, sizeof(materialUniform));
+    }
+
     bool ForwardPass::updateDrawDescriptorSet(u32 frameSlot, usize drawIndex, MaterialResource& material) {
         if (frameSlot >= m_DrawDescriptors.size() || drawIndex >= m_DrawDescriptors[frameSlot].size() ||
             !m_CameraBuffers[frameSlot] || !m_DrawDescriptors[frameSlot][drawIndex].objectBuffer ||
+            !m_DrawDescriptors[frameSlot][drawIndex].materialBuffer ||
             !m_DrawDescriptors[frameSlot][drawIndex].descriptorSet) {
             ARK_ERROR("ForwardPass requires descriptor resources before descriptor update");
             return false;
@@ -356,6 +407,11 @@ namespace ark {
         objectDescriptor.buffer = descriptors.objectBuffer.get();
         objectDescriptor.range = sizeof(ObjectUniform);
         descriptors.descriptorSet->updateUniformBuffer(3, objectDescriptor);
+
+        rhi::BufferDescriptor materialDescriptor{};
+        materialDescriptor.buffer = descriptors.materialBuffer.get();
+        materialDescriptor.range = sizeof(MaterialUniform);
+        descriptors.descriptorSet->updateUniformBuffer(4, materialDescriptor);
         return true;
     }
 
@@ -376,7 +432,8 @@ namespace ark {
             return false;
         }
 
-        if (!updateObjectUniform(frameContext, frameSlot, drawIndex, modelMatrix)) {
+        if (!updateObjectUniform(frameContext, frameSlot, drawIndex, modelMatrix) ||
+            !updateMaterialUniform(frameContext, frameSlot, drawIndex, material)) {
             return false;
         }
 

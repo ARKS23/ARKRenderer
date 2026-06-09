@@ -21,11 +21,16 @@
 #include "rhi/TextureView.h"
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <span>
 
 namespace {
+    bool near(float lhs, float rhs) {
+        return std::fabs(lhs - rhs) < 0.0001f;
+    }
+
     class FakeBuffer final : public ark::rhi::Buffer {
     public:
         explicit FakeBuffer(const ark::rhi::BufferDesc& desc) : m_Desc(desc) {
@@ -694,6 +699,12 @@ namespace {
         ark::asset::MaterialData material{};
         material.debugName = "SmokeMaterial";
         material.baseColorTexturePath = texturePath;
+        material.baseColorFactor[0] = 0.2f;
+        material.baseColorFactor[1] = 0.4f;
+        material.baseColorFactor[2] = 0.6f;
+        material.baseColorFactor[3] = 0.8f;
+        material.metallicFactor = 0.3f;
+        material.roughnessFactor = 0.7f;
         ark::asset::MaterialData duplicateMaterial = material;
         duplicateMaterial.debugName = "DuplicateSmokeMaterial";
 
@@ -739,6 +750,17 @@ namespace {
         if (!modelResource.primitiveMesh(0) || !modelResource.primitiveMesh(1) ||
             !modelResource.primitiveMaterial(0) || !modelResource.primitiveMaterial(1)) {
             std::cerr << "ModelResource primitive resource lookup failed\n";
+            return false;
+        }
+
+        const ark::MaterialFactors& materialFactors = modelResource.primitiveMaterial(0)->factors();
+        if (!near(materialFactors.baseColorFactor[0], 0.2f) ||
+            !near(materialFactors.baseColorFactor[1], 0.4f) ||
+            !near(materialFactors.baseColorFactor[2], 0.6f) ||
+            !near(materialFactors.baseColorFactor[3], 0.8f) ||
+            !near(materialFactors.metallicFactor, 0.3f) ||
+            !near(materialFactors.roughnessFactor, 0.7f)) {
+            std::cerr << "ModelResource did not preserve material factors\n";
             return false;
         }
 

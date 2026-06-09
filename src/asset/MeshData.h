@@ -34,9 +34,12 @@ namespace ark::asset {
         }
     };
 
-    // Phase 0.8 最小材质数据只表达 base color 贴图路径，不创建 GPU texture。
+    // CPU 材质数据只表达 glTF 语义；GPU texture / uniform 由 renderer 层创建。
     struct MaterialData {
         Path baseColorTexturePath;
+        float baseColorFactor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; // glTF pbrMetallicRoughness.baseColorFactor。
+        float metallicFactor = 1.0f; // glTF metallicFactor，Phase 0.15 只进入 uniform。
+        float roughnessFactor = 1.0f; // glTF roughnessFactor，Phase 0.15 只进入 uniform。
         std::string debugName;
 
         bool hasBaseColorTexture() const {

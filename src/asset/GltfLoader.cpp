@@ -421,9 +421,17 @@ namespace ark::asset {
             }
 
             const tinygltf::Material& gltfMaterial = gltfModel.materials[sourceMaterialIndex];
+            const tinygltf::PbrMetallicRoughness& pbr = gltfMaterial.pbrMetallicRoughness;
             material.debugName = gltfMaterial.name.empty()
                                      ? "GltfMaterial." + std::to_string(sourceMaterialIndex)
                                      : gltfMaterial.name;
+            if (pbr.baseColorFactor.size() == 4) {
+                for (usize i = 0; i < 4; ++i) {
+                    material.baseColorFactor[i] = static_cast<float>(pbr.baseColorFactor[i]);
+                }
+            }
+            material.metallicFactor = static_cast<float>(pbr.metallicFactor);
+            material.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
             material.baseColorTexturePath =
                 resolveTexturePath(gltfPath, gltfModel, static_cast<int>(sourceMaterialIndex));
             if (material.baseColorTexturePath.empty()) {

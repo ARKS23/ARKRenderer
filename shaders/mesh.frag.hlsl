@@ -10,6 +10,16 @@ Texture2D<float4> g_BaseColorTexture;
 [[vk::binding(2, 0)]]
 SamplerState g_BaseColorSampler;
 
+struct MaterialUniform {
+    float4 baseColorFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    float2 padding;
+};
+
+[[vk::binding(4, 0)]]
+ConstantBuffer<MaterialUniform> g_Material;
+
 float4 main(PSInput input) : SV_Target0 {
-    return g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0);
+    return g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0) * g_Material.baseColorFactor;
 }

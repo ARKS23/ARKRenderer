@@ -42,6 +42,10 @@ namespace ark {
                                  u32 frameSlot,
                                  usize drawIndex,
                                  const glm::mat4& modelMatrix);
+        bool updateMaterialUniform(FrameContext& frameContext,
+                                   u32 frameSlot,
+                                   usize drawIndex,
+                                   const MaterialResource& material);
         bool updateDrawDescriptorSet(u32 frameSlot, usize drawIndex, MaterialResource& material);
         bool drawMeshItem(FrameContext& frameContext,
                           u32 frameSlot,
@@ -52,6 +56,7 @@ namespace ark {
 
         struct DrawDescriptorResources {
             Scope<rhi::Buffer> objectBuffer;
+            Scope<rhi::Buffer> materialBuffer;
             Scope<rhi::DescriptorSet> descriptorSet;
         };
 
