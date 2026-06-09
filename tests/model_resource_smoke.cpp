@@ -147,14 +147,33 @@ namespace {
 
     class FakeDescriptorSet final : public ark::rhi::DescriptorSet {
     public:
-        void updateUniformBuffer(ark::u32, const ark::rhi::BufferDescriptor&) override {
+        void updateUniformBuffer(ark::u32 binding, const ark::rhi::BufferDescriptor&) override {
+            ++uniformUpdates;
+            if (binding < uniformBindings.size()) {
+                uniformBindings[binding] = true;
+            }
         }
 
-        void updateSampledImage(ark::u32, const ark::rhi::SampledImageDescriptor&) override {
+        void updateSampledImage(ark::u32 binding, const ark::rhi::SampledImageDescriptor&) override {
+            ++sampledImageUpdates;
+            if (binding < sampledImageBindings.size()) {
+                sampledImageBindings[binding] = true;
+            }
         }
 
-        void updateSampler(ark::u32, const ark::rhi::SamplerDescriptor&) override {
+        void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor&) override {
+            ++samplerUpdates;
+            if (binding < samplerBindings.size()) {
+                samplerBindings[binding] = true;
+            }
         }
+
+        int uniformUpdates = 0;
+        int sampledImageUpdates = 0;
+        int samplerUpdates = 0;
+        std::array<bool, 13> uniformBindings{};
+        std::array<bool, 13> sampledImageBindings{};
+        std::array<bool, 13> samplerBindings{};
     };
 
     class FakeFence final : public ark::rhi::Fence {
@@ -600,6 +619,81 @@ namespace {
         return true;
     }
 
+    bool validateMaterialResourceTextureSlots() {
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+
+        ark::MaterialTextureSet textures{};
+        textures.baseColor = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
+        textures.normal = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
+        textures.metallicRoughness =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MetallicRoughnessDefault);
+        textures.occlusion = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::OcclusionDefault);
+        textures.emissive = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::Black);
+
+        ark::asset::MaterialData material{};
+        material.debugName = "TextureSlotMaterial";
+        material.baseColorTexturePath = "assets/textures/xiaowei.png";
+        material.baseColorFactor[0] = 0.25f;
+        material.baseColorFactor[1] = 0.5f;
+        material.baseColorFactor[2] = 0.75f;
+        material.baseColorFactor[3] = 0.8f;
+        material.emissiveFactor[0] = 0.1f;
+        material.emissiveFactor[1] = 0.2f;
+        material.emissiveFactor[2] = 0.3f;
+        material.metallicFactor = 0.35f;
+        material.roughnessFactor = 0.65f;
+        material.normalScale = 0.75f;
+        material.occlusionStrength = 0.5f;
+
+        ark::MaterialResource materialResource{};
+        if (!materialResource.create(material, textures)) {
+            std::cerr << "MaterialResource texture slot create failed\n";
+            return false;
+        }
+
+        const ark::MaterialFactors& factors = materialResource.factors();
+        if (!near(factors.baseColorFactor[0], 0.25f) || !near(factors.baseColorFactor[1], 0.5f) ||
+            !near(factors.baseColorFactor[2], 0.75f) || !near(factors.baseColorFactor[3], 0.8f) ||
+            !near(factors.emissiveFactor[0], 0.1f) || !near(factors.emissiveFactor[1], 0.2f) ||
+            !near(factors.emissiveFactor[2], 0.3f) || !near(factors.metallicFactor, 0.35f) ||
+            !near(factors.roughnessFactor, 0.65f) || !near(factors.normalScale, 0.75f) ||
+            !near(factors.occlusionStrength, 0.5f)) {
+            std::cerr << "MaterialResource did not preserve multi-slot factors\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!materialResource.upload(context) || !materialResource.isReady()) {
+            std::cerr << "MaterialResource multi-slot upload failed\n";
+            return false;
+        }
+
+        if (context.textureUploads != 5 || context.deferredBuffers != 5) {
+            std::cerr << "MaterialResource multi-slot upload counts are invalid\n";
+            return false;
+        }
+
+        FakeDescriptorSet descriptorSet{};
+        ark::MaterialTextureBindingSet bindings{};
+        if (!materialResource.updateDescriptorSet(descriptorSet, bindings)) {
+            std::cerr << "MaterialResource multi-slot descriptor update failed\n";
+            return false;
+        }
+
+        if (descriptorSet.sampledImageUpdates != 5 || descriptorSet.samplerUpdates != 5 ||
+            !descriptorSet.sampledImageBindings[1] || !descriptorSet.samplerBindings[2] ||
+            !descriptorSet.sampledImageBindings[5] || !descriptorSet.samplerBindings[6] ||
+            !descriptorSet.sampledImageBindings[7] || !descriptorSet.samplerBindings[8] ||
+            !descriptorSet.sampledImageBindings[9] || !descriptorSet.samplerBindings[10] ||
+            !descriptorSet.sampledImageBindings[11] || !descriptorSet.samplerBindings[12]) {
+            std::cerr << "MaterialResource did not write all texture slot descriptors\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateMeshResourceDeferredRelease() {
         FakeRenderDevice device{};
         ark::MeshResource meshResource{};
@@ -661,7 +755,7 @@ namespace {
             return false;
         }
 
-        if (context.bufferUploads != 2 || context.textureUploads != 1 || context.deferredBuffers != 3) {
+        if (context.bufferUploads != 2 || context.textureUploads != 5 || context.deferredBuffers != 7) {
             std::cerr << "Local ModelResource upload counts are invalid\n";
             return false;
         }
@@ -672,8 +766,8 @@ namespace {
         }
 
         if (!modelResource.empty() || modelResource.meshCount() != 0 || modelResource.materialCount() != 0 ||
-            modelResource.instanceCount() != 0 || context.deferredBuffers != 5 || context.deferredTextures != 1 ||
-            context.deferredTextureViews != 1 || context.deferredSamplers != 1) {
+            modelResource.instanceCount() != 0 || context.deferredBuffers != 9 || context.deferredTextures != 5 ||
+            context.deferredTextureViews != 5 || context.deferredSamplers != 5) {
             std::cerr << "Local ModelResource deferred reset counts are invalid\n";
             return false;
         }
@@ -705,7 +799,7 @@ namespace {
             return false;
         }
 
-        if (textureCache.size() != 1) {
+        if (textureCache.size() != 5) {
             std::cerr << "External texture cache was not populated\n";
             return false;
         }
@@ -721,7 +815,7 @@ namespace {
             return false;
         }
 
-        if (!modelResource.empty() || textureCache.size() != 1 || context.deferredBuffers != 5 ||
+        if (!modelResource.empty() || textureCache.size() != 5 || context.deferredBuffers != 9 ||
             context.deferredTextures != 0 || context.deferredTextureViews != 0 || context.deferredSamplers != 0) {
             std::cerr << "External ModelResource reset touched external texture cache\n";
             return false;
@@ -732,8 +826,8 @@ namespace {
             return false;
         }
 
-        if (textureCache.size() != 0 || context.deferredTextures != 1 || context.deferredTextureViews != 1 ||
-            context.deferredSamplers != 1) {
+        if (textureCache.size() != 0 || context.deferredTextures != 5 || context.deferredTextureViews != 5 ||
+            context.deferredSamplers != 5) {
             std::cerr << "External texture cache deferred clear counts are invalid\n";
             return false;
         }
@@ -751,12 +845,18 @@ namespace {
         ark::asset::MaterialData material{};
         material.debugName = "SmokeMaterial";
         material.baseColorTexturePath = texturePath;
+        material.normalTexturePath = texturePath;
         material.baseColorFactor[0] = 0.2f;
         material.baseColorFactor[1] = 0.4f;
         material.baseColorFactor[2] = 0.6f;
         material.baseColorFactor[3] = 0.8f;
+        material.emissiveFactor[0] = 0.1f;
+        material.emissiveFactor[1] = 0.2f;
+        material.emissiveFactor[2] = 0.3f;
         material.metallicFactor = 0.3f;
         material.roughnessFactor = 0.7f;
+        material.normalScale = 0.6f;
+        material.occlusionStrength = 0.9f;
         ark::asset::MaterialData duplicateMaterial = material;
         duplicateMaterial.debugName = "DuplicateSmokeMaterial";
 
@@ -793,9 +893,29 @@ namespace {
             return false;
         }
 
-        if (textureCache.size() != 1 || device.textureCount != 1 || device.textureViewCount != 1 ||
-            device.samplerCount != 1 || device.lastTextureFormat != ark::rhi::Format::RGBA8Srgb) {
-            std::cerr << "TextureCache did not reuse sRGB base color texture\n";
+        if (textureCache.size() != 5 || device.textureCount != 5 || device.textureViewCount != 5 ||
+            device.samplerCount != 5) {
+            std::cerr << "TextureCache did not reuse multi-slot material textures\n";
+            return false;
+        }
+
+        const ark::MaterialTextureSet& materialTextures = modelResource.primitiveMaterial(0)->textures();
+        const ark::MaterialTextureSet& duplicateTextures = modelResource.primitiveMaterial(1)->textures();
+        if (!materialTextures.baseColor || !materialTextures.normal || !materialTextures.metallicRoughness ||
+            !materialTextures.occlusion || !materialTextures.emissive ||
+            materialTextures.baseColor != duplicateTextures.baseColor ||
+            materialTextures.normal != duplicateTextures.normal ||
+            materialTextures.metallicRoughness != duplicateTextures.metallicRoughness ||
+            materialTextures.occlusion != duplicateTextures.occlusion ||
+            materialTextures.emissive != duplicateTextures.emissive) {
+            std::cerr << "ModelResource did not reuse shared material texture slots\n";
+            return false;
+        }
+
+        if (materialTextures.baseColor == materialTextures.normal ||
+            materialTextures.baseColor->format() != ark::rhi::Format::RGBA8Srgb ||
+            materialTextures.normal->format() != ark::rhi::Format::RGBA8Unorm) {
+            std::cerr << "TextureCache did not separate sRGB and linear texture cache keys\n";
             return false;
         }
 
@@ -810,8 +930,13 @@ namespace {
             !near(materialFactors.baseColorFactor[1], 0.4f) ||
             !near(materialFactors.baseColorFactor[2], 0.6f) ||
             !near(materialFactors.baseColorFactor[3], 0.8f) ||
+            !near(materialFactors.emissiveFactor[0], 0.1f) ||
+            !near(materialFactors.emissiveFactor[1], 0.2f) ||
+            !near(materialFactors.emissiveFactor[2], 0.3f) ||
             !near(materialFactors.metallicFactor, 0.3f) ||
-            !near(materialFactors.roughnessFactor, 0.7f)) {
+            !near(materialFactors.roughnessFactor, 0.7f) ||
+            !near(materialFactors.normalScale, 0.6f) ||
+            !near(materialFactors.occlusionStrength, 0.9f)) {
             std::cerr << "ModelResource did not preserve material factors\n";
             return false;
         }
@@ -822,7 +947,7 @@ namespace {
             return false;
         }
 
-        if (context.bufferUploads != 4 || context.textureUploads != 1 || context.deferredBuffers != 5) {
+        if (context.bufferUploads != 4 || context.textureUploads != 5 || context.deferredBuffers != 9) {
             std::cerr << "Unexpected ModelResource upload counts\n";
             return false;
         }
@@ -878,9 +1003,21 @@ namespace {
         }
 
         if (modelResource.primitiveCount() != 2 || modelResource.materialCount() != 2 ||
-            textureCache.size() != 1 || device.textureCount != 1 || device.textureViewCount != 1 ||
-            device.samplerCount != 1 || device.lastTextureFormat != ark::rhi::Format::RGBA8Srgb) {
-            std::cerr << "Texture cache fixture did not reuse one sRGB texture resource\n";
+            textureCache.size() != 5 || device.textureCount != 5 || device.textureViewCount != 5 ||
+            device.samplerCount != 5) {
+            std::cerr << "Texture cache fixture did not reuse shared texture resources\n";
+            return false;
+        }
+
+        const ark::MaterialTextureSet& firstTextures = modelResource.primitiveMaterial(0)->textures();
+        const ark::MaterialTextureSet& secondTextures = modelResource.primitiveMaterial(1)->textures();
+        if (!firstTextures.baseColor || firstTextures.baseColor != secondTextures.baseColor ||
+            firstTextures.baseColor->format() != ark::rhi::Format::RGBA8Srgb ||
+            !firstTextures.normal || firstTextures.normal != secondTextures.normal ||
+            firstTextures.normal->format() != ark::rhi::Format::RGBA8Unorm ||
+            !firstTextures.emissive || firstTextures.emissive != secondTextures.emissive ||
+            firstTextures.emissive->format() != ark::rhi::Format::RGBA8Srgb) {
+            std::cerr << "Texture cache fixture material texture slots are invalid\n";
             return false;
         }
 
@@ -890,7 +1027,7 @@ namespace {
             return false;
         }
 
-        if (context.bufferUploads != 4 || context.textureUploads != 1 || context.deferredBuffers != 5) {
+        if (context.bufferUploads != 4 || context.textureUploads != 5 || context.deferredBuffers != 9) {
             std::cerr << "Unexpected texture cache fixture upload counts\n";
             return false;
         }
@@ -913,8 +1050,9 @@ namespace {
 int main() {
     return validateTextureResourceDeferredRelease() && validateTextureResourceMipDesc() &&
                    validateTextureCacheDeferredClear() && validateTextureCacheFallbacks() &&
-                   validateMeshResourceDeferredRelease() && validateLocalModelResourceDeferredReset() &&
-                   validateExternalModelResourceDeferredReset() && validateModelResource() &&
+                   validateMaterialResourceTextureSlots() && validateMeshResourceDeferredRelease() &&
+                   validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
+                   validateModelResource() &&
                    validateTextureCacheFixtureModelResource()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

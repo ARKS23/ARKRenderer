@@ -19,6 +19,32 @@ namespace ark {
             }
             return matrix;
         }
+
+        TextureResource* acquireTexture(rhi::RenderDevice& device,
+                                        TextureCache& textureCache,
+                                        const Path& path,
+                                        TextureColorSpace colorSpace,
+                                        FallbackTextureKind fallbackKind,
+                                        const std::string& debugName) {
+            if (path.empty()) {
+                return textureCache.getOrCreateFallback(device, fallbackKind);
+            }
+
+            TextureResourceDesc textureDesc{};
+            textureDesc.path = path;
+            textureDesc.colorSpace = colorSpace;
+            textureDesc.debugName = debugName;
+            return textureCache.getOrCreate(device, textureDesc);
+        }
+
+        std::string makeMaterialTextureDebugName(const asset::MaterialData& material,
+                                                 usize materialIndex,
+                                                 const char* slotName) {
+            const std::string materialName = material.debugName.empty()
+                                                 ? "ModelMaterial." + std::to_string(materialIndex)
+                                                 : material.debugName;
+            return materialName + "." + slotName;
+        }
     } // namespace
 
     bool ModelResource::create(rhi::RenderDevice& device, const asset::ModelData& model) {
@@ -55,21 +81,41 @@ namespace ark {
 
         for (usize materialIndex = 0; materialIndex < model.materials.size(); ++materialIndex) {
             const asset::MaterialData& materialData = model.materials[materialIndex];
-            TextureResourceDesc textureDesc{};
-            textureDesc.path = materialData.baseColorTexturePath;
-            textureDesc.colorSpace = TextureColorSpace::Srgb;
-            textureDesc.debugName = materialData.debugName.empty()
-                                        ? "ModelMaterial." + std::to_string(materialIndex) + ".BaseColor"
-                                        : materialData.debugName + ".BaseColor";
+            MaterialTextureSet textures{};
 
-            // glTF baseColor texture 按 sRGB 创建；CPU ImageData 仍只是 RGBA8 字节布局。
-            TextureResource* baseColorTexture = textureCache.getOrCreate(device, textureDesc);
-            if (!baseColorTexture) {
+            if (materialData.baseColorTexturePath.empty()) {
+                ARK_ERROR("ModelResource material requires a base color texture {}", materialIndex);
+                return false;
+            }
+
+            // glTF baseColor / emissive 是颜色纹理；normal / MR / AO 是数据纹理，不能走 sRGB decode。
+            textures.baseColor = acquireTexture(device, textureCache, materialData.baseColorTexturePath,
+                                                TextureColorSpace::Srgb, FallbackTextureKind::White,
+                                                makeMaterialTextureDebugName(materialData, materialIndex, "BaseColor"));
+            if (!textures.baseColor) {
                 ARK_ERROR("ModelResource failed to acquire base color texture {}", materialIndex);
                 return false;
             }
 
-            if (!m_Materials[materialIndex].create(materialData, *baseColorTexture)) {
+            textures.normal = acquireTexture(device, textureCache, materialData.normalTexturePath,
+                                             TextureColorSpace::Linear, FallbackTextureKind::FlatNormal,
+                                             makeMaterialTextureDebugName(materialData, materialIndex, "Normal"));
+            textures.metallicRoughness =
+                acquireTexture(device, textureCache, materialData.metallicRoughnessTexturePath,
+                               TextureColorSpace::Linear, FallbackTextureKind::MetallicRoughnessDefault,
+                               makeMaterialTextureDebugName(materialData, materialIndex, "MetallicRoughness"));
+            textures.occlusion = acquireTexture(device, textureCache, materialData.occlusionTexturePath,
+                                                TextureColorSpace::Linear, FallbackTextureKind::OcclusionDefault,
+                                                makeMaterialTextureDebugName(materialData, materialIndex, "Occlusion"));
+            textures.emissive = acquireTexture(device, textureCache, materialData.emissiveTexturePath,
+                                               TextureColorSpace::Srgb, FallbackTextureKind::Black,
+                                               makeMaterialTextureDebugName(materialData, materialIndex, "Emissive"));
+            if (!textures.normal || !textures.metallicRoughness || !textures.occlusion || !textures.emissive) {
+                ARK_ERROR("ModelResource failed to acquire optional texture slots {}", materialIndex);
+                return false;
+            }
+
+            if (!m_Materials[materialIndex].create(materialData, textures)) {
                 ARK_ERROR("ModelResource failed to create material {}", materialIndex);
                 return false;
             }

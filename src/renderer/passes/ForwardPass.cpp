@@ -28,10 +28,29 @@ namespace ark {
 
         struct alignas(16) MaterialUniform {
             glm::vec4 baseColorFactor;
+            glm::vec4 emissiveFactor;
             float metallicFactor = 1.0f;
             float roughnessFactor = 1.0f;
-            float padding[2]{};
+            float normalScale = 1.0f;
+            float occlusionStrength = 1.0f;
         };
+
+        static_assert(sizeof(MaterialUniform) == 48);
+
+        void addFragmentTextureBindingPair(rhi::DescriptorSetLayoutDesc& desc, u32 imageBinding, u32 samplerBinding) {
+            desc.bindings.push_back(rhi::DescriptorBindingDesc{
+                .binding = imageBinding,
+                .type = rhi::DescriptorType::SampledImage,
+                .count = 1,
+                .stages = rhi::ShaderStageFlags::Fragment,
+            });
+            desc.bindings.push_back(rhi::DescriptorBindingDesc{
+                .binding = samplerBinding,
+                .type = rhi::DescriptorType::Sampler,
+                .count = 1,
+                .stages = rhi::ShaderStageFlags::Fragment,
+            });
+        }
 
         CameraUniform makeCameraUniform(const FrameContext& frameContext) {
             CameraUniform uniform{};
@@ -56,8 +75,16 @@ namespace ark {
                 factors.baseColorFactor[2],
                 factors.baseColorFactor[3],
             };
+            uniform.emissiveFactor = glm::vec4{
+                factors.emissiveFactor[0],
+                factors.emissiveFactor[1],
+                factors.emissiveFactor[2],
+                0.0f,
+            };
             uniform.metallicFactor = factors.metallicFactor;
             uniform.roughnessFactor = factors.roughnessFactor;
+            uniform.normalScale = factors.normalScale;
+            uniform.occlusionStrength = factors.occlusionStrength;
             return uniform;
         }
     } // namespace
@@ -187,6 +214,10 @@ namespace ark {
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 5, 6);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 7, 8);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 9, 10);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 11, 12);
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -401,7 +432,10 @@ namespace ark {
         cameraDescriptor.range = sizeof(CameraUniform);
         descriptors.descriptorSet->updateUniformBuffer(0, cameraDescriptor);
 
-        material.updateDescriptorSet(*descriptors.descriptorSet, 1, 2);
+        MaterialTextureBindingSet textureBindings{};
+        if (!material.updateDescriptorSet(*descriptors.descriptorSet, textureBindings)) {
+            return false;
+        }
 
         rhi::BufferDescriptor objectDescriptor{};
         objectDescriptor.buffer = descriptors.objectBuffer.get();

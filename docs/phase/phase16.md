@@ -479,6 +479,13 @@ normalSample = normalTexture.Sample(...)
 - 同一路径不同 colorSpace 不错误复用。
 - external texture cache 的 ownership 语义不变。
 
+当前状态：
+
+- 已完成。`ModelResource::create()` 现在为 baseColor / normal / metallicRoughness / occlusion / emissive 获取完整 texture set。
+- baseColor / emissive 走 sRGB；normal / metallicRoughness / occlusion 走 linear。
+- optional slot 缺失时通过 `TextureCache::getOrCreateFallback()` 获取明确 fallback；baseColorTexture 仍按当前策略要求存在。
+- external texture cache ownership 未改变，`ModelResource::resetDeferred()` 不释放外部 cache。
+
 ### 0.16.5 MaterialResource 多 texture 引用
 
 目标：
@@ -494,6 +501,12 @@ normalSample = normalTexture.Sample(...)
 - MaterialResource 不创建 fallback texture。
 - MaterialResource 不创建 uniform buffer。
 
+当前状态：
+
+- 已完成。`MaterialResource` 已保存 `MaterialTextureSet`，并继续只借用 `TextureResource*`。
+- `upload()` / `isReady()` / `updateDescriptorSet()` 已覆盖全部 shader-visible texture slots。
+- `MaterialFactors` 已补齐 emissiveFactor / normalScale / occlusionStrength。
+
 ### 0.16.6 ForwardPass descriptor 扩展
 
 目标：
@@ -508,6 +521,12 @@ normalSample = normalTexture.Sample(...)
 - 所有 binding 都有有效 descriptor。
 - descriptor pool 增长路径不回退。
 
+当前状态：
+
+- 已完成。`ForwardPass` descriptor layout 已新增 binding 5-12。
+- per-draw descriptor set 现在写入 baseColor、normal、metallicRoughness、occlusion、emissive 的 sampled image / sampler。
+- material uniform buffer 已扩展为 baseColorFactor、emissiveFactor、metallicFactor、roughnessFactor、normalScale、occlusionStrength。
+
 ### 0.16.7 Shader 最小接入
 
 目标：
@@ -521,6 +540,11 @@ normalSample = normalTexture.Sample(...)
 - normal map 不被错误解释为已正确参与 lighting。
 - metallic/roughness texture 数据链路可审。
 - emissiveFactor 默认不改变旧 fixture 输出。
+
+当前状态：
+
+- 已完成。`mesh.frag.hlsl` 已声明并采样全部 material texture slots。
+- 默认输出仍以 baseColor 为基线，最小接入 occlusion 与 emissive；normal 和 metallicRoughness 只保持可审的数据链路，不声明完整 PBR/lighting 已完成。
 
 ### 0.16.8 Tests 与 sandbox smoke
 
@@ -541,6 +565,14 @@ ctest --preset msvc-vcpkg-local-debug
 
 涉及 shader / descriptor / 默认路径时继续运行 sandbox smoke。
 
+当前状态：
+
+- 已完成。`model_resource_smoke` 覆盖多 texture slot factors、fallback、sRGB/linear cache key 分离和 descriptor 写入。
+- 已完成验证：
+  - `cmake --build --preset msvc-vcpkg-local-debug`
+  - `ctest --preset msvc-vcpkg-local-debug`
+  - `ark_sandbox.exe` 默认 Vulkan 路径 smoke。
+
 ### 0.16.9 Phase 0.16 收尾
 
 目标：
@@ -548,6 +580,12 @@ ctest --preset msvc-vcpkg-local-debug
 - 更新本文档当前实现状态。
 - 按需同步 `docs/codex_handoff.md`。
 - 记录后续 TODO：tangent、lighting/PBR、glTF sampler、texture transform、HDR/压缩纹理、RenderGraph。
+
+当前状态：
+
+- 已完成。Phase 0.16 已打通 glTF PBR 常见 texture slots 的 CPU 数据、texture cache、fallback、material resource、descriptor layout 和 shader 最小采样链路。
+- 本次未同步 `docs/codex_handoff.md`；该文档等明确要求时再更新。
+- 后续重点仍是 tangent / normal mapping、基础 lighting/PBR、glTF sampler 与 texture transform、HDR/压缩纹理，以及 RenderGraph 资源声明。
 
 ## 审核检查点
 

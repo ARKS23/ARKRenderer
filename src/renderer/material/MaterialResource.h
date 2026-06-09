@@ -13,8 +13,32 @@ namespace ark {
 
     struct MaterialFactors {
         float baseColorFactor[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+        float emissiveFactor[3] = {0.0f, 0.0f, 0.0f};
         float metallicFactor = 1.0f;
         float roughnessFactor = 1.0f;
+        float normalScale = 1.0f;
+        float occlusionStrength = 1.0f;
+    };
+
+    struct MaterialTextureSet {
+        TextureResource* baseColor = nullptr;
+        TextureResource* normal = nullptr;
+        TextureResource* metallicRoughness = nullptr;
+        TextureResource* occlusion = nullptr;
+        TextureResource* emissive = nullptr;
+    };
+
+    struct MaterialTextureBindingSet {
+        u32 baseColorImage = 1;
+        u32 baseColorSampler = 2;
+        u32 normalImage = 5;
+        u32 normalSampler = 6;
+        u32 metallicRoughnessImage = 7;
+        u32 metallicRoughnessSampler = 8;
+        u32 occlusionImage = 9;
+        u32 occlusionSampler = 10;
+        u32 emissiveImage = 11;
+        u32 emissiveSampler = 12;
     };
 
     // 材质资源只保存材质语义和 texture 引用；真实 GPU texture 生命周期由 TextureResource 管理。
@@ -22,18 +46,22 @@ namespace ark {
     public:
         MaterialResource() = default;
 
-        bool create(const asset::MaterialData& material, TextureResource& baseColorTexture);
+        bool create(const asset::MaterialData& material, const MaterialTextureSet& textures);
         bool upload(rhi::DeviceContext& context);
-        void updateDescriptorSet(rhi::DescriptorSet& descriptorSet, u32 imageBinding, u32 samplerBinding) const;
+        bool updateDescriptorSet(rhi::DescriptorSet& descriptorSet, const MaterialTextureBindingSet& bindings) const;
 
         const MaterialFactors& factors() const {
             return m_Factors;
+        }
+
+        const MaterialTextureSet& textures() const {
+            return m_Textures;
         }
 
         bool isReady() const;
 
     private:
         MaterialFactors m_Factors;
-        TextureResource* m_BaseColorTexture = nullptr;
+        MaterialTextureSet m_Textures;
     };
 } // namespace ark
