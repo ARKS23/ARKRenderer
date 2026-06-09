@@ -40,6 +40,11 @@ namespace ark {
         m_Format = toTextureFormat(desc.colorSpace);
         m_BytesPerPixel = image.bytesPerPixel;
         m_RowPitch = image.width * image.bytesPerPixel;
+        m_MipLevels = desc.generateMips ? rhi::calculateMipLevelCount(m_Extent) : 1;
+        if (m_MipLevels == 0) {
+            ARK_ERROR("TextureResource mip level count is invalid: {}", image.debugName);
+            return false;
+        }
 
         const std::string debugName = desc.debugName.empty() ? "TextureResource" : desc.debugName;
 
@@ -59,9 +64,12 @@ namespace ark {
         rhi::TextureDesc textureDesc{};
         textureDesc.extent = m_Extent;
         textureDesc.format = m_Format;
-        textureDesc.mipLevels = 1;
+        textureDesc.mipLevels = m_MipLevels;
         textureDesc.arrayLayers = 1;
         textureDesc.usage = rhi::TextureUsage::ShaderResource | rhi::TextureUsage::TransferDst;
+        if (m_MipLevels > 1) {
+            textureDesc.usage = textureDesc.usage | rhi::TextureUsage::TransferSrc;
+        }
         m_Texture = device.createTexture(textureDesc);
         if (!m_Texture) {
             ARK_ERROR("TextureResource failed to create texture: {}", debugName);
@@ -70,6 +78,7 @@ namespace ark {
 
         rhi::TextureViewDesc textureViewDesc{};
         textureViewDesc.format = textureDesc.format;
+        textureViewDesc.mipLevelCount = m_MipLevels;
         m_TextureView = device.createTextureView(*m_Texture, textureViewDesc);
         if (!m_TextureView) {
             ARK_ERROR("TextureResource failed to create texture view: {}", debugName);
@@ -80,7 +89,7 @@ namespace ark {
         samplerDesc.debugName = debugName + ".Sampler";
         samplerDesc.minFilter = rhi::FilterMode::Linear;
         samplerDesc.magFilter = rhi::FilterMode::Linear;
-        samplerDesc.mipFilter = rhi::FilterMode::Nearest;
+        samplerDesc.mipFilter = m_MipLevels > 1 ? rhi::FilterMode::Linear : rhi::FilterMode::Nearest;
         samplerDesc.addressU = rhi::AddressMode::Repeat;
         samplerDesc.addressV = rhi::AddressMode::Repeat;
         samplerDesc.addressW = rhi::AddressMode::Repeat;
@@ -100,6 +109,12 @@ namespace ark {
 
         if (!m_StagingBuffer || !m_Texture) {
             ARK_ERROR("TextureResource requires upload resources");
+            return false;
+        }
+
+        if (m_MipLevels > 1) {
+            // 0.14.1 只补描述和创建；真实 mip generation 命令在后续步骤接入。
+            ARK_ERROR("TextureResource mip generation upload is not implemented yet");
             return false;
         }
 
@@ -152,6 +167,7 @@ namespace ark {
         m_ColorSpace = TextureColorSpace::Linear;
         m_RowPitch = 0;
         m_BytesPerPixel = 0;
+        m_MipLevels = 1;
         m_Uploaded = false;
         return true;
     }
@@ -167,6 +183,7 @@ namespace ark {
         m_ColorSpace = TextureColorSpace::Linear;
         m_RowPitch = 0;
         m_BytesPerPixel = 0;
+        m_MipLevels = 1;
         m_Uploaded = false;
     }
 } // namespace ark

@@ -175,6 +175,7 @@ namespace {
 
         ark::Scope<ark::rhi::Texture> createTexture(const ark::rhi::TextureDesc& desc) override {
             ++textureCount;
+            lastTextureDesc = desc;
             lastTextureFormat = desc.format;
             return ark::makeScope<FakeTexture>(desc);
         }
@@ -182,11 +183,13 @@ namespace {
         ark::Scope<ark::rhi::TextureView> createTextureView(ark::rhi::Texture& texture,
                                                             const ark::rhi::TextureViewDesc& desc) override {
             ++textureViewCount;
+            lastTextureViewDesc = desc;
             return ark::makeScope<FakeTextureView>(texture, desc);
         }
 
         ark::Scope<ark::rhi::Sampler> createSampler(const ark::rhi::SamplerDesc& desc) override {
             ++samplerCount;
+            lastSamplerDesc = desc;
             return ark::makeScope<FakeSampler>(desc);
         }
 
@@ -219,6 +222,9 @@ namespace {
         int textureCount = 0;
         int textureViewCount = 0;
         int samplerCount = 0;
+        ark::rhi::TextureDesc lastTextureDesc{};
+        ark::rhi::TextureViewDesc lastTextureViewDesc{};
+        ark::rhi::SamplerDesc lastSamplerDesc{};
         ark::rhi::Format lastTextureFormat = ark::rhi::Format::Unknown;
 
     private:
@@ -423,6 +429,68 @@ namespace {
         if (texture.isReady() || context.deferredTextures != 1 || context.deferredTextureViews != 1 ||
             context.deferredSamplers != 1 || context.deferredBuffers != 1) {
             std::cerr << "TextureResource deferred release counts are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateTextureResourceMipDesc() {
+        if (ark::rhi::calculateMipLevelCount(ark::rhi::Extent2D{1, 1}) != 1 ||
+            ark::rhi::calculateMipLevelCount(ark::rhi::Extent2D{7, 5}) != 3 ||
+            ark::rhi::calculateMipLevelCount(ark::rhi::Extent2D{256, 128}) != 9 ||
+            ark::rhi::calculateMipLevelCount(ark::rhi::Extent2D{}) != 0) {
+            std::cerr << "Mip level count calculation is invalid\n";
+            return false;
+        }
+
+        ark::asset::ImageData image{};
+        image.width = 7;
+        image.height = 5;
+        image.format = ark::asset::ImageFormat::Rgba8Unorm;
+        image.bytesPerPixel = 4;
+        image.pixels.resize(static_cast<ark::usize>(image.width) * image.height * image.bytesPerPixel, 255);
+        image.debugName = "MipDescImage";
+
+        FakeRenderDevice device{};
+        ark::TextureResourceDesc desc{};
+        desc.colorSpace = ark::TextureColorSpace::Srgb;
+        desc.generateMips = true;
+        desc.debugName = "MipDescTexture";
+
+        ark::TextureResource texture{};
+        if (!texture.create(device, image, desc)) {
+            std::cerr << "Mip TextureResource create failed\n";
+            return false;
+        }
+
+        const ark::u32 expectedMipLevels = 3;
+        if (texture.mipLevels() != expectedMipLevels || device.lastTextureDesc.mipLevels != expectedMipLevels ||
+            device.lastTextureViewDesc.mipLevelCount != expectedMipLevels) {
+            std::cerr << "Mip TextureResource did not create full mip range\n";
+            return false;
+        }
+
+        if (!ark::rhi::hasTextureUsage(device.lastTextureDesc.usage, ark::rhi::TextureUsage::TransferSrc) ||
+            !ark::rhi::hasTextureUsage(device.lastTextureDesc.usage, ark::rhi::TextureUsage::TransferDst) ||
+            !ark::rhi::hasTextureUsage(device.lastTextureDesc.usage, ark::rhi::TextureUsage::ShaderResource)) {
+            std::cerr << "Mip TextureResource usage is invalid\n";
+            return false;
+        }
+
+        if (device.lastSamplerDesc.mipFilter != ark::rhi::FilterMode::Linear) {
+            std::cerr << "Mip TextureResource sampler mip filter is invalid\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (texture.upload(context)) {
+            std::cerr << "Mip TextureResource upload should wait for mip generation support\n";
+            return false;
+        }
+
+        if (texture.isReady() || context.textureUploads != 0 || context.deferredBuffers != 0) {
+            std::cerr << "Mip TextureResource upload failure changed resource state\n";
             return false;
         }
 
@@ -760,9 +828,10 @@ namespace {
 } // namespace
 
 int main() {
-    return validateTextureResourceDeferredRelease() && validateTextureCacheDeferredClear() &&
-                   validateMeshResourceDeferredRelease() && validateLocalModelResourceDeferredReset() &&
-                   validateExternalModelResourceDeferredReset() && validateModelResource() &&
+    return validateTextureResourceDeferredRelease() && validateTextureResourceMipDesc() &&
+                   validateTextureCacheDeferredClear() && validateMeshResourceDeferredRelease() &&
+                   validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
+                   validateModelResource() &&
                    validateTextureCacheFixtureModelResource()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

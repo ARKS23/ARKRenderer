@@ -26,6 +26,21 @@ namespace ark::rhi {
         return static_cast<u32>(value & flag) != 0;
     }
 
+    constexpr u32 calculateMipLevelCount(Extent2D extent) {
+        if (!isValidExtent(extent)) {
+            return 0;
+        }
+
+        u32 levels = 1;
+        while (extent.width > 1 || extent.height > 1) {
+            extent.width = extent.width > 1 ? extent.width / 2 : 1;
+            extent.height = extent.height > 1 ? extent.height / 2 : 1;
+            ++levels;
+        }
+
+        return levels;
+    }
+
     struct TextureDesc {
         Extent2D extent;
         Format format = Format::Unknown;

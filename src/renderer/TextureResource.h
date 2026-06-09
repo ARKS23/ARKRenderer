@@ -29,6 +29,8 @@ namespace ark {
     struct TextureResourceDesc {
         Path path;
         TextureColorSpace colorSpace = TextureColorSpace::Linear;
+        // Phase 0.14.1 先允许显式创建 mip chain；默认仍保持单 mip，等待 mip generation 接口落地。
+        bool generateMips = false;
         std::string debugName;
     };
 
@@ -62,6 +64,10 @@ namespace ark {
             return m_ColorSpace;
         }
 
+        u32 mipLevels() const {
+            return m_MipLevels;
+        }
+
     private:
         Scope<rhi::Buffer> m_StagingBuffer;
         Scope<rhi::Texture> m_Texture;
@@ -72,6 +78,7 @@ namespace ark {
         TextureColorSpace m_ColorSpace = TextureColorSpace::Linear;
         u32 m_RowPitch = 0;
         u32 m_BytesPerPixel = 0;
+        u32 m_MipLevels = 1;
         bool m_Uploaded = false;
     };
 } // namespace ark
