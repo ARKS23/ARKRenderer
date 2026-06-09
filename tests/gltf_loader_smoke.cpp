@@ -63,9 +63,22 @@ namespace {
             return false;
         }
 
+        if (!material.hasNormalTexture() || !material.hasMetallicRoughnessTexture() ||
+            !material.hasOcclusionTexture() || !material.hasEmissiveTexture() ||
+            material.normalTexturePath.filename() != "xiaowei.png" ||
+            material.metallicRoughnessTexturePath.filename() != "xiaowei.png" ||
+            material.occlusionTexturePath.filename() != "xiaowei.png" ||
+            material.emissiveTexturePath.filename() != "xiaowei.png") {
+            std::cerr << "Unexpected glTF optional material texture paths\n";
+            return false;
+        }
+
         if (!near(material.baseColorFactor[0], 0.25f) || !near(material.baseColorFactor[1], 0.5f) ||
             !near(material.baseColorFactor[2], 0.75f) || !near(material.baseColorFactor[3], 0.8f) ||
-            !near(material.metallicFactor, 0.35f) || !near(material.roughnessFactor, 0.65f)) {
+            !near(material.metallicFactor, 0.35f) || !near(material.roughnessFactor, 0.65f) ||
+            !near(material.emissiveFactor[0], 0.1f) || !near(material.emissiveFactor[1], 0.2f) ||
+            !near(material.emissiveFactor[2], 0.3f) || !near(material.normalScale, 0.75f) ||
+            !near(material.occlusionStrength, 0.5f)) {
             std::cerr << "Unexpected glTF material factors\n";
             return false;
         }
@@ -148,8 +161,17 @@ namespace {
         const ark::asset::MaterialData& material = model.materials.front();
         if (!near(material.baseColorFactor[0], 1.0f) || !near(material.baseColorFactor[1], 1.0f) ||
             !near(material.baseColorFactor[2], 1.0f) || !near(material.baseColorFactor[3], 1.0f) ||
-            !near(material.metallicFactor, 1.0f) || !near(material.roughnessFactor, 1.0f)) {
+            !near(material.metallicFactor, 1.0f) || !near(material.roughnessFactor, 1.0f) ||
+            !near(material.emissiveFactor[0], 0.0f) || !near(material.emissiveFactor[1], 0.0f) ||
+            !near(material.emissiveFactor[2], 0.0f) || !near(material.normalScale, 1.0f) ||
+            !near(material.occlusionStrength, 1.0f)) {
             std::cerr << "Unexpected default glTF material factors\n";
+            return false;
+        }
+
+        if (material.hasNormalTexture() || material.hasMetallicRoughnessTexture() ||
+            material.hasOcclusionTexture() || material.hasEmissiveTexture()) {
+            std::cerr << "Unexpected optional glTF material texture defaults\n";
             return false;
         }
 

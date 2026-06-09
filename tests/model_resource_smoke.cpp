@@ -548,6 +548,58 @@ namespace {
         return true;
     }
 
+    bool validateTextureCacheFallbacks() {
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+
+        ark::TextureResource* white = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
+        ark::TextureResource* whiteAgain = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
+        ark::TextureResource* normal =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
+        ark::TextureResource* metallicRoughness =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MetallicRoughnessDefault);
+        ark::TextureResource* occlusion =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::OcclusionDefault);
+        ark::TextureResource* emissive = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::Black);
+
+        if (!white || !normal || !metallicRoughness || !occlusion || !emissive || white != whiteAgain) {
+            std::cerr << "TextureCache fallback texture reuse failed\n";
+            return false;
+        }
+
+        if (textureCache.size() != 5 || device.bufferCount != 5 || device.textureCount != 5 ||
+            device.textureViewCount != 5 || device.samplerCount != 5) {
+            std::cerr << "TextureCache fallback resource counts are invalid\n";
+            return false;
+        }
+
+        if (white->colorSpace() != ark::TextureColorSpace::Srgb ||
+            white->format() != ark::rhi::Format::RGBA8Srgb ||
+            emissive->colorSpace() != ark::TextureColorSpace::Srgb ||
+            emissive->format() != ark::rhi::Format::RGBA8Srgb) {
+            std::cerr << "TextureCache fallback color texture format is invalid\n";
+            return false;
+        }
+
+        if (normal->colorSpace() != ark::TextureColorSpace::Linear ||
+            normal->format() != ark::rhi::Format::RGBA8Unorm ||
+            metallicRoughness->colorSpace() != ark::TextureColorSpace::Linear ||
+            metallicRoughness->format() != ark::rhi::Format::RGBA8Unorm ||
+            occlusion->colorSpace() != ark::TextureColorSpace::Linear ||
+            occlusion->format() != ark::rhi::Format::RGBA8Unorm) {
+            std::cerr << "TextureCache fallback data texture format is invalid\n";
+            return false;
+        }
+
+        if (white->mipLevels() != 1 || normal->mipLevels() != 1 || metallicRoughness->mipLevels() != 1 ||
+            occlusion->mipLevels() != 1 || emissive->mipLevels() != 1) {
+            std::cerr << "TextureCache fallback mip level count is invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateMeshResourceDeferredRelease() {
         FakeRenderDevice device{};
         ark::MeshResource meshResource{};
@@ -860,9 +912,9 @@ namespace {
 
 int main() {
     return validateTextureResourceDeferredRelease() && validateTextureResourceMipDesc() &&
-                   validateTextureCacheDeferredClear() && validateMeshResourceDeferredRelease() &&
-                   validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
-                   validateModelResource() &&
+                   validateTextureCacheDeferredClear() && validateTextureCacheFallbacks() &&
+                   validateMeshResourceDeferredRelease() && validateLocalModelResourceDeferredReset() &&
+                   validateExternalModelResourceDeferredReset() && validateModelResource() &&
                    validateTextureCacheFixtureModelResource()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

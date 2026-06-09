@@ -382,13 +382,7 @@ namespace ark::asset {
             return node.name.empty() ? "GltfNode." + std::to_string(nodeIndex) : node.name;
         }
 
-        Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int materialIndex) {
-            if (materialIndex < 0 || static_cast<usize>(materialIndex) >= model.materials.size()) {
-                return {};
-            }
-
-            const tinygltf::Material& material = model.materials[static_cast<usize>(materialIndex)];
-            const int textureIndex = material.pbrMetallicRoughness.baseColorTexture.index;
+        Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int textureIndex) {
             if (textureIndex < 0 || static_cast<usize>(textureIndex) >= model.textures.size()) {
                 return {};
             }
@@ -411,6 +405,28 @@ namespace ark::asset {
             return gltfPath.parent_path() / uriPath;
         }
 
+        Path resolveOptionalTexturePath(const Path& gltfPath,
+                                        const tinygltf::Model& model,
+                                        int textureIndex,
+                                        const char* slotName) {
+            Path texturePath = resolveTexturePath(gltfPath, model, textureIndex);
+            if (textureIndex >= 0 && texturePath.empty()) {
+                ARK_WARN("glTF optional texture slot is unsupported or invalid: {}", slotName);
+            }
+
+            return texturePath;
+        }
+
+        void copyFloatArray(const std::vector<double>& values, float* output, usize count) {
+            if (values.size() != count) {
+                return;
+            }
+
+            for (usize i = 0; i < count; ++i) {
+                output[i] = static_cast<float>(values[i]);
+            }
+        }
+
         bool loadMaterial(const Path& gltfPath,
                           const tinygltf::Model& gltfModel,
                           u32 sourceMaterialIndex,
@@ -425,20 +441,28 @@ namespace ark::asset {
             material.debugName = gltfMaterial.name.empty()
                                      ? "GltfMaterial." + std::to_string(sourceMaterialIndex)
                                      : gltfMaterial.name;
-            if (pbr.baseColorFactor.size() == 4) {
-                for (usize i = 0; i < 4; ++i) {
-                    material.baseColorFactor[i] = static_cast<float>(pbr.baseColorFactor[i]);
-                }
-            }
+            copyFloatArray(pbr.baseColorFactor, material.baseColorFactor, 4);
+            copyFloatArray(gltfMaterial.emissiveFactor, material.emissiveFactor, 3);
             material.metallicFactor = static_cast<float>(pbr.metallicFactor);
             material.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
-            material.baseColorTexturePath =
-                resolveTexturePath(gltfPath, gltfModel, static_cast<int>(sourceMaterialIndex));
+            material.normalScale = static_cast<float>(gltfMaterial.normalTexture.scale);
+            material.occlusionStrength = static_cast<float>(gltfMaterial.occlusionTexture.strength);
+
+            material.baseColorTexturePath = resolveTexturePath(gltfPath, gltfModel, pbr.baseColorTexture.index);
             if (material.baseColorTexturePath.empty()) {
                 ARK_ERROR("glTF material requires an external baseColorTexture: {}", gltfPath.string());
                 return false;
             }
 
+            // Optional texture slots 缺失时保留空路径，renderer 层后续使用 fallback texture。
+            material.normalTexturePath =
+                resolveOptionalTexturePath(gltfPath, gltfModel, gltfMaterial.normalTexture.index, "normalTexture");
+            material.metallicRoughnessTexturePath = resolveOptionalTexturePath(
+                gltfPath, gltfModel, pbr.metallicRoughnessTexture.index, "metallicRoughnessTexture");
+            material.occlusionTexturePath =
+                resolveOptionalTexturePath(gltfPath, gltfModel, gltfMaterial.occlusionTexture.index, "occlusionTexture");
+            material.emissiveTexturePath =
+                resolveOptionalTexturePath(gltfPath, gltfModel, gltfMaterial.emissiveTexture.index, "emissiveTexture");
             return true;
         }
 

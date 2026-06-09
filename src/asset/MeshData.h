@@ -37,13 +37,36 @@ namespace ark::asset {
     // CPU 材质数据只表达 glTF 语义；GPU texture / uniform 由 renderer 层创建。
     struct MaterialData {
         Path baseColorTexturePath;
+        Path normalTexturePath;
+        Path metallicRoughnessTexturePath;
+        Path occlusionTexturePath;
+        Path emissiveTexturePath;
         float baseColorFactor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; // glTF pbrMetallicRoughness.baseColorFactor。
-        float metallicFactor = 1.0f; // glTF metallicFactor，Phase 0.15 只进入 uniform。
-        float roughnessFactor = 1.0f; // glTF roughnessFactor，Phase 0.15 只进入 uniform。
+        float metallicFactor = 1.0f; // glTF metallicFactor，当前进入 material uniform。
+        float roughnessFactor = 1.0f; // glTF roughnessFactor，当前进入 material uniform。
+        float emissiveFactor[3] = {0.0f, 0.0f, 0.0f}; // glTF emissiveFactor，默认无自发光。
+        float normalScale = 1.0f; // glTF normalTexture.scale，后续 normal mapping 使用。
+        float occlusionStrength = 1.0f; // glTF occlusionTexture.strength，后续 AO 使用。
         std::string debugName;
 
         bool hasBaseColorTexture() const {
             return !baseColorTexturePath.empty();
+        }
+
+        bool hasNormalTexture() const {
+            return !normalTexturePath.empty();
+        }
+
+        bool hasMetallicRoughnessTexture() const {
+            return !metallicRoughnessTexturePath.empty();
+        }
+
+        bool hasOcclusionTexture() const {
+            return !occlusionTexturePath.empty();
+        }
+
+        bool hasEmissiveTexture() const {
+            return !emissiveTexturePath.empty();
         }
     };
 
