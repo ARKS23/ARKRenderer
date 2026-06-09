@@ -29,8 +29,8 @@ namespace ark {
     struct TextureResourceDesc {
         Path path;
         TextureColorSpace colorSpace = TextureColorSpace::Linear;
-        // Phase 0.14.1 先允许显式创建 mip chain；默认仍保持单 mip，等待 mip generation 接口落地。
-        bool generateMips = false;
+        // 默认生成 mip chain，真实资产采样质量优先；特殊测试或后续离线 mip 路径可显式关闭。
+        bool generateMips = true;
         std::string debugName;
     };
 

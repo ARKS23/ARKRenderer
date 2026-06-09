@@ -105,6 +105,7 @@ namespace ark::rhi {
         // CPU 可见 buffer 的直接更新路径；调用方需要保证不会覆盖 GPU 仍在读取的 in-flight 数据。
         virtual bool updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset = 0) = 0;
         virtual bool uploadTextureData(const TextureUploadDesc& desc) = 0;
+        virtual bool generateTextureMips(Texture& texture) = 0;
         virtual bool uploadBufferData(const BufferUploadDesc& desc) = 0;
         virtual bool deferReleaseBuffer(Scope<Buffer>& buffer) = 0;
         virtual bool deferReleaseTexture(Scope<Texture>& texture) = 0;

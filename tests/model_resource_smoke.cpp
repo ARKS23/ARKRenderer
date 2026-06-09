@@ -281,6 +281,11 @@ namespace {
             return true;
         }
 
+        bool generateTextureMips(ark::rhi::Texture&) override {
+            ++textureMipGenerations;
+            return true;
+        }
+
         bool uploadBufferData(const ark::rhi::BufferUploadDesc&) override {
             ++bufferUploads;
             return true;
@@ -330,6 +335,7 @@ namespace {
 
         int bufferUploads = 0;
         int textureUploads = 0;
+        int textureMipGenerations = 0;
         int deferredBuffers = 0;
         int deferredTextures = 0;
         int deferredTextureViews = 0;
@@ -416,7 +422,9 @@ namespace {
             return false;
         }
 
-        if (!texture.isReady() || context.textureUploads != 1 || context.deferredBuffers != 1) {
+        const int expectedMipGenerations = texture.mipLevels() > 1 ? 1 : 0;
+        if (!texture.isReady() || context.textureUploads != 1 ||
+            context.textureMipGenerations != expectedMipGenerations || context.deferredBuffers != 1) {
             std::cerr << "TextureResource upload did not prepare ready texture\n";
             return false;
         }
@@ -484,13 +492,14 @@ namespace {
         }
 
         FakeDeviceContext context{};
-        if (texture.upload(context)) {
-            std::cerr << "Mip TextureResource upload should wait for mip generation support\n";
+        if (!texture.upload(context)) {
+            std::cerr << "Mip TextureResource upload failed\n";
             return false;
         }
 
-        if (texture.isReady() || context.textureUploads != 0 || context.deferredBuffers != 0) {
-            std::cerr << "Mip TextureResource upload failure changed resource state\n";
+        if (!texture.isReady() || context.textureUploads != 1 || context.textureMipGenerations != 1 ||
+            context.deferredBuffers != 1) {
+            std::cerr << "Mip TextureResource upload did not generate mips\n";
             return false;
         }
 

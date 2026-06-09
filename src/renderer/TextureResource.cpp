@@ -112,12 +112,6 @@ namespace ark {
             return false;
         }
 
-        if (m_MipLevels > 1) {
-            // 0.14.1 只补描述和创建；真实 mip generation 命令在后续步骤接入。
-            ARK_ERROR("TextureResource mip generation upload is not implemented yet");
-            return false;
-        }
-
         // texture upload 必须在 dynamic rendering scope 外记录，由 ForwardPass::prepare() 间接触发。
         rhi::TextureUploadDesc uploadDesc{};
         uploadDesc.sourceBuffer = m_StagingBuffer.get();
@@ -127,6 +121,10 @@ namespace ark {
         uploadDesc.bytesPerPixel = m_BytesPerPixel;
 
         if (!context.uploadTextureData(uploadDesc)) {
+            return false;
+        }
+
+        if (m_MipLevels > 1 && !context.generateTextureMips(*m_Texture)) {
             return false;
         }
 

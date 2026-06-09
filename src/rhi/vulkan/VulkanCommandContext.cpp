@@ -36,6 +36,8 @@ namespace ark::rhi::vulkan {
                 return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             case ResourceState::ShaderResource:
                 return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            case ResourceState::CopySrc:
+                return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             default:
                 return VK_IMAGE_LAYOUT_GENERAL;
             }
@@ -54,6 +56,8 @@ namespace ark::rhi::vulkan {
                 return VK_ACCESS_TRANSFER_WRITE_BIT;
             case ResourceState::ShaderResource:
                 return VK_ACCESS_SHADER_READ_BIT;
+            case ResourceState::CopySrc:
+                return VK_ACCESS_TRANSFER_READ_BIT;
             case ResourceState::Present:
             case ResourceState::Undefined:
                 return 0;
@@ -71,6 +75,7 @@ namespace ark::rhi::vulkan {
             case ResourceState::Present:
                 return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             case ResourceState::CopyDst:
+            case ResourceState::CopySrc:
                 return VK_PIPELINE_STAGE_TRANSFER_BIT;
             case ResourceState::ShaderResource:
                 return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -91,6 +96,7 @@ namespace ark::rhi::vulkan {
             case ResourceState::Present:
                 return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
             case ResourceState::CopyDst:
+            case ResourceState::CopySrc:
                 return VK_PIPELINE_STAGE_TRANSFER_BIT;
             case ResourceState::ShaderResource:
                 return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -204,6 +210,35 @@ namespace ark::rhi::vulkan {
             }
 
             return stageMask != 0 ? stageMask : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        }
+
+        void recordTextureSubresourceBarrier(VkCommandBuffer commandBuffer,
+                                             VulkanTexture& texture,
+                                             u32 baseMipLevel,
+                                             u32 levelCount,
+                                             VkImageLayout oldLayout,
+                                             VkImageLayout newLayout,
+                                             VkAccessFlags srcAccessMask,
+                                             VkAccessFlags dstAccessMask,
+                                             VkPipelineStageFlags srcStageMask,
+                                             VkPipelineStageFlags dstStageMask) {
+            VkImageMemoryBarrier imageBarrier{};
+            imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            imageBarrier.srcAccessMask = srcAccessMask;
+            imageBarrier.dstAccessMask = dstAccessMask;
+            imageBarrier.oldLayout = oldLayout;
+            imageBarrier.newLayout = newLayout;
+            imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            imageBarrier.image = texture.getHandle();
+            imageBarrier.subresourceRange.aspectMask = toImageAspectMask(texture.getDesc().format);
+            imageBarrier.subresourceRange.baseMipLevel = baseMipLevel;
+            imageBarrier.subresourceRange.levelCount = levelCount;
+            imageBarrier.subresourceRange.baseArrayLayer = 0;
+            imageBarrier.subresourceRange.layerCount = 1;
+
+            vkCmdPipelineBarrier(commandBuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1,
+                                 &imageBarrier);
         }
     } // namespace
 
@@ -643,15 +678,144 @@ namespace ark::rhi::vulkan {
         vkCmdCopyBufferToImage(commandBuffer, sourceBuffer->getHandle(), texture->getHandle(),
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-        // copy 完成后转为 shader 只读布局，descriptor 中使用同一个 ShaderResource 语义。
-        const std::array<ResourceBarrier, 1> toShaderResource{{
-            ResourceBarrier{
-                .texture = texture,
-                .before = texture->getState(),
-                .after = ResourceState::ShaderResource,
-            },
-        }};
-        pipelineBarrier(toShaderResource);
+        if (textureDesc.mipLevels == 1) {
+            // 单 mip 仍沿用旧路径：copy 完成后直接进入 shader 只读布局。
+            const std::array<ResourceBarrier, 1> toShaderResource{{
+                ResourceBarrier{
+                    .texture = texture,
+                    .before = texture->getState(),
+                    .after = ResourceState::ShaderResource,
+                },
+            }};
+            pipelineBarrier(toShaderResource);
+        }
+
+        return true;
+    }
+
+    bool VulkanCommandContext::generateTextureMips(Texture& texture) {
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::generateTextureMips", commandBuffer)) {
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips must be recorded outside rendering scope");
+            return false;
+        }
+
+        VulkanTexture* vulkanTexture = dynamic_cast<VulkanTexture*>(&texture);
+        if (!vulkanTexture || vulkanTexture->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips requires VulkanTexture");
+            return false;
+        }
+
+        const TextureDesc& textureDesc = vulkanTexture->getDesc();
+        if (textureDesc.mipLevels <= 1) {
+            return true;
+        }
+
+        if (textureDesc.arrayLayers != 1) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips currently supports one array layer");
+            return false;
+        }
+
+        if (textureDesc.format != Format::RGBA8Unorm && textureDesc.format != Format::RGBA8Srgb) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips currently supports RGBA8 textures only");
+            return false;
+        }
+
+        if (!hasTextureUsage(textureDesc.usage, TextureUsage::TransferSrc) ||
+            !hasTextureUsage(textureDesc.usage, TextureUsage::TransferDst) ||
+            !hasTextureUsage(textureDesc.usage, TextureUsage::ShaderResource)) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips requires TransferSrc/TransferDst/ShaderResource usage");
+            return false;
+        }
+
+        if (vulkanTexture->getState() != ResourceState::CopyDst) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips requires texture in CopyDst state");
+            return false;
+        }
+
+        const VkFormat vkFormat = toVkFormat(textureDesc.format);
+        VkFormatProperties formatProperties{};
+        vkGetPhysicalDeviceFormatProperties(m_Device.getPhysicalDevice(), vkFormat, &formatProperties);
+        const VkFormatFeatureFlags requiredFeatures = VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+                                                      VK_FORMAT_FEATURE_BLIT_DST_BIT |
+                                                      VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+        if ((formatProperties.optimalTilingFeatures & requiredFeatures) != requiredFeatures) {
+            ARK_ERROR("VulkanCommandContext::generateTextureMips format does not support linear blit");
+            return false;
+        }
+
+        u32 srcWidth = textureDesc.extent.width;
+        u32 srcHeight = textureDesc.extent.height;
+
+        for (u32 mipLevel = 1; mipLevel < textureDesc.mipLevels; ++mipLevel) {
+            const u32 dstWidth = srcWidth > 1 ? srcWidth / 2 : 1;
+            const u32 dstHeight = srcHeight > 1 ? srcHeight / 2 : 1;
+
+            // 上一层作为 blit source，当前层作为 blit destination。
+            recordTextureSubresourceBarrier(commandBuffer,
+                                            *vulkanTexture,
+                                            mipLevel - 1,
+                                            1,
+                                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                            VK_ACCESS_TRANSFER_WRITE_BIT,
+                                            VK_ACCESS_TRANSFER_READ_BIT,
+                                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                            VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+            VkImageBlit blit{};
+            blit.srcOffsets[0] = VkOffset3D{0, 0, 0};
+            blit.srcOffsets[1] = VkOffset3D{static_cast<i32>(srcWidth), static_cast<i32>(srcHeight), 1};
+            blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.mipLevel = mipLevel - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount = 1;
+            blit.dstOffsets[0] = VkOffset3D{0, 0, 0};
+            blit.dstOffsets[1] = VkOffset3D{static_cast<i32>(dstWidth), static_cast<i32>(dstHeight), 1};
+            blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.dstSubresource.mipLevel = mipLevel;
+            blit.dstSubresource.baseArrayLayer = 0;
+            blit.dstSubresource.layerCount = 1;
+
+            vkCmdBlitImage(commandBuffer,
+                           vulkanTexture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           vulkanTexture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1,
+                           &blit,
+                           VK_FILTER_LINEAR);
+
+            recordTextureSubresourceBarrier(commandBuffer,
+                                            *vulkanTexture,
+                                            mipLevel - 1,
+                                            1,
+                                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                            VK_ACCESS_TRANSFER_READ_BIT,
+                                            VK_ACCESS_SHADER_READ_BIT,
+                                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+            srcWidth = dstWidth;
+            srcHeight = dstHeight;
+        }
+
+        recordTextureSubresourceBarrier(commandBuffer,
+                                        *vulkanTexture,
+                                        textureDesc.mipLevels - 1,
+                                        1,
+                                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                        VK_ACCESS_TRANSFER_WRITE_BIT,
+                                        VK_ACCESS_SHADER_READ_BIT,
+                                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        vulkanTexture->setState(ResourceState::ShaderResource);
         return true;
     }
 

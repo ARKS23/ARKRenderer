@@ -12,10 +12,10 @@ ModelResource::resetDeferred(context)
     -> VulkanDeletionQueue flush after frame fence
 ```
 
-这说明当前 renderer 层的资源生命周期边界已经比 Phase 0.11 / 0.12 更稳定，可以继续推进 texture sampling 质量。但当前 texture 路径仍停留在最小 mip0 方案：
+这说明当前 renderer 层的资源生命周期边界已经比 Phase 0.11 / 0.12 更稳定，可以继续推进 texture sampling 质量。Phase 0.14 启动前，texture 路径仍停留在最小 mip0 方案：
 
 - `TextureResource` 创建 texture 时固定 `mipLevels = 1`。
-- `TextureResource` 的 sampler `mipFilter` 仍是 `Nearest`。
+- sampler mip filter 在真实 mip chain 接入前没有发挥作用。
 - `DeviceContext::uploadTextureData()` 只支持 mip0 / array layer 0。
 - Vulkan upload 路径是 `Undefined -> CopyDst -> ShaderResource`，没有 per-mip barrier。
 - glTF material 和 shader 仍只采样 base color texture，没有 PBR 或多 texture 语义。
@@ -241,7 +241,7 @@ g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0)
 当前实现状态：
 
 - 已创建。
-- 0.14.1 已开始补齐 mip count 与 `TextureResource` 描述。
+- 0.14.1 已补齐 mip count 与 `TextureResource` 描述。
 
 ### 0.14.1 Mip count 与 TextureResource 描述补齐
 
@@ -259,10 +259,9 @@ g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0)
 当前实现状态：
 
 - 已新增 `rhi::calculateMipLevelCount(extent)`。
-- `TextureResourceDesc` 已新增 `generateMips`，当前默认值保持 `false`，避免 mip generation 命令落地前默认路径采样未初始化 mip。
+- `TextureResourceDesc` 已新增 `generateMips`，默认开启 mip chain。
 - `TextureResource` 已能按描述创建 full mip texture、full mip view，并在多 mip 时启用 `TransferSrc` usage 和 linear mip filter。
-- `TextureResource::upload()` 当前会明确拒绝多 mip texture upload；真正 upload 后生成 mip 的路径留给 0.14.2 ~ 0.14.4。
-- `ark_model_resource_smoke` 已覆盖 mip count、full mip texture/view/sampler 描述，以及多 mip upload 在 generation 支持前不会假装成功。
+- `ark_model_resource_smoke` 已覆盖 mip count、full mip texture/view/sampler 描述。
 
 ### 0.14.2 RHI generateTextureMips 接口
 
@@ -275,6 +274,13 @@ g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0)
 - `mipLevels == 1` 行为明确。
 - 调用时机要求写清楚：active command recording，dynamic rendering scope 外。
 - 不把 mip generation 混入 `uploadTextureData()`。
+
+当前实现状态：
+
+- 已新增 `DeviceContext::generateTextureMips(Texture&)`。
+- fake test context 已记录 mip generation 调用次数。
+- VulkanCommandContext 已声明并实现该接口。
+- `uploadTextureData()` 仍只上传一个 texture subresource；多 mip texture 的后续 mip 生成由显式 `generateTextureMips()` 完成。
 
 ### 0.14.3 Vulkan mip generation
 
@@ -290,6 +296,15 @@ g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0)
 - 不在 rendering scope 内执行。
 - unsupported format 明确报错，不假装生成成功。
 
+当前实现状态：
+
+- Vulkan 后端已实现 2D RGBA8 / RGBA8 sRGB texture 的 per-mip `vkCmdBlitImage` generation。
+- 已检查 `TransferSrc | TransferDst | ShaderResource` usage。
+- 已检查 format 支持 blit source、blit destination 和 linear filter。
+- 已限制当前只支持 one array layer。
+- mip generation 要求 active command buffer、dynamic rendering scope 外，并要求 texture 当前处于 `CopyDst` 状态。
+- 成功后 texture 整体状态记录为 `ShaderResource`。
+
 ### 0.14.4 TextureResource upload 接入
 
 目标：
@@ -302,6 +317,12 @@ g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0)
 - `m_Uploaded` 只在完整流程成功后置 true。
 - `TextureResource::releaseDeferred()` 仍覆盖 texture/view/sampler/staging。
 
+当前实现状态：
+
+- `TextureResource::upload()` 已在 mip0 upload 后按需调用 `context.generateTextureMips(*m_Texture)`。
+- staging buffer 仍在 upload / mip generation 命令记录完成后 deferred release。
+- 默认 texture resource 现在会生成 mip chain；显式 `generateMips = false` 可保留单 mip 路径。
+
 ### 0.14.5 Tests 与 sandbox smoke
 
 目标：
@@ -309,6 +330,13 @@ g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0)
 - fake context 验证 mip generation 调用次数。
 - 现有 texture cache / model resource / render queue tests 不回退。
 - 默认 sandbox smoke 继续通过。
+
+当前实现状态：
+
+- `ark_model_resource_smoke` 已覆盖 mip count、full mip texture/view/sampler 描述和 mip generation 调用次数。
+- `cmake --build --preset msvc-vcpkg-local-debug` 已通过。
+- `ctest --preset msvc-vcpkg-local-debug` 已通过，8/8 tests passed。
+- sandbox smoke 已通过，默认 `forward_multinode_fixture.gltf` 正常加载并完成 renderer 初始化。
 
 建议运行：
 
@@ -325,6 +353,12 @@ ctest --preset msvc-vcpkg-local-debug
 - 更新本文档当前实现状态。
 - 按需同步 `docs/codex_handoff.md`。
 - 记录剩余 TODO：PBR material、多 texture、HDR、压缩纹理、离线 mip、texture streaming。
+
+当前实现状态：
+
+- 已完成。
+- 本文档已同步 0.14.1 ~ 0.14.6 实现状态、验证记录和后续 TODO。
+- `docs/codex_handoff.md` 已同步到 Phase 0.14。
 
 ## 审核检查点
 
@@ -382,6 +416,12 @@ Phase 0.14 完成时应满足：
 - sampler mip filter 不再停留在无意义的单 mip 配置。
 - build、ctest 和必要 sandbox smoke 通过。
 - 文档记录剩余限制和后续阶段建议。
+
+当前完成状态：
+
+- 已满足上述完成标准。
+- 当前实现是最小 2D RGBA8 / RGBA8 sRGB mipmap generation 闭环。
+- 仍不支持 HDR、压缩纹理、离线 mip、array/cubemap、texture streaming 或 glTF sampler 参数。
 
 ## 后续 Phase 建议
 
