@@ -15,9 +15,9 @@ namespace ark {
                 continue;
             }
 
-            for (usize primitiveIndex = 0; primitiveIndex < model.model->primitiveCount(); ++primitiveIndex) {
-                MeshResource* mesh = model.model->primitiveMesh(primitiveIndex);
-                MaterialResource* material = model.model->primitiveMaterial(primitiveIndex);
+            for (const ModelPrimitiveInstance& instance : model.model->instances()) {
+                MeshResource* mesh = model.model->primitiveMesh(instance.primitiveIndex);
+                MaterialResource* material = model.model->primitiveMaterial(instance.primitiveIndex);
                 if (!mesh || !material) {
                     continue;
                 }
@@ -25,8 +25,8 @@ namespace ark {
                 DrawItem item{};
                 item.mesh = mesh;
                 item.material = material;
-                item.modelMatrix = model.transform;
-                item.debugName = model.debugName;
+                item.modelMatrix = model.transform * instance.localTransform;
+                item.debugName = instance.debugName.empty() ? model.debugName : instance.debugName;
                 m_DrawItems.push_back(std::move(item));
             }
         }

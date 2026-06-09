@@ -8,6 +8,19 @@
 #include <utility>
 
 namespace ark {
+    namespace {
+        glm::mat4 toMat4(const asset::TransformData& transform) {
+            glm::mat4 matrix{1.0f};
+            for (usize column = 0; column < 4; ++column) {
+                for (usize row = 0; row < 4; ++row) {
+                    matrix[static_cast<glm::length_t>(column)][static_cast<glm::length_t>(row)] =
+                        transform.matrix[column * 4 + row];
+                }
+            }
+            return matrix;
+        }
+    } // namespace
+
     bool ModelResource::create(rhi::RenderDevice& device, const asset::ModelData& model) {
         if (model.empty()) {
             ARK_ERROR("ModelResource requires non-empty model data");
@@ -28,9 +41,11 @@ namespace ark {
         m_Meshes.clear();
         m_Materials.clear();
         m_Primitives.clear();
+        m_Instances.clear();
         m_Meshes.resize(model.meshes.size());
         m_Materials.resize(model.materials.size());
         m_Primitives.reserve(model.meshes.size());
+        m_Instances.reserve(model.instances.empty() ? model.meshes.size() : model.instances.size());
 
         for (usize materialIndex = 0; materialIndex < model.materials.size(); ++materialIndex) {
             if (!m_Materials[materialIndex].create(device, model.materials[materialIndex])) {
@@ -58,7 +73,30 @@ namespace ark {
             m_Primitives.push_back(std::move(primitive));
         }
 
-        return !m_Primitives.empty();
+        if (model.instances.empty()) {
+            for (usize primitiveIndex = 0; primitiveIndex < m_Primitives.size(); ++primitiveIndex) {
+                ModelPrimitiveInstance instance{};
+                instance.primitiveIndex = static_cast<u32>(primitiveIndex);
+                instance.localTransform = glm::mat4{1.0f};
+                instance.debugName = m_Primitives[primitiveIndex].debugName;
+                m_Instances.push_back(std::move(instance));
+            }
+        } else {
+            for (const asset::MeshPrimitiveInstanceData& instanceData : model.instances) {
+                if (instanceData.meshIndex >= m_Primitives.size()) {
+                    ARK_ERROR("ModelResource primitive instance index is out of range");
+                    return false;
+                }
+
+                ModelPrimitiveInstance instance{};
+                instance.primitiveIndex = instanceData.meshIndex;
+                instance.localTransform = toMat4(instanceData.localTransform);
+                instance.debugName = instanceData.debugName;
+                m_Instances.push_back(std::move(instance));
+            }
+        }
+
+        return !m_Primitives.empty() && !m_Instances.empty();
     }
 
     bool ModelResource::upload(rhi::DeviceContext& context) {
@@ -78,6 +116,7 @@ namespace ark {
     }
 
     void ModelResource::reset() {
+        m_Instances.clear();
         m_Primitives.clear();
         m_Materials.clear();
         m_Meshes.clear();
@@ -85,6 +124,10 @@ namespace ark {
 
     std::span<const ModelPrimitiveResource> ModelResource::primitives() const {
         return m_Primitives;
+    }
+
+    std::span<const ModelPrimitiveInstance> ModelResource::instances() const {
+        return m_Instances;
     }
 
     MeshResource* ModelResource::mesh(usize index) {

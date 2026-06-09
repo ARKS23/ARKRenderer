@@ -45,6 +45,7 @@ namespace ark {
         RenderScene scene;
         RenderView view;
         rhi::Extent2D currentExtent = rendererDesc.extent;
+        view.setDefaultPerspective(currentExtent);
         while (!m_Window->shouldClose()) {
             m_Window->pollEvents();
 
@@ -53,6 +54,7 @@ namespace ark {
             if (windowExtent.width != currentExtent.width || windowExtent.height != currentExtent.height) {
                 currentExtent = windowExtent;
                 m_Renderer->resize(currentExtent.width, currentExtent.height);
+                view.setDefaultPerspective(currentExtent);
             }
 
             m_Renderer->render(scene, view);

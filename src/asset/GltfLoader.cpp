@@ -7,6 +7,7 @@
 #define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
 
+#include <array>
 #include <cstring>
 #include <limits>
 #include <string>
@@ -19,6 +20,8 @@ namespace ark::asset {
         constexpr const char* NormalAttributeName = "NORMAL";
         constexpr const char* Texcoord0AttributeName = "TEXCOORD_0";
         constexpr u32 InvalidMaterialIndex = std::numeric_limits<u32>::max();
+
+        using Matrix4 = std::array<float, 16>;
 
         bool skipImageLoad(tinygltf::Image* image,
                            const int imageIndex,
@@ -68,6 +71,105 @@ namespace ark::asset {
             }
 
             return &model.buffers[static_cast<usize>(bufferIndex)];
+        }
+
+        Matrix4 identityMatrix() {
+            return Matrix4{
+                1.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 1.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f,
+            };
+        }
+
+        Matrix4 multiplyMatrix(const Matrix4& lhs, const Matrix4& rhs) {
+            Matrix4 result{};
+            for (usize column = 0; column < 4; ++column) {
+                for (usize row = 0; row < 4; ++row) {
+                    float value = 0.0f;
+                    for (usize k = 0; k < 4; ++k) {
+                        value += lhs[k * 4 + row] * rhs[column * 4 + k];
+                    }
+                    result[column * 4 + row] = value;
+                }
+            }
+            return result;
+        }
+
+        Matrix4 translationMatrix(const std::vector<double>& translation) {
+            Matrix4 matrix = identityMatrix();
+            if (translation.size() == 3) {
+                matrix[12] = static_cast<float>(translation[0]);
+                matrix[13] = static_cast<float>(translation[1]);
+                matrix[14] = static_cast<float>(translation[2]);
+            }
+            return matrix;
+        }
+
+        Matrix4 scaleMatrix(const std::vector<double>& scale) {
+            Matrix4 matrix = identityMatrix();
+            if (scale.size() == 3) {
+                matrix[0] = static_cast<float>(scale[0]);
+                matrix[5] = static_cast<float>(scale[1]);
+                matrix[10] = static_cast<float>(scale[2]);
+            }
+            return matrix;
+        }
+
+        Matrix4 rotationMatrix(const std::vector<double>& rotation) {
+            Matrix4 matrix = identityMatrix();
+            if (rotation.size() != 4) {
+                return matrix;
+            }
+
+            const float x = static_cast<float>(rotation[0]);
+            const float y = static_cast<float>(rotation[1]);
+            const float z = static_cast<float>(rotation[2]);
+            const float w = static_cast<float>(rotation[3]);
+            const float xx = x * x;
+            const float yy = y * y;
+            const float zz = z * z;
+            const float xy = x * y;
+            const float xz = x * z;
+            const float yz = y * z;
+            const float wx = w * x;
+            const float wy = w * y;
+            const float wz = w * z;
+
+            matrix[0] = 1.0f - 2.0f * (yy + zz);
+            matrix[1] = 2.0f * (xy + wz);
+            matrix[2] = 2.0f * (xz - wy);
+            matrix[4] = 2.0f * (xy - wz);
+            matrix[5] = 1.0f - 2.0f * (xx + zz);
+            matrix[6] = 2.0f * (yz + wx);
+            matrix[8] = 2.0f * (xz + wy);
+            matrix[9] = 2.0f * (yz - wx);
+            matrix[10] = 1.0f - 2.0f * (xx + yy);
+            return matrix;
+        }
+
+        Matrix4 nodeLocalMatrix(const tinygltf::Node& node) {
+            if (node.matrix.size() == 16) {
+                Matrix4 matrix{};
+                for (usize i = 0; i < matrix.size(); ++i) {
+                    matrix[i] = static_cast<float>(node.matrix[i]);
+                }
+                return matrix;
+            }
+
+            // glTF TRS 对 column vector 的组合顺序是 T * R * S。
+            const Matrix4 translation = translationMatrix(node.translation);
+            const Matrix4 rotation = rotationMatrix(node.rotation);
+            const Matrix4 scale = scaleMatrix(node.scale);
+            return multiplyMatrix(multiplyMatrix(translation, rotation), scale);
+        }
+
+        TransformData toTransformData(const Matrix4& matrix) {
+            TransformData transform{};
+            for (usize i = 0; i < matrix.size(); ++i) {
+                transform.matrix[i] = matrix[i];
+            }
+            return transform;
         }
 
         u64 componentByteSize(int componentType) {
@@ -276,6 +378,10 @@ namespace ark::asset {
             return meshName + ".Primitive." + std::to_string(primitiveIndex);
         }
 
+        std::string makeNodeDebugName(const tinygltf::Node& node, usize nodeIndex) {
+            return node.name.empty() ? "GltfNode." + std::to_string(nodeIndex) : node.name;
+        }
+
         Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int materialIndex) {
             if (materialIndex < 0 || static_cast<usize>(materialIndex) >= model.materials.size()) {
                 return {};
@@ -349,6 +455,100 @@ namespace ark::asset {
 
             return true;
         }
+
+        bool appendMeshInstances(const tinygltf::Model& gltfModel,
+                                 const std::vector<std::vector<u32>>& meshPrimitiveMap,
+                                 usize nodeIndex,
+                                 const Matrix4& parentTransform,
+                                 ModelData& model) {
+            if (nodeIndex >= gltfModel.nodes.size()) {
+                ARK_ERROR("glTF scene node index is out of range");
+                return false;
+            }
+
+            const tinygltf::Node& node = gltfModel.nodes[nodeIndex];
+            if (node.skin >= 0) {
+                ARK_ERROR("glTF skin is not supported by Phase 0.10 loader");
+                return false;
+            }
+
+            if (node.camera >= 0) {
+                ARK_WARN("glTF node camera is ignored by Phase 0.10 loader");
+            }
+
+            const Matrix4 worldTransform = multiplyMatrix(parentTransform, nodeLocalMatrix(node));
+            if (node.mesh >= 0) {
+                const usize meshIndex = static_cast<usize>(node.mesh);
+                if (meshIndex >= meshPrimitiveMap.size()) {
+                    ARK_ERROR("glTF node mesh index is out of range");
+                    return false;
+                }
+
+                const std::string nodeName = makeNodeDebugName(node, nodeIndex);
+                for (u32 primitiveMeshIndex : meshPrimitiveMap[meshIndex]) {
+                    MeshPrimitiveInstanceData instance{};
+                    instance.meshIndex = primitiveMeshIndex;
+                    instance.localTransform = toTransformData(worldTransform);
+                    instance.debugName = nodeName + "." + model.meshes[primitiveMeshIndex].debugName;
+                    model.instances.push_back(std::move(instance));
+                }
+            }
+
+            for (int childIndex : node.children) {
+                if (childIndex < 0) {
+                    ARK_ERROR("glTF child node index is invalid");
+                    return false;
+                }
+
+                if (!appendMeshInstances(gltfModel, meshPrimitiveMap, static_cast<usize>(childIndex), worldTransform, model)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool loadSceneInstances(const tinygltf::Model& gltfModel,
+                                const std::vector<std::vector<u32>>& meshPrimitiveMap,
+                                ModelData& model) {
+            if (gltfModel.scenes.empty()) {
+                ARK_WARN("glTF file has no scene; creating identity primitive instances");
+                for (usize meshIndex = 0; meshIndex < model.meshes.size(); ++meshIndex) {
+                    MeshPrimitiveInstanceData instance{};
+                    instance.meshIndex = static_cast<u32>(meshIndex);
+                    instance.localTransform = toTransformData(identityMatrix());
+                    instance.debugName = model.meshes[meshIndex].debugName;
+                    model.instances.push_back(std::move(instance));
+                }
+                return true;
+            }
+
+            const int selectedSceneIndex = gltfModel.defaultScene >= 0 ? gltfModel.defaultScene : 0;
+            if (selectedSceneIndex < 0 || static_cast<usize>(selectedSceneIndex) >= gltfModel.scenes.size()) {
+                ARK_ERROR("glTF default scene index is out of range");
+                return false;
+            }
+
+            const tinygltf::Scene& scene = gltfModel.scenes[static_cast<usize>(selectedSceneIndex)];
+            const Matrix4 rootTransform = identityMatrix();
+            for (int nodeIndex : scene.nodes) {
+                if (nodeIndex < 0) {
+                    ARK_ERROR("glTF root node index is invalid");
+                    return false;
+                }
+
+                if (!appendMeshInstances(gltfModel, meshPrimitiveMap, static_cast<usize>(nodeIndex), rootTransform, model)) {
+                    return false;
+                }
+            }
+
+            if (model.instances.empty()) {
+                ARK_ERROR("glTF scene does not contain drawable mesh instances");
+                return false;
+            }
+
+            return true;
+        }
     } // namespace
 
     ModelData GltfLoader::loadModel(const Path& path) {
@@ -379,8 +579,9 @@ namespace ark::asset {
         ModelData model{};
         model.debugName = path.string();
 
-        // asset 层先保留 glTF 原始 material index，最后再压缩成 ModelData 的连续 material 数组。
+        // 先保留 glTF 原始 material index，最后再压缩成 ModelData 的连续 material 数组。
         std::vector<u32> sourceMaterialIndices;
+        std::vector<std::vector<u32>> meshPrimitiveMap(gltfModel.meshes.size());
         for (usize meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex) {
             const tinygltf::Mesh& gltfMesh = gltfModel.meshes[meshIndex];
             for (usize primitiveIndex = 0; primitiveIndex < gltfMesh.primitives.size(); ++primitiveIndex) {
@@ -396,12 +597,23 @@ namespace ark::asset {
 
                 sourceMaterialIndices.push_back(meshData.materialIndex);
                 meshData.debugName = makePrimitiveDebugName(gltfMesh, meshIndex, primitiveIndex);
+
+                if (model.meshes.size() >= std::numeric_limits<u32>::max()) {
+                    ARK_ERROR("glTF primitive count exceeds u32 range");
+                    return {};
+                }
+
+                meshPrimitiveMap[meshIndex].push_back(static_cast<u32>(model.meshes.size()));
                 model.meshes.push_back(std::move(meshData));
             }
         }
 
-        if (model.meshes.empty() || model.meshes.size() > std::numeric_limits<u32>::max()) {
+        if (model.meshes.empty()) {
             ARK_ERROR("glTF file does not contain valid mesh primitives: {}", path.string());
+            return {};
+        }
+
+        if (!loadSceneInstances(gltfModel, meshPrimitiveMap, model)) {
             return {};
         }
 
@@ -422,10 +634,11 @@ namespace ark::asset {
             model.meshes[meshIndex].materialIndex = remappedIndex;
         }
 
-        ARK_INFO("Loaded glTF model: {} (primitives={}, materials={})",
+        ARK_INFO("Loaded glTF model: {} (primitives={}, materials={}, instances={})",
                  path.string(),
                  model.meshes.size(),
-                 model.materials.size());
+                 model.materials.size(),
+                 model.instances.size());
         return model;
     }
 } // namespace ark::asset

@@ -5,12 +5,11 @@
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
 #include "renderer/RenderQueue.h"
+#include "renderer/RenderView.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/SwapChain.h"
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 #include <cstddef>
 #include <string>
@@ -28,15 +27,15 @@ namespace ark {
         };
 
         CameraUniform makeCameraUniform(const FrameContext& frameContext) {
-            const float aspect =
-                frameContext.extent.height == 0
-                    ? 1.0f
-                    : static_cast<float>(frameContext.extent.width) / static_cast<float>(frameContext.extent.height);
-
             CameraUniform uniform{};
-            uniform.view = glm::lookAt(glm::vec3{0.0f, 0.0f, -4.0f}, glm::vec3{0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
-            uniform.projection = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
-            uniform.projection[1][1] *= -1.0f;
+            if (frameContext.view) {
+                uniform.view = frameContext.view->viewMatrix();
+                uniform.projection = frameContext.view->projectionMatrix();
+                return uniform;
+            }
+
+            uniform.view = glm::mat4{1.0f};
+            uniform.projection = glm::mat4{1.0f};
             return uniform;
         }
     } // namespace

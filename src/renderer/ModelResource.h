@@ -5,6 +5,8 @@
 #include "renderer/MeshResource.h"
 #include "renderer/material/MaterialResource.h"
 
+#include <glm/mat4x4.hpp>
+
 #include <span>
 #include <string>
 #include <vector>
@@ -21,7 +23,13 @@ namespace ark {
         std::string debugName;
     };
 
-    // renderer 层 model resource：把 asset::ModelData 拆成多个 mesh/material GPU resource。
+    struct ModelPrimitiveInstance {
+        u32 primitiveIndex = 0;
+        glm::mat4 localTransform{1.0f};
+        std::string debugName;
+    };
+
+    // renderer 层 model resource：把 asset::ModelData 拆成 GPU resource 和可绘制 primitive instance。
     class ModelResource final {
     public:
         ModelResource() = default;
@@ -31,6 +39,7 @@ namespace ark {
         void reset();
 
         std::span<const ModelPrimitiveResource> primitives() const;
+        std::span<const ModelPrimitiveInstance> instances() const;
         MeshResource* mesh(usize index);
         MaterialResource* material(usize index);
         MeshResource* primitiveMesh(usize primitiveIndex);
@@ -42,6 +51,10 @@ namespace ark {
 
         usize primitiveCount() const {
             return m_Primitives.size();
+        }
+
+        usize instanceCount() const {
+            return m_Instances.size();
         }
 
         usize meshCount() const {
@@ -56,5 +69,6 @@ namespace ark {
         std::vector<MeshResource> m_Meshes;
         std::vector<MaterialResource> m_Materials;
         std::vector<ModelPrimitiveResource> m_Primitives;
+        std::vector<ModelPrimitiveInstance> m_Instances;
     };
 } // namespace ark

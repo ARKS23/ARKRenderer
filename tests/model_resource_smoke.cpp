@@ -359,6 +359,18 @@ namespace {
         modelData.meshes.push_back(makeTriangle("TriangleA", 0, -1.0f));
         modelData.meshes.push_back(makeTriangle("TriangleB", 0, 1.0f));
 
+        ark::asset::MeshPrimitiveInstanceData instanceA{};
+        instanceA.meshIndex = 0;
+        instanceA.debugName = "InstanceA";
+        instanceA.localTransform.matrix[12] = -2.0f;
+        modelData.instances.push_back(instanceA);
+
+        ark::asset::MeshPrimitiveInstanceData instanceB{};
+        instanceB.meshIndex = 0;
+        instanceB.debugName = "InstanceB";
+        instanceB.localTransform.matrix[12] = 2.0f;
+        modelData.instances.push_back(instanceB);
+
         FakeRenderDevice device{};
         ark::ModelResource modelResource{};
         if (!modelResource.create(device, modelData)) {
@@ -366,7 +378,8 @@ namespace {
             return false;
         }
 
-        if (modelResource.primitiveCount() != 2 || modelResource.meshCount() != 2 || modelResource.materialCount() != 1) {
+        if (modelResource.primitiveCount() != 2 || modelResource.instanceCount() != 2 ||
+            modelResource.meshCount() != 2 || modelResource.materialCount() != 1) {
             std::cerr << "Unexpected ModelResource counts\n";
             return false;
         }
@@ -402,15 +415,15 @@ namespace {
 
         const std::span<const ark::DrawItem> drawItems = queue.drawItems();
         if (drawItems[0].mesh != modelResource.primitiveMesh(0) ||
-            drawItems[1].mesh != modelResource.primitiveMesh(1) ||
+            drawItems[1].mesh != modelResource.primitiveMesh(0) ||
             drawItems[0].material != modelResource.primitiveMaterial(0) ||
-            drawItems[1].material != modelResource.primitiveMaterial(1)) {
+            drawItems[1].material != modelResource.primitiveMaterial(0)) {
             std::cerr << "RenderQueue model draw item references are invalid\n";
             return false;
         }
 
-        if (drawItems[0].modelMatrix[3][0] != 4.0f || drawItems[1].modelMatrix[3][0] != 4.0f) {
-            std::cerr << "RenderQueue did not preserve model transform\n";
+        if (drawItems[0].modelMatrix[3][0] != 2.0f || drawItems[1].modelMatrix[3][0] != 6.0f) {
+            std::cerr << "RenderQueue did not combine scene and local transforms\n";
             return false;
         }
 

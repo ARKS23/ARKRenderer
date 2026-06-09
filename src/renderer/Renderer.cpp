@@ -19,7 +19,7 @@
 
 namespace ark {
     namespace {
-        constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multidraw_fixture.gltf";
+        constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
 
         // 第一版只提供默认 swapchain 配置，后续可以把 vsync、format 等暴露到 RendererDesc。
         rhi::SwapChainDesc makeDefaultSwapChainDesc(rhi::Extent2D extent) {

@@ -29,6 +29,11 @@ namespace {
             return false;
         }
 
+        if (model.instances.size() != 1 || model.instances.front().meshIndex != 0) {
+            std::cerr << "Unexpected glTF instance data\n";
+            return false;
+        }
+
         const ark::asset::MeshPrimitiveData& mesh = model.meshes.front();
         if (mesh.vertices.size() != 4 || mesh.indices.size() != 6) {
             std::cerr << "Unexpected glTF primitive size\n";
@@ -69,6 +74,11 @@ namespace {
             return false;
         }
 
+        if (model.instances.size() != 2 || model.instances[0].meshIndex != 0 || model.instances[1].meshIndex != 1) {
+            std::cerr << "Unexpected multidraw instance data\n";
+            return false;
+        }
+
         const ark::asset::MeshPrimitiveData& firstMesh = model.meshes[0];
         const ark::asset::MeshPrimitiveData& secondMesh = model.meshes[1];
         if (firstMesh.vertices.size() != 4 || firstMesh.indices.size() != 3 ||
@@ -96,8 +106,39 @@ namespace {
 
         return true;
     }
+
+    bool validateMultinodeFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/forward_multinode_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find multinode glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1 || model.instances.size() != 2) {
+            std::cerr << "Unexpected multinode glTF model shape\n";
+            return false;
+        }
+
+        if (model.instances[0].meshIndex != 0 || model.instances[1].meshIndex != 0) {
+            std::cerr << "Unexpected multinode primitive instance indices\n";
+            return false;
+        }
+
+        const float leftTranslation = model.instances[0].localTransform.matrix[12];
+        const float rightTranslation = model.instances[1].localTransform.matrix[12];
+        const float rightScaleX = model.instances[1].localTransform.matrix[0];
+        if (leftTranslation != -1.25f || rightTranslation != 1.25f || rightScaleX != 0.5f) {
+            std::cerr << "Unexpected multinode transforms\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateForwardFixture() && validateMultidrawFixture() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

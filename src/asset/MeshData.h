@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace ark::asset {
-    // Phase 0.8 固定的 CPU 顶点格式；GPU vertex layout 由 renderer/RHI 后续映射。
+    // Phase 0.8 固定 CPU 顶点格式；GPU vertex layout 由 renderer/RHI 映射。
     struct MeshVertex {
         float position[3]{};
         float normal[3]{};
@@ -44,10 +44,28 @@ namespace ark::asset {
         }
     };
 
-    // glTF 2.0 最小子集加载结果：多个 primitive + 对应 CPU 材质描述。
+    // CPU 侧 transform 使用 glTF/GLM 兼容的 column-major 4x4 矩阵，避免 asset 层依赖 renderer 类型。
+    struct TransformData {
+        float matrix[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        };
+    };
+
+    // 表达一个 glTF node 对某个 primitive 的实例化；meshIndex 指向 ModelData::meshes。
+    struct MeshPrimitiveInstanceData {
+        u32 meshIndex = 0;
+        TransformData localTransform;
+        std::string debugName;
+    };
+
+    // glTF 2.0 最小子集加载结果：primitive resource、material 和 scene/node 生成的 instance。
     struct ModelData {
         std::vector<MeshPrimitiveData> meshes;
         std::vector<MaterialData> materials;
+        std::vector<MeshPrimitiveInstanceData> instances;
         std::string debugName;
 
         bool empty() const {
