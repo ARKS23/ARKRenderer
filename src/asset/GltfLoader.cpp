@@ -10,12 +10,15 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace ark::asset {
     namespace {
         constexpr const char* PositionAttributeName = "POSITION";
         constexpr const char* NormalAttributeName = "NORMAL";
         constexpr const char* Texcoord0AttributeName = "TEXCOORD_0";
+        constexpr u32 InvalidMaterialIndex = std::numeric_limits<u32>::max();
 
         bool skipImageLoad(tinygltf::Image* image,
                            const int imageIndex,
@@ -217,14 +220,6 @@ namespace ark::asset {
             return true;
         }
 
-        const tinygltf::Primitive* firstPrimitive(const tinygltf::Model& model) {
-            if (model.meshes.empty() || model.meshes.front().primitives.empty()) {
-                return nullptr;
-            }
-
-            return &model.meshes.front().primitives.front();
-        }
-
         int findAttributeAccessor(const tinygltf::Primitive& primitive, const char* name) {
             const auto iter = primitive.attributes.find(name);
             return iter == primitive.attributes.end() ? -1 : iter->second;
@@ -276,6 +271,11 @@ namespace ark::asset {
             return !mesh.empty();
         }
 
+        std::string makePrimitiveDebugName(const tinygltf::Mesh& mesh, usize meshIndex, usize primitiveIndex) {
+            const std::string meshName = mesh.name.empty() ? "GltfMesh." + std::to_string(meshIndex) : mesh.name;
+            return meshName + ".Primitive." + std::to_string(primitiveIndex);
+        }
+
         Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int materialIndex) {
             if (materialIndex < 0 || static_cast<usize>(materialIndex) >= model.materials.size()) {
                 return {};
@@ -303,6 +303,29 @@ namespace ark::asset {
             }
 
             return gltfPath.parent_path() / uriPath;
+        }
+
+        bool loadMaterial(const Path& gltfPath,
+                          const tinygltf::Model& gltfModel,
+                          u32 sourceMaterialIndex,
+                          MaterialData& material) {
+            if (sourceMaterialIndex >= gltfModel.materials.size()) {
+                ARK_ERROR("glTF material index is out of range");
+                return false;
+            }
+
+            const tinygltf::Material& gltfMaterial = gltfModel.materials[sourceMaterialIndex];
+            material.debugName = gltfMaterial.name.empty()
+                                     ? "GltfMaterial." + std::to_string(sourceMaterialIndex)
+                                     : gltfMaterial.name;
+            material.baseColorTexturePath =
+                resolveTexturePath(gltfPath, gltfModel, static_cast<int>(sourceMaterialIndex));
+            if (material.baseColorTexturePath.empty()) {
+                ARK_ERROR("glTF material requires an external baseColorTexture: {}", gltfPath.string());
+                return false;
+            }
+
+            return true;
         }
 
         bool loadTinyGltfModel(const Path& path, tinygltf::Model& model) {
@@ -343,31 +366,66 @@ namespace ark::asset {
             return {};
         }
 
-        const tinygltf::Primitive* primitive = firstPrimitive(gltfModel);
-        if (!primitive) {
-            ARK_ERROR("glTF file does not contain a mesh primitive: {}", path.string());
+        if (gltfModel.meshes.empty()) {
+            ARK_ERROR("glTF file does not contain meshes: {}", path.string());
+            return {};
+        }
+
+        if (gltfModel.materials.empty() || gltfModel.materials.size() > std::numeric_limits<u32>::max()) {
+            ARK_ERROR("glTF file requires at least one material in u32 range: {}", path.string());
             return {};
         }
 
         ModelData model{};
         model.debugName = path.string();
-        model.meshes.resize(1);
-        if (!loadPrimitive(gltfModel, *primitive, model.meshes.front())) {
+
+        // asset 层先保留 glTF 原始 material index，最后再压缩成 ModelData 的连续 material 数组。
+        std::vector<u32> sourceMaterialIndices;
+        for (usize meshIndex = 0; meshIndex < gltfModel.meshes.size(); ++meshIndex) {
+            const tinygltf::Mesh& gltfMesh = gltfModel.meshes[meshIndex];
+            for (usize primitiveIndex = 0; primitiveIndex < gltfMesh.primitives.size(); ++primitiveIndex) {
+                MeshPrimitiveData meshData{};
+                if (!loadPrimitive(gltfModel, gltfMesh.primitives[primitiveIndex], meshData)) {
+                    return {};
+                }
+
+                if (meshData.materialIndex >= gltfModel.materials.size()) {
+                    ARK_ERROR("glTF primitive material index is out of range");
+                    return {};
+                }
+
+                sourceMaterialIndices.push_back(meshData.materialIndex);
+                meshData.debugName = makePrimitiveDebugName(gltfMesh, meshIndex, primitiveIndex);
+                model.meshes.push_back(std::move(meshData));
+            }
+        }
+
+        if (model.meshes.empty() || model.meshes.size() > std::numeric_limits<u32>::max()) {
+            ARK_ERROR("glTF file does not contain valid mesh primitives: {}", path.string());
             return {};
         }
 
-        MaterialData material{};
-        material.debugName = "GltfMaterial";
-        material.baseColorTexturePath =
-            resolveTexturePath(path, gltfModel, static_cast<int>(model.meshes.front().materialIndex));
-        if (material.baseColorTexturePath.empty()) {
-            ARK_ERROR("glTF material requires an external baseColorTexture: {}", path.string());
-            return {};
+        std::vector<u32> materialRemap(gltfModel.materials.size(), InvalidMaterialIndex);
+        for (usize meshIndex = 0; meshIndex < model.meshes.size(); ++meshIndex) {
+            const u32 sourceMaterialIndex = sourceMaterialIndices[meshIndex];
+            u32& remappedIndex = materialRemap[sourceMaterialIndex];
+            if (remappedIndex == InvalidMaterialIndex) {
+                MaterialData material{};
+                if (!loadMaterial(path, gltfModel, sourceMaterialIndex, material)) {
+                    return {};
+                }
+
+                remappedIndex = static_cast<u32>(model.materials.size());
+                model.materials.push_back(std::move(material));
+            }
+
+            model.meshes[meshIndex].materialIndex = remappedIndex;
         }
 
-        model.meshes.front().materialIndex = 0;
-        model.materials.push_back(material);
-        ARK_INFO("Loaded glTF model: {}", path.string());
+        ARK_INFO("Loaded glTF model: {} (primitives={}, materials={})",
+                 path.string(),
+                 model.meshes.size(),
+                 model.materials.size());
         return model;
     }
 } // namespace ark::asset

@@ -17,6 +17,7 @@
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
 #include "renderer/MeshResource.h"
+#include "renderer/ModelResource.h"
 #include "renderer/RenderGraph.h"
 #include "renderer/RenderPass.h"
 #include "renderer/RenderQueue.h"
@@ -235,6 +236,7 @@ int main() {
 
     ark::FrameContext frameContext{};
     ark::MeshResource meshResource{};
+    ark::ModelResource modelResource{};
     ark::RenderGraph renderGraph;
     const bool renderGraphExecuted = renderGraph.execute(frameContext);
     ark::RenderScene renderScene{};
@@ -285,6 +287,7 @@ int main() {
     (void)sharedTimer;
     (void)rendererDesc;
     (void)meshResource;
+    (void)modelResource;
     (void)renderGraphExecuted;
     (void)renderScene;
     (void)renderQueue;

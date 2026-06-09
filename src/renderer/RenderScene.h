@@ -11,6 +11,17 @@
 namespace ark {
     class MaterialResource;
     class MeshResource;
+    class ModelResource;
+
+    struct SceneModel {
+        ModelResource* model = nullptr;
+        glm::mat4 transform{1.0f};
+        std::string debugName;
+
+        bool isDrawable() const {
+            return model != nullptr;
+        }
+    };
 
     struct SceneObject {
         MeshResource* mesh = nullptr;
@@ -27,22 +38,27 @@ namespace ark {
     public:
         virtual ~RenderScene() = default;
 
+        void addModel(ModelResource& model,
+                      const glm::mat4& transform = glm::mat4{1.0f},
+                      std::string debugName = {});
         void addObject(MeshResource& mesh,
                        MaterialResource& material,
                        const glm::mat4& transform = glm::mat4{1.0f},
                        std::string debugName = {});
+        std::span<const SceneModel> models() const;
         std::span<const SceneObject> objects() const;
         void clear();
 
         bool empty() const {
-            return m_Objects.empty();
+            return m_Models.empty() && m_Objects.empty();
         }
 
         usize size() const {
-            return m_Objects.size();
+            return m_Models.size() + m_Objects.size();
         }
 
     private:
+        std::vector<SceneModel> m_Models;
         std::vector<SceneObject> m_Objects;
     };
 } // namespace ark

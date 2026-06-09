@@ -1,0 +1,423 @@
+#include "asset/MeshData.h"
+#include "core/FileSystem.h"
+#include "renderer/ModelResource.h"
+#include "renderer/RenderQueue.h"
+#include "renderer/RenderScene.h"
+#include "rhi/DescriptorSet.h"
+#include "rhi/DescriptorSetLayout.h"
+#include "rhi/DeviceContext.h"
+#include "rhi/Fence.h"
+#include "rhi/FrameResource.h"
+#include "rhi/PipelineLayout.h"
+#include "rhi/PipelineState.h"
+#include "rhi/RenderDevice.h"
+#include "rhi/Shader.h"
+#include "rhi/SwapChain.h"
+#include "rhi/Texture.h"
+#include "rhi/TextureView.h"
+
+#include <array>
+#include <cstdlib>
+#include <iostream>
+#include <span>
+
+namespace {
+    class FakeBuffer final : public ark::rhi::Buffer {
+    public:
+        explicit FakeBuffer(const ark::rhi::BufferDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::BufferDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::BufferDesc m_Desc;
+    };
+
+    class FakeTexture final : public ark::rhi::Texture {
+    public:
+        explicit FakeTexture(const ark::rhi::TextureDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::TextureDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+        ark::rhi::ResourceState getState() const override {
+            return ark::rhi::ResourceState::ShaderResource;
+        }
+
+    private:
+        ark::rhi::TextureDesc m_Desc;
+    };
+
+    class FakeTextureView final : public ark::rhi::TextureView {
+    public:
+        FakeTextureView(ark::rhi::Texture& texture, const ark::rhi::TextureViewDesc& desc)
+            : m_Texture(&texture), m_Desc(desc) {
+        }
+
+        ark::rhi::Texture* getTexture() const override {
+            return m_Texture;
+        }
+
+        const ark::rhi::TextureViewDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::Texture* m_Texture = nullptr;
+        ark::rhi::TextureViewDesc m_Desc;
+    };
+
+    class FakeSampler final : public ark::rhi::Sampler {
+    public:
+        explicit FakeSampler(const ark::rhi::SamplerDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::SamplerDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::SamplerDesc m_Desc;
+    };
+
+    class FakeShader final : public ark::rhi::Shader {
+    public:
+        explicit FakeShader(const ark::rhi::ShaderDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::ShaderDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::ShaderDesc m_Desc;
+    };
+
+    class FakePipelineLayout final : public ark::rhi::PipelineLayout {
+    public:
+        explicit FakePipelineLayout(const ark::rhi::PipelineLayoutDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::PipelineLayoutDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::PipelineLayoutDesc m_Desc;
+    };
+
+    class FakePipelineState final : public ark::rhi::PipelineState {
+    public:
+        explicit FakePipelineState(const ark::rhi::GraphicsPipelineDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::GraphicsPipelineDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::GraphicsPipelineDesc m_Desc;
+    };
+
+    class FakeDescriptorSetLayout final : public ark::rhi::DescriptorSetLayout {
+    public:
+        explicit FakeDescriptorSetLayout(const ark::rhi::DescriptorSetLayoutDesc& desc) : m_Desc(desc) {
+        }
+
+        const ark::rhi::DescriptorSetLayoutDesc& getDesc() const override {
+            return m_Desc;
+        }
+
+    private:
+        ark::rhi::DescriptorSetLayoutDesc m_Desc;
+    };
+
+    class FakeDescriptorSet final : public ark::rhi::DescriptorSet {
+    public:
+        void updateUniformBuffer(ark::u32, const ark::rhi::BufferDescriptor&) override {
+        }
+
+        void updateSampledImage(ark::u32, const ark::rhi::SampledImageDescriptor&) override {
+        }
+
+        void updateSampler(ark::u32, const ark::rhi::SamplerDescriptor&) override {
+        }
+    };
+
+    class FakeFence final : public ark::rhi::Fence {
+    };
+
+    class FakeRenderDevice final : public ark::rhi::RenderDevice {
+    public:
+        void waitIdle() override {
+        }
+
+        ark::rhi::RenderBackendType getBackendType() const override {
+            return ark::rhi::RenderBackendType::Vulkan;
+        }
+
+        const ark::rhi::RenderDeviceCaps& getCaps() const override {
+            return m_Caps;
+        }
+
+        ark::Scope<ark::rhi::Buffer> createBuffer(const ark::rhi::BufferDesc& desc) override {
+            ++bufferCount;
+            return ark::makeScope<FakeBuffer>(desc);
+        }
+
+        ark::Scope<ark::rhi::Texture> createTexture(const ark::rhi::TextureDesc& desc) override {
+            ++textureCount;
+            return ark::makeScope<FakeTexture>(desc);
+        }
+
+        ark::Scope<ark::rhi::TextureView> createTextureView(ark::rhi::Texture& texture,
+                                                            const ark::rhi::TextureViewDesc& desc) override {
+            ++textureViewCount;
+            return ark::makeScope<FakeTextureView>(texture, desc);
+        }
+
+        ark::Scope<ark::rhi::Sampler> createSampler(const ark::rhi::SamplerDesc& desc) override {
+            ++samplerCount;
+            return ark::makeScope<FakeSampler>(desc);
+        }
+
+        ark::Scope<ark::rhi::Shader> createShader(const ark::rhi::ShaderDesc& desc) override {
+            return ark::makeScope<FakeShader>(desc);
+        }
+
+        ark::Scope<ark::rhi::PipelineLayout> createPipelineLayout(const ark::rhi::PipelineLayoutDesc& desc) override {
+            return ark::makeScope<FakePipelineLayout>(desc);
+        }
+
+        ark::Scope<ark::rhi::PipelineState> createGraphicsPipeline(const ark::rhi::GraphicsPipelineDesc& desc) override {
+            return ark::makeScope<FakePipelineState>(desc);
+        }
+
+        ark::Scope<ark::rhi::DescriptorSetLayout>
+        createDescriptorSetLayout(const ark::rhi::DescriptorSetLayoutDesc& desc) override {
+            return ark::makeScope<FakeDescriptorSetLayout>(desc);
+        }
+
+        ark::Scope<ark::rhi::DescriptorSet> createDescriptorSet(const ark::rhi::DescriptorSetLayout&) override {
+            return ark::makeScope<FakeDescriptorSet>();
+        }
+
+        ark::Scope<ark::rhi::Fence> createFence() override {
+            return ark::makeScope<FakeFence>();
+        }
+
+        int bufferCount = 0;
+        int textureCount = 0;
+        int textureViewCount = 0;
+        int samplerCount = 0;
+
+    private:
+        ark::rhi::RenderDeviceCaps m_Caps{};
+    };
+
+    class FakeDeviceContext final : public ark::rhi::DeviceContext {
+    public:
+        ark::rhi::FrameResource& beginFrame() override {
+            return m_Frame;
+        }
+
+        bool begin(ark::rhi::FrameResource&) override {
+            return true;
+        }
+
+        bool end() override {
+            return true;
+        }
+
+        bool submit(const ark::rhi::SubmitDesc&) override {
+            return true;
+        }
+
+        void advanceFrame() override {
+        }
+
+        bool beginRendering(const ark::rhi::RenderingDesc&) override {
+            return true;
+        }
+
+        void endRendering() override {
+        }
+
+        void setViewport(const ark::rhi::Viewport&) override {
+        }
+
+        void setScissorRect(const ark::rhi::ScissorRect&) override {
+        }
+
+        void setPipeline(ark::rhi::PipelineState&) override {
+        }
+
+        void bindDescriptorSet(ark::u32, ark::rhi::DescriptorSet&) override {
+        }
+
+        bool updateBuffer(ark::rhi::Buffer&, const void*, ark::u64, ark::u64 = 0) override {
+            ++bufferUpdates;
+            return true;
+        }
+
+        bool uploadTextureData(const ark::rhi::TextureUploadDesc&) override {
+            ++textureUploads;
+            return true;
+        }
+
+        bool uploadBufferData(const ark::rhi::BufferUploadDesc&) override {
+            ++bufferUploads;
+            return true;
+        }
+
+        bool deferReleaseBuffer(ark::Scope<ark::rhi::Buffer>& buffer) override {
+            ++deferredBuffers;
+            buffer.reset();
+            return true;
+        }
+
+        void setVertexBuffer(ark::u32, ark::rhi::Buffer&, ark::u64 = 0) override {
+        }
+
+        void setIndexBuffer(ark::rhi::Buffer&, ark::rhi::IndexType = ark::rhi::IndexType::UInt32, ark::u64 = 0) override {
+        }
+
+        void draw(const ark::rhi::DrawDesc&) override {
+        }
+
+        void drawIndexed(const ark::rhi::DrawIndexedDesc&) override {
+        }
+
+        void pipelineBarrier(std::span<const ark::rhi::ResourceBarrier>) override {
+        }
+
+        void clearRenderTarget(ark::rhi::TextureView&, const ark::rhi::ClearColor&) override {
+        }
+
+        int bufferUploads = 0;
+        int textureUploads = 0;
+        int deferredBuffers = 0;
+        int bufferUpdates = 0;
+
+    private:
+        ark::rhi::FrameResource m_Frame{};
+    };
+
+    ark::Path findTexturePath() {
+        const ark::Path relative = ark::Path{"assets/textures/xiaowei.png"};
+        const std::array<ark::Path, 3> candidates{
+            relative,
+            ark::Path{"../"} / relative,
+            ark::Path{"../../"} / relative,
+        };
+
+        return ark::findFirstExistingPath(candidates);
+    }
+
+    ark::asset::MeshPrimitiveData makeTriangle(const char* name, ark::u32 materialIndex, float xOffset) {
+        ark::asset::MeshVertex v0{};
+        v0.position[0] = -0.5f + xOffset;
+        v0.position[1] = 0.0f;
+        v0.normal[2] = 1.0f;
+        v0.uv0[1] = 1.0f;
+
+        ark::asset::MeshVertex v1 = v0;
+        v1.position[0] = 0.5f + xOffset;
+        v1.uv0[0] = 1.0f;
+
+        ark::asset::MeshVertex v2 = v0;
+        v2.position[1] = 1.0f;
+        v2.uv0[0] = 0.5f;
+        v2.uv0[1] = 0.0f;
+
+        ark::asset::MeshPrimitiveData mesh{};
+        mesh.debugName = name;
+        mesh.vertices = {v0, v1, v2};
+        mesh.indices = {0, 1, 2};
+        mesh.materialIndex = materialIndex;
+        return mesh;
+    }
+
+    bool validateModelResource() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        ark::asset::MaterialData material{};
+        material.debugName = "SmokeMaterial";
+        material.baseColorTexturePath = texturePath;
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "SmokeModel";
+        modelData.materials.push_back(material);
+        modelData.meshes.push_back(makeTriangle("TriangleA", 0, -1.0f));
+        modelData.meshes.push_back(makeTriangle("TriangleB", 0, 1.0f));
+
+        FakeRenderDevice device{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, modelData)) {
+            std::cerr << "ModelResource create failed\n";
+            return false;
+        }
+
+        if (modelResource.primitiveCount() != 2 || modelResource.meshCount() != 2 || modelResource.materialCount() != 1) {
+            std::cerr << "Unexpected ModelResource counts\n";
+            return false;
+        }
+
+        if (!modelResource.primitiveMesh(0) || !modelResource.primitiveMesh(1) ||
+            !modelResource.primitiveMaterial(0) || !modelResource.primitiveMaterial(1)) {
+            std::cerr << "ModelResource primitive resource lookup failed\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!modelResource.upload(context)) {
+            std::cerr << "ModelResource upload failed\n";
+            return false;
+        }
+
+        if (context.bufferUploads != 4 || context.textureUploads != 1 || context.deferredBuffers != 5) {
+            std::cerr << "Unexpected ModelResource upload counts\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        glm::mat4 transform{1.0f};
+        transform[3][0] = 4.0f;
+        scene.addModel(modelResource, transform, "SceneModel");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        if (queue.size() != 2) {
+            std::cerr << "RenderQueue did not expand model primitives\n";
+            return false;
+        }
+
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        if (drawItems[0].mesh != modelResource.primitiveMesh(0) ||
+            drawItems[1].mesh != modelResource.primitiveMesh(1) ||
+            drawItems[0].material != modelResource.primitiveMaterial(0) ||
+            drawItems[1].material != modelResource.primitiveMaterial(1)) {
+            std::cerr << "RenderQueue model draw item references are invalid\n";
+            return false;
+        }
+
+        if (drawItems[0].modelMatrix[3][0] != 4.0f || drawItems[1].modelMatrix[3][0] != 4.0f) {
+            std::cerr << "RenderQueue did not preserve model transform\n";
+            return false;
+        }
+
+        return true;
+    }
+} // namespace
+
+int main() {
+    return validateModelResource() ? EXIT_SUCCESS : EXIT_FAILURE;
+}

@@ -1,11 +1,10 @@
 #include "renderer/passes/ForwardPass.h"
 
-#include "asset/GltfLoader.h"
 #include "asset/MeshData.h"
 #include "asset/ShaderLoader.h"
-#include "core/FileSystem.h"
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
+#include "renderer/RenderQueue.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/SwapChain.h"
 
@@ -13,149 +12,28 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <array>
 #include <cstddef>
+#include <string>
+#include <utility>
 
 namespace ark {
     namespace {
         struct alignas(16) CameraUniform {
-            glm::mat4 model;
             glm::mat4 view;
             glm::mat4 projection;
         };
 
-        constexpr const char* ForwardTextureAssetPath = "assets/textures/xiaowei.png";
-        constexpr const char* ForwardModelAssetPath = "assets/models/forward_fixture.gltf";
-
-        constexpr asset::MeshVertex makeVertex(float x,
-                                               float y,
-                                               float z,
-                                               float nx,
-                                               float ny,
-                                               float nz,
-                                               float u,
-                                               float v) {
-            asset::MeshVertex vertex{};
-            vertex.position[0] = x;
-            vertex.position[1] = y;
-            vertex.position[2] = z;
-            vertex.normal[0] = nx;
-            vertex.normal[1] = ny;
-            vertex.normal[2] = nz;
-            vertex.uv0[0] = u;
-            vertex.uv0[1] = v;
-            return vertex;
-        }
-
-        // 0.8.4 先用 generated cube fixture 验证 ForwardPass，后续由 glTF loader 提供 ModelData。
-        asset::MeshPrimitiveData makeForwardMesh() {
-            constexpr std::array<asset::MeshVertex, 24> vertices{{
-                makeVertex(-1.0f, -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f),
-                makeVertex(1.0f, -1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f),
-                makeVertex(1.0f, 1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f),
-                makeVertex(-1.0f, 1.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f),
-
-                makeVertex(1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f),
-                makeVertex(-1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f),
-                makeVertex(-1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f),
-                makeVertex(1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f),
-
-                makeVertex(-1.0f, -1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
-                makeVertex(-1.0f, -1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-                makeVertex(-1.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
-                makeVertex(-1.0f, 1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
-
-                makeVertex(1.0f, -1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
-                makeVertex(1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-                makeVertex(1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
-                makeVertex(1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
-
-                makeVertex(-1.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-                makeVertex(1.0f, 1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
-                makeVertex(1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
-                makeVertex(-1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
-
-                makeVertex(-1.0f, -1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f),
-                makeVertex(1.0f, -1.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f),
-                makeVertex(1.0f, -1.0f, -1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
-                makeVertex(-1.0f, -1.0f, -1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f),
-            }};
-
-            constexpr std::array<u32, 36> indices{{
-                0, 1, 2, 0, 2, 3,
-                4, 5, 6, 4, 6, 7,
-                8, 9, 10, 8, 10, 11,
-                12, 13, 14, 12, 14, 15,
-                16, 17, 18, 16, 18, 19,
-                20, 21, 22, 20, 22, 23,
-            }};
-
-            asset::MeshPrimitiveData mesh{};
-            mesh.debugName = "ForwardFixtureMesh";
-            mesh.vertices.assign(vertices.begin(), vertices.end());
-            mesh.indices.assign(indices.begin(), indices.end());
-            return mesh;
-        }
-
-        Path findForwardTextureFile() {
-            const std::array<Path, 3> candidates{
-                Path{ForwardTextureAssetPath},
-                Path{"../"} / ForwardTextureAssetPath,
-                Path{"../../"} / ForwardTextureAssetPath,
-            };
-
-            return findFirstExistingPath(candidates);
-        }
-
-        asset::MaterialData makeForwardMaterial() {
-            asset::MaterialData material{};
-            material.debugName = "ForwardFixtureMaterial";
-            material.baseColorTexturePath = findForwardTextureFile();
-            if (material.baseColorTexturePath.empty()) {
-                ARK_ERROR("ForwardPass texture file not found: {}", ForwardTextureAssetPath);
-            }
-            return material;
-        }
-
-        Path findForwardModelFile() {
-            const std::array<Path, 3> candidates{
-                Path{ForwardModelAssetPath},
-                Path{"../"} / ForwardModelAssetPath,
-                Path{"../../"} / ForwardModelAssetPath,
-            };
-
-            return findFirstExistingPath(candidates);
-        }
-
-        asset::ModelData loadForwardModelOrFallback() {
-            const Path modelPath = findForwardModelFile();
-            if (!modelPath.empty()) {
-                asset::ModelData model = asset::loadGltfModel(modelPath);
-                if (!model.empty() && !model.materials.empty()) {
-                    return model;
-                }
-
-                ARK_WARN("Failed to load ForwardPass glTF model, fallback to generated mesh: {}", modelPath.string());
-            } else {
-                ARK_WARN("ForwardPass glTF model not found, fallback to generated mesh: {}", ForwardModelAssetPath);
-            }
-
-            asset::ModelData fallback{};
-            fallback.debugName = "ForwardFallbackModel";
-            fallback.meshes.push_back(makeForwardMesh());
-            fallback.materials.push_back(makeForwardMaterial());
-            return fallback;
-        }
+        struct alignas(16) ObjectUniform {
+            glm::mat4 model;
+        };
 
         CameraUniform makeCameraUniform(const FrameContext& frameContext) {
             const float aspect =
                 frameContext.extent.height == 0
                     ? 1.0f
                     : static_cast<float>(frameContext.extent.width) / static_cast<float>(frameContext.extent.height);
-            const float angle = static_cast<float>(frameContext.frameIndex) * 0.018f;
 
             CameraUniform uniform{};
-            uniform.model = glm::rotate(glm::mat4{1.0f}, angle, glm::normalize(glm::vec3{0.35f, 1.0f, 0.2f}));
             uniform.view = glm::lookAt(glm::vec3{0.0f, 0.0f, -4.0f}, glm::vec3{0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
             uniform.projection = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
             uniform.projection[1][1] *= -1.0f;
@@ -168,14 +46,6 @@ namespace ark {
     void ForwardPass::setup(rhi::RenderDevice& device) {
         m_Device = &device;
 
-        m_ModelData = loadForwardModelOrFallback();
-        if (m_ModelData.empty() || m_ModelData.materials.empty()) {
-            ARK_ERROR("ForwardPass requires model mesh and material data");
-            return;
-        }
-
-        createMeshResource();
-        createMaterialResource();
         createDescriptorResources();
         createShaderResources();
         createPipelineResources();
@@ -187,54 +57,75 @@ namespace ark {
             return false;
         }
 
-        return m_Mesh.upload(*frameContext.context) && m_Material.upload(*frameContext.context);
+        const u32 frameSlot =
+            frameContext.frameResource ? frameContext.frameResource->frameSlot % FramesInFlight : 0;
+        if (!ensureDrawDescriptorResources(frameSlot, drawItemCount(frameContext))) {
+            return false;
+        }
+
+        if (!frameContext.queue || frameContext.queue->empty()) {
+            return true;
+        }
+
+        usize drawIndex = 0;
+        for (const DrawItem& item : frameContext.queue->drawItems()) {
+            if (!item.isDrawable()) {
+                ARK_ERROR("ForwardPass queue contains an invalid draw item");
+                return false;
+            }
+
+            if (!item.mesh->upload(*frameContext.context) || !item.material->upload(*frameContext.context)) {
+                return false;
+            }
+
+            if (!updateDrawDescriptorSet(frameSlot, drawIndex, *item.material)) {
+                return false;
+            }
+
+            ++drawIndex;
+        }
+
+        return true;
     }
 
     bool ForwardPass::execute(FrameContext& frameContext) {
-        if (!frameContext.context || !m_Mesh.isReady() || !m_Material.isReady()) {
-            ARK_ERROR("ForwardPass requires ready mesh and material resources");
+        if (!frameContext.context) {
+            ARK_ERROR("ForwardPass requires DeviceContext");
             return false;
         }
 
         const u32 frameSlot =
             frameContext.frameResource ? frameContext.frameResource->frameSlot % FramesInFlight : 0;
+        const usize drawCount = drawItemCount(frameContext);
+        if (frameSlot >= m_DrawDescriptors.size() || m_DrawDescriptors[frameSlot].size() < drawCount) {
+            ARK_ERROR("ForwardPass draw descriptor resources were not prepared");
+            return false;
+        }
+
+        if (drawCount == 0) {
+            return true;
+        }
+
         if (!updateCameraUniform(frameContext, frameSlot) || !ensurePipeline(frameContext)) {
             return false;
         }
 
         frameContext.context->setPipeline(*m_Pipeline);
-        frameContext.context->bindDescriptorSet(0, *m_DescriptorSets[frameSlot]);
-        m_Mesh.bind(*frameContext.context);
-        frameContext.context->drawIndexed(m_Mesh.makeDrawIndexedDesc());
+        if (!frameContext.queue || frameContext.queue->empty()) {
+            return true;
+        }
+
+        usize drawIndex = 0;
+        for (const DrawItem& item : frameContext.queue->drawItems()) {
+            if (!item.isDrawable() ||
+                !drawMeshItem(frameContext, frameSlot, drawIndex, *item.mesh, *item.material, item.modelMatrix)) {
+                return false;
+            }
+
+            ++drawIndex;
+        }
+
         return true;
-    }
-
-    bool ForwardPass::createMeshResource() {
-        if (!m_Device) {
-            ARK_ERROR("ForwardPass requires device for mesh resource");
-            return false;
-        }
-
-        if (m_ModelData.meshes.empty()) {
-            ARK_ERROR("ForwardPass requires model mesh data");
-            return false;
-        }
-
-        return m_Mesh.create(*m_Device, m_ModelData.meshes.front());
-    }
-
-    bool ForwardPass::createMaterialResource() {
-        if (!m_Device) {
-            ARK_ERROR("ForwardPass requires device for material resource");
-            return false;
-        }
-
-        if (m_ModelData.materials.empty()) {
-            ARK_ERROR("ForwardPass requires model material data");
-            return false;
-        }
-
-        return m_Material.create(*m_Device, m_ModelData.materials.front());
     }
 
     bool ForwardPass::createDescriptorResources() {
@@ -263,6 +154,12 @@ namespace ark {
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
+        descriptorSetLayoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 3,
+            .type = rhi::DescriptorType::UniformBuffer,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Vertex,
+        });
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -276,16 +173,9 @@ namespace ark {
             cameraBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
             m_CameraBuffers[frameSlot] = m_Device->createBuffer(cameraBufferDesc);
 
-            m_DescriptorSets[frameSlot] = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
-            if (!m_CameraBuffers[frameSlot] || !m_DescriptorSets[frameSlot]) {
+            if (!m_CameraBuffers[frameSlot]) {
                 return false;
             }
-
-            rhi::BufferDescriptor cameraDescriptor{};
-            cameraDescriptor.buffer = m_CameraBuffers[frameSlot].get();
-            cameraDescriptor.range = sizeof(CameraUniform);
-            m_DescriptorSets[frameSlot]->updateUniformBuffer(0, cameraDescriptor);
-            m_Material.updateDescriptorSet(*m_DescriptorSets[frameSlot], 1, 2);
         }
 
         return true;
@@ -327,6 +217,40 @@ namespace ark {
         layoutDesc.descriptorSetLayouts.push_back(m_DescriptorSetLayout.get());
         m_PipelineLayout = m_Device->createPipelineLayout(layoutDesc);
         return m_PipelineLayout != nullptr;
+    }
+
+    usize ForwardPass::drawItemCount(const FrameContext& frameContext) const {
+        return frameContext.queue ? frameContext.queue->size() : 0;
+    }
+
+    bool ForwardPass::ensureDrawDescriptorResources(u32 frameSlot, usize drawCount) {
+        if (!m_Device || !m_DescriptorSetLayout || frameSlot >= m_DrawDescriptors.size()) {
+            ARK_ERROR("ForwardPass requires descriptor layout before draw descriptors");
+            return false;
+        }
+
+        std::vector<DrawDescriptorResources>& descriptors = m_DrawDescriptors[frameSlot];
+        while (descriptors.size() < drawCount) {
+            const usize drawIndex = descriptors.size();
+
+            DrawDescriptorResources resources{};
+            rhi::BufferDesc objectBufferDesc{};
+            objectBufferDesc.debugName = "ForwardObjectUniformBuffer." + std::to_string(drawIndex);
+            objectBufferDesc.size = sizeof(ObjectUniform);
+            objectBufferDesc.usage = rhi::BufferUsage::Uniform;
+            objectBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+            resources.objectBuffer = m_Device->createBuffer(objectBufferDesc);
+            resources.descriptorSet = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
+
+            if (!resources.objectBuffer || !resources.descriptorSet) {
+                ARK_ERROR("ForwardPass failed to create draw descriptor resources");
+                return false;
+            }
+
+            descriptors.push_back(std::move(resources));
+        }
+
+        return true;
     }
 
     bool ForwardPass::ensurePipeline(FrameContext& frameContext) {
@@ -394,5 +318,73 @@ namespace ark {
 
         const CameraUniform cameraUniform = makeCameraUniform(frameContext);
         return frameContext.context->updateBuffer(*m_CameraBuffers[frameSlot], &cameraUniform, sizeof(cameraUniform));
+    }
+
+    bool ForwardPass::updateObjectUniform(FrameContext& frameContext,
+                                          u32 frameSlot,
+                                          usize drawIndex,
+                                          const glm::mat4& modelMatrix) {
+        if (!frameContext.context || frameSlot >= m_DrawDescriptors.size() ||
+            drawIndex >= m_DrawDescriptors[frameSlot].size() || !m_DrawDescriptors[frameSlot][drawIndex].objectBuffer) {
+            ARK_ERROR("ForwardPass requires per-draw object buffer");
+            return false;
+        }
+
+        ObjectUniform objectUniform{};
+        objectUniform.model = modelMatrix;
+        return frameContext.context->updateBuffer(*m_DrawDescriptors[frameSlot][drawIndex].objectBuffer,
+                                                  &objectUniform, sizeof(objectUniform));
+    }
+
+    bool ForwardPass::updateDrawDescriptorSet(u32 frameSlot, usize drawIndex, MaterialResource& material) {
+        if (frameSlot >= m_DrawDescriptors.size() || drawIndex >= m_DrawDescriptors[frameSlot].size() ||
+            !m_CameraBuffers[frameSlot] || !m_DrawDescriptors[frameSlot][drawIndex].objectBuffer ||
+            !m_DrawDescriptors[frameSlot][drawIndex].descriptorSet) {
+            ARK_ERROR("ForwardPass requires descriptor resources before descriptor update");
+            return false;
+        }
+
+        DrawDescriptorResources& descriptors = m_DrawDescriptors[frameSlot][drawIndex];
+
+        rhi::BufferDescriptor cameraDescriptor{};
+        cameraDescriptor.buffer = m_CameraBuffers[frameSlot].get();
+        cameraDescriptor.range = sizeof(CameraUniform);
+        descriptors.descriptorSet->updateUniformBuffer(0, cameraDescriptor);
+
+        material.updateDescriptorSet(*descriptors.descriptorSet, 1, 2);
+
+        rhi::BufferDescriptor objectDescriptor{};
+        objectDescriptor.buffer = descriptors.objectBuffer.get();
+        objectDescriptor.range = sizeof(ObjectUniform);
+        descriptors.descriptorSet->updateUniformBuffer(3, objectDescriptor);
+        return true;
+    }
+
+    bool ForwardPass::drawMeshItem(FrameContext& frameContext,
+                                   u32 frameSlot,
+                                   usize drawIndex,
+                                   MeshResource& mesh,
+                                   MaterialResource& material,
+                                   const glm::mat4& modelMatrix) {
+        if (!frameContext.context || frameSlot >= m_DrawDescriptors.size() ||
+            drawIndex >= m_DrawDescriptors[frameSlot].size()) {
+            ARK_ERROR("ForwardPass requires draw descriptor resources");
+            return false;
+        }
+
+        if (!mesh.isReady() || !material.isReady()) {
+            ARK_ERROR("ForwardPass draw item requires ready mesh and material");
+            return false;
+        }
+
+        if (!updateObjectUniform(frameContext, frameSlot, drawIndex, modelMatrix)) {
+            return false;
+        }
+
+        DrawDescriptorResources& descriptors = m_DrawDescriptors[frameSlot][drawIndex];
+        frameContext.context->bindDescriptorSet(0, *descriptors.descriptorSet);
+        mesh.bind(*frameContext.context);
+        frameContext.context->drawIndexed(mesh.makeDrawIndexedDesc());
+        return true;
     }
 } // namespace ark

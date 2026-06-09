@@ -6,8 +6,7 @@
 #include <iostream>
 
 namespace {
-    ark::Path findFixturePath() {
-        const ark::Path relative = ark::Path{"assets/models/forward_fixture.gltf"};
+    ark::Path findFixturePath(const ark::Path& relative) {
         const std::array<ark::Path, 3> candidates{
             relative,
             ark::Path{"../"} / relative,
@@ -18,7 +17,7 @@ namespace {
     }
 
     bool validateForwardFixture() {
-        const ark::Path path = findFixturePath();
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/forward_fixture.gltf"});
         if (path.empty()) {
             std::cerr << "Failed to find glTF fixture\n";
             return false;
@@ -56,8 +55,49 @@ namespace {
 
         return true;
     }
+
+    bool validateMultidrawFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/forward_multidraw_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find multidraw glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 2 || model.materials.size() != 2) {
+            std::cerr << "Unexpected multidraw glTF model shape\n";
+            return false;
+        }
+
+        const ark::asset::MeshPrimitiveData& firstMesh = model.meshes[0];
+        const ark::asset::MeshPrimitiveData& secondMesh = model.meshes[1];
+        if (firstMesh.vertices.size() != 4 || firstMesh.indices.size() != 3 ||
+            secondMesh.vertices.size() != 4 || secondMesh.indices.size() != 3) {
+            std::cerr << "Unexpected multidraw primitive sizes\n";
+            return false;
+        }
+
+        if (firstMesh.materialIndex != 0 || secondMesh.materialIndex != 1) {
+            std::cerr << "Unexpected multidraw material remap\n";
+            return false;
+        }
+
+        if (firstMesh.indices[0] != 0 || firstMesh.indices[1] != 1 || firstMesh.indices[2] != 2 ||
+            secondMesh.indices[0] != 0 || secondMesh.indices[1] != 2 || secondMesh.indices[2] != 3) {
+            std::cerr << "Unexpected multidraw indices\n";
+            return false;
+        }
+
+        if (model.materials[0].baseColorTexturePath.filename() != "xiaowei.png" ||
+            model.materials[1].baseColorTexturePath.filename() != "xiaowei.png") {
+            std::cerr << "Unexpected multidraw material texture paths\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateForwardFixture() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateForwardFixture() && validateMultidrawFixture() ? EXIT_SUCCESS : EXIT_FAILURE;
 }

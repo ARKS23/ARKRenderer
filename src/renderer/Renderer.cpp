@@ -1,18 +1,26 @@
 #include "renderer/Renderer.h"
 
+#include "asset/GltfLoader.h"
+#include "core/FileSystem.h"
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/ModelResource.h"
+#include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "rhi/RenderBackend.h"
 #include "rhi/TextureView.h"
 
+#include <array>
+#include <glm/mat4x4.hpp>
 #include <stdexcept>
 
 namespace ark {
     namespace {
+        constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multidraw_fixture.gltf";
+
         // 第一版只提供默认 swapchain 配置，后续可以把 vsync、format 等暴露到 RendererDesc。
         rhi::SwapChainDesc makeDefaultSwapChainDesc(rhi::Extent2D extent) {
             rhi::SwapChainDesc desc{};
@@ -22,6 +30,17 @@ namespace ark {
             desc.imageCount = 2;
             desc.enableVSync = true;
             return desc;
+        }
+
+        Path findDefaultSandboxModelFile() {
+            const Path relative = Path{DefaultSandboxModelAssetPath};
+            const std::array<Path, 3> candidates{
+                relative,
+                Path{"../"} / relative,
+                Path{"../../"} / relative,
+            };
+
+            return findFirstExistingPath(candidates);
         }
 
         class DefaultRenderer final : public Renderer {
@@ -45,11 +64,18 @@ namespace ark {
                 m_FrameRenderer->setup(m_Backend->device());
                 m_FrameRenderer->resize(m_Extent);
 
+                createDefaultScene();
                 ARK_INFO("Renderer initialized");
             }
 
             ~DefaultRenderer() override {
+                if (m_Backend) {
+                    m_Backend->device().waitIdle();
+                }
+
                 m_FrameRenderer.reset();
+                m_DefaultScene.clear();
+                m_DefaultModel.reset();
                 m_Backend.reset();
                 ARK_INFO("Renderer shutdown");
             }
@@ -83,10 +109,17 @@ namespace ark {
                     return;
                 }
 
+                // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue，pass 只消费 queue。
+
+                RenderScene& renderScene = scene.empty() && !m_DefaultScene.empty() ? m_DefaultScene : scene;
+                // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue。
+                m_RenderQueue.build(renderScene);
+
                 FrameContext frameContext{};
                 frameContext.frameIndex = frame.frameIndex;
-                frameContext.scene = &scene;
+                frameContext.scene = &renderScene;
                 frameContext.view = &view;
+                frameContext.queue = &m_RenderQueue;
                 frameContext.device = &m_Backend->device();
                 frameContext.context = &context;
                 frameContext.swapChain = &swapChain;
@@ -145,6 +178,30 @@ namespace ark {
                 return status == rhi::SwapChainStatus::Ready || status == rhi::SwapChainStatus::Suboptimal;
             }
 
+            bool createDefaultScene() {
+                const Path modelPath = findDefaultSandboxModelFile();
+                if (modelPath.empty()) {
+                    ARK_WARN("Default sandbox model fixture was not found: {}", DefaultSandboxModelAssetPath);
+                    return false;
+                }
+
+                asset::ModelData modelData = asset::loadGltfModel(modelPath);
+                if (modelData.empty()) {
+                    ARK_WARN("Default sandbox model fixture is empty: {}", modelPath.string());
+                    return false;
+                }
+
+                if (!m_DefaultModel.create(m_Backend->device(), modelData)) {
+                    ARK_ERROR("Renderer failed to create default sandbox model");
+                    return false;
+                }
+
+                // 默认 sandbox scene 由 renderer 持有 GPU model，避免 app 层直接管理 RHI 生命周期。
+                m_DefaultScene.clear();
+                m_DefaultScene.addModel(m_DefaultModel, glm::mat4{1.0f}, "DefaultSandboxModel");
+                return true;
+            }
+
             void handleSwapChainStatus(rhi::SwapChainStatus status) {
                 // Swapchain 状态集中在这里处理，避免 render 主流程被错误分支打散。
                 switch (status) {
@@ -168,6 +225,9 @@ namespace ark {
 
             Scope<FrameRenderer> m_FrameRenderer;
             Scope<rhi::RenderBackend> m_Backend;
+            ModelResource m_DefaultModel;
+            RenderScene m_DefaultScene;
+            RenderQueue m_RenderQueue;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
             bool m_RenderingPaused = false;

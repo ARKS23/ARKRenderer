@@ -12,14 +12,14 @@ glTF 2.0 fixture
     -> indexed textured mesh draw
 ```
 
-但当前闭环仍然是“单模型、单 mesh、单 material、pass 内部硬编码加载”的阶段性实现：
+Phase 0.9 启动前，这条闭环仍然是“单模型、单 mesh、单 material、pass 内部硬编码加载”的阶段性实现：
 
-- `RenderScene`、`RenderQueue`、`MaterialSystem` 仍是空壳。
-- `FrameContext` 已预留 `scene` 和 `queue`，但当前没有真正构建 render queue。
-- `ForwardPass` 仍直接查找 `assets/models/forward_fixture.gltf`，并持有单个 `MeshResource` / `MaterialResource`。
-- `ForwardPass` 当前只取 `ModelData::meshes.front()` 和 `ModelData::materials.front()`。
-- `GltfLoader` 当前只加载第一个 mesh 的第一个 primitive，不表达 node transform。
-- 当前 `CameraUniform` 同时包含 camera 与 model matrix，无法直接支持多个 draw item 的不同 transform。
+- `RenderScene`、`RenderQueue`、`MaterialSystem` 还是空壳。
+- `FrameContext` 已预留 `scene` 和 `queue`，但没有真正构建 render queue。
+- `ForwardPass` 直接查找 `assets/models/forward_fixture.gltf`，并持有单个 `MeshResource` / `MaterialResource`。
+- `ForwardPass` 只取 `ModelData::meshes.front()` 和 `ModelData::materials.front()`。
+- `GltfLoader` 只加载第一个 mesh 的第一个 primitive，不表达 node transform。
+- `CameraUniform` 同时包含 camera 与 model matrix，无法直接支持多个 draw item 的不同 transform。
 
 因此 Phase 0.9 的主线应是：把 Phase 0.8 的单资源 pass 闭环升级为 renderer 层的最小 scene / queue / draw item 闭环。目标不是立刻进入完整 glTF scene graph、PBR、ResourceManager 或 RenderGraph，而是先让 `ForwardPass` 从“自己加载并绘制一个资源”变成“消费 render queue 并绘制多个 draw item”。
 
@@ -325,12 +325,12 @@ set 0 binding 3: ObjectUniformBuffer
 
 - 已补齐 `src/renderer/RenderScene.h/.cpp`。
 - 已补齐 `src/renderer/RenderQueue.h/.cpp`。
-- `RenderScene` 当前保存 primitive 级 `SceneObject`，包含 `MeshResource*`、`MaterialResource*`、`glm::mat4 transform` 和 debug name。
-- `RenderQueue::build()` 当前从 scene 生成 flat `DrawItem` list，并过滤无效 mesh/material 引用。
+- `RenderScene` 当前同时支持 model 级 `SceneModel` 和 primitive 级 `SceneObject`。`SceneModel` 保存 `ModelResource*`、transform 和 debug name；`SceneObject` 保存 `MeshResource*`、`MaterialResource*`、transform 和 debug name。
+- `RenderQueue::build()` 当前从 scene 生成 flat `DrawItem` list；它会展开 model primitives，并过滤无效 mesh/material 引用。
 - `DrawItem` 当前保存 `MeshResource*`、`MaterialResource*`、model matrix 和 debug name。
 - 已新增 `tests/render_scene_queue_smoke.cpp`，验证 scene 添加对象、queue 构建、资源引用、model matrix 和清空行为。
 - 已在 `CMakeLists.txt` 接入 `ark_render_scene_queue_smoke`。
-- `ForwardPass` 尚未消费 `RenderQueue`，该部分留到 0.9.3。
+- `ForwardPass` 已在 0.9.3 兼容路径中消费 `RenderQueue`。
 
 ### 0.9.2 ModelResource 最小封装
 
@@ -347,6 +347,21 @@ set 0 binding 3: ObjectUniformBuffer
 - 多 primitive 的 model 可以转换成多个 draw item。
 - staging buffer 仍走 deferred deletion。
 
+当前实现状态：
+
+- 已新增 `src/renderer/ModelResource.h/.cpp`。
+- `ModelResource::create()` 从 `asset::ModelData` 创建多个 `MeshResource` 和多个 `MaterialResource`，并保存 primitive 到 material 的索引映射。
+- `ModelResource::upload()` 遍历上传所有 mesh/material，复用 `MeshResource::upload()`、`MaterialResource::upload()` 和 staging deferred deletion。
+- `RenderScene::addModel()` 已支持把 `ModelResource` 作为 scene model instance 加入场景。
+- `RenderQueue::build()` 已支持展开 `ModelResource` 的 primitive 列表，并为每个 primitive 生成 draw item。
+- 已新增 `tests/model_resource_smoke.cpp`，用 fake RHI device/context 验证 model resource 创建、上传、scene addModel 和 queue 展开。
+- 已在 `CMakeLists.txt` 接入 `ark_model_resource_smoke`。
+
+当前限制：
+
+- `ModelResource` 当前不做 texture/material cache；多个 material 指向同一贴图时仍可能重复创建资源。
+- `ModelResource` 当前不表达 node transform 或 scene graph，只处理 `ModelData` 已经扁平化后的 primitive/material 数据。
+
 ### 0.9.3 ForwardPass 消费 RenderQueue
 
 工作内容：
@@ -361,6 +376,25 @@ set 0 binding 3: ObjectUniformBuffer
 - `ForwardPass` 只组织 draw，不加载文件。
 - 多个 draw item 可以使用不同 model matrix。
 - descriptor layout 与 shader binding 更新同步。
+
+当前实现状态：
+
+- `Renderer` 已在每帧调用 `RenderQueue::build(renderScene)`，并通过 `FrameContext::queue` 传递给 `FrameRenderer` / `ForwardPass`。
+- `ForwardPass::prepare()` 已优先遍历 `RenderQueue` 中的 draw item，上传每个 item 的 mesh/material，并为当前 frame slot 准备 per-draw descriptor resources。
+- `ForwardPass::execute()` 已优先遍历 `RenderQueue` 并逐项执行 indexed draw。
+- `ForwardPass` 已移除内部 asset path 查找、fixture fallback、单个 `MeshResource` / `MaterialResource` 持有逻辑；空 queue 表示本帧没有 forward draw。
+- `CameraUniform` 已拆分为只包含 view/projection。
+- 新增 per-draw `ObjectUniform`，保存 model matrix；当前每个 draw item 每个 frame slot 拥有独立 object uniform buffer，避免多 draw 覆写同一个 in-flight uniform。
+- `mesh.vert.hlsl` 已同步为 camera/object uniform 分离：
+
+```text
+set 0 binding 0: CameraUniformBuffer
+set 0 binding 1: SampledImage
+set 0 binding 2: Sampler
+set 0 binding 3: ObjectUniformBuffer
+```
+
+- `ModelResource` 已接入 `RenderScene` / `RenderQueue` 数据结构；默认 sandbox 的外部 scene 为空时，`Renderer` 会使用内部默认 scene 构建 queue。
 
 ### 0.9.4 glTF 2.0 多 primitive / 多 material
 
@@ -377,13 +411,28 @@ set 0 binding 3: ObjectUniformBuffer
 - unsupported feature 行为明确。
 - 新增 glTF loader smoke test。
 
+当前实现状态：
+
+- `GltfLoader` 已从“第一个 mesh 的第一个 primitive”扩展为遍历 glTF model 中所有 mesh primitive，并扁平化输出到 `ModelData::meshes`。
+- `GltfLoader` 只加载 primitive 实际使用到的 material，并把 glTF 原始 material index remap 到 `ModelData::materials` 的连续索引。
+- 每个 `MeshPrimitiveData::materialIndex` 已指向 remap 后的 `ModelData::materials`。
+- glTF 2.0 仍要求 POSITION / NORMAL / TEXCOORD_0 / indices，primitive mode 必须是 TRIANGLES。
+- material 当前仍要求外部 `baseColorTexture`，不支持 embedded image、data URI image、PBR 参数或 texture cache。
+- 已新增 `assets/models/forward_multidraw_fixture.gltf`，包含两个 primitive 和两个 material。
+- `tests/gltf_loader_smoke.cpp` 已同时验证单 draw fixture 和 multidraw fixture。
+
+当前限制：
+
+- loader 当前不解析 node hierarchy、node transform、scene selection 或 mesh instance；多个 mesh/primitive 直接扁平化为 model primitives。
+- 多个 material 指向同一贴图时，renderer 层仍可能重复创建 texture resource，后续由 ResourceManager 或 texture cache 收口。
+
 ### 0.9.5 sandbox 多 draw fixture
 
 工作内容：
 
 - 新增一个多 primitive 或多对象 fixture。
 - sandbox 默认 scene 使用 `RenderScene` 添加至少两个 draw item。
-- 验证两个 draw item 使用不同 transform。
+- 验证默认 sandbox 通过 scene / queue 路径生成至少两个 draw item。
 
 验收：
 
@@ -391,6 +440,19 @@ set 0 binding 3: ObjectUniformBuffer
 - CTest 通过。
 - sandbox smoke 通过。
 - 默认画面不再只证明单 draw。
+
+当前实现状态：
+
+- 新增 `assets/models/forward_multidraw_fixture.gltf` 作为默认多 draw fixture。
+- `DefaultRenderer` 内部创建 `ModelResource m_DefaultModel` 和 `RenderScene m_DefaultScene`；当 app 传入的 scene 为空时，renderer 使用默认 scene 构建 `RenderQueue`。
+- 默认 scene 由 renderer 持有 GPU model resource，避免 sandbox/app 层直接管理 RHI resource 生命周期。
+- `ForwardPass` 不再加载 fixture；默认 sandbox 的 draw item 来自 `Renderer -> RenderScene -> RenderQueue`。
+- `DefaultRenderer` 析构时先 `waitIdle()`，再释放 `FrameRenderer`、默认 scene 和默认 model，最后释放 `RenderBackend`。
+
+当前限制：
+
+- 默认 scene 目前只放入一个 model instance；多 draw 来自该 model 内部的两个 primitive，而不是多个 transform 不同的 model instance。
+- 0.9.5 尚未做可视化断言，只通过 loader test、queue path 和 sandbox smoke 验证闭环。
 
 ### 0.9.6 Phase 0.9 收尾
 
@@ -404,6 +466,34 @@ set 0 binding 3: ObjectUniformBuffer
 
 - 文档、代码和测试状态一致。
 - 不隐藏仍未支持的 glTF / material / descriptor 限制。
+
+当前实现状态：
+
+- `docs/phase/phase09.md` 已同步到 0.9.0-0.9.6 当前状态。
+- `docs/codex_handoff.md` 已按用户要求同步到 Phase 0.9 完成后的交接状态。
+- Phase 0.9 主线已经从 `ForwardPass` 内部单资源加载，收口为 `RenderScene -> RenderQueue -> ForwardPass` 的多 draw 最小闭环。
+- 当前代码仍是待提交状态；最近已推送提交停留在 `0c1f98e 启动 Phase09 场景队列结构`。
+
+验证记录：
+
+```text
+cmake --build --preset msvc-vcpkg-local-debug: passed
+ctest --preset msvc-vcpkg-local-debug: 8/8 passed
+sandbox smoke: passed
+```
+
+sandbox smoke 日志确认：
+
+```text
+Loaded glTF model: assets/models/forward_multidraw_fixture.gltf (primitives=2, materials=2)
+```
+
+剩余限制：
+
+- 默认 multidraw fixture 当前验证一个 model 内两个 primitive，不验证多个 instance 的不同 transform。
+- `GltfLoader` 仍不解析 node hierarchy、node transform、scene selection、skin、animation 或 glTF 扩展。
+- material/texture cache 尚未实现；多个 material 指向同一贴图时仍可能重复创建 GPU texture resource。
+- 当前 per-draw descriptor/object uniform 策略偏简单，后续 draw 数量上升时应评估 push constants、dynamic uniform buffer 或 storage buffer。
 
 ## 审核检查点
 
@@ -450,7 +540,7 @@ Phase 0.9 完成时应满足：
 - `RenderQueue` 可以从 scene 生成多个 draw item。
 - `ModelResource` 可以从 `ModelData` 创建多个 mesh/material GPU resource。
 - `ForwardPass` 可以遍历 queue 绘制多个 draw item。
-- 多 draw item 支持不同 transform。
+- per-draw object uniform 支持不同 transform；默认 multidraw fixture 当前验证多 primitive draw，暂不验证多 instance transform。
 - glTF 2.0 loader 支持多 primitive / 多 material 的最小路径。
 - 默认 sandbox 使用 scene / queue 路径，不再依赖 `ForwardPass` 内部 fixture loading。
 - build、CTest 和 sandbox smoke 通过。
@@ -468,4 +558,4 @@ Phase 1.0 或后续阶段可以考虑：
 - push constants 或 dynamic uniform buffer。
 - frustum culling、sorting、batching。
 
-在 Phase 0.9 完成前，不建议直接进入 PBR 或 RenderGraph，因为当前最需要先稳定的是多 draw 的数据流、资源生命周期和 descriptor 绑定策略。
+Phase 0.9 完成后，下一阶段仍不建议直接进入完整 PBR 或完整 RenderGraph；更稳妥的顺序是先补齐 glTF transform、资源缓存、texture color space 和更系统的资源销毁策略。
