@@ -454,6 +454,21 @@ ctest --preset msvc-vcpkg-local-debug
 
 结果：build 通过，CTest 8/8 通过；sandbox smoke 通过，默认 `forward_multinode_fixture.gltf` 启动正常。
 
+### 0.17.5 - 0.17.7 更新
+
+- 0.17.5 已完成：`mesh.frag.hlsl` 整理为 `PbrInputs` / `readPbrInputs()` / `evaluateDirectLighting()`，明确使用 baseColor、normal、metallicRoughness、occlusion、emissive 输入。
+- 当前 lighting 仍是 direct-light-only：metallic/roughness 只参与最小 diffuse/specular 解释，不包含 IBL、HDR、tone mapping 或完整 Cook-Torrance BRDF。
+- 0.17.6 已补可选 DamagedHelmet smoke：本地存在 `assets/models/DamagedHelmet/DamagedHelmet.gltf` 时验证 glTF 2.0 加载、材质 texture slots 和 tangent fallback；模型资源仍不纳入提交。
+- 0.17.7 已补 shader source smoke：除 SPIR-V 可加载外，额外检查 `mesh.frag.hlsl` 保留 Phase 0.17 关键路径和 binding 13。
+- 0.17.7 验证结果：build 通过，CTest 8/8 通过，sandbox smoke 通过。
+
+### 0.17.8 收尾状态
+
+- Phase 0.17 主目标已完成：tangent 数据链路、ForwardPass lighting uniform、TBN normal map 和 direct-light-only PBR 输入解释均已落地。
+- 当前默认 sandbox 仍渲染 `forward_multinode_fixture.gltf`；DamagedHelmet 目前只作为本地可选 smoke，不作为默认展示资源。
+- 已知质量限制保持记录：缺失 `TANGENT` 时只使用固定 fallback，不做 tangent generation；非等比缩放 normal matrix、IBL、HDR、tone mapping 和完整 BRDF 留给后续阶段。
+- 本阶段未同步 `docs/codex_handoff.md`；该文档按用户明确要求再单独更新。
+
 建议新增或扩展测试：
 
 - `mesh_data_smoke`

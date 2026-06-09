@@ -241,11 +241,49 @@ namespace {
 
         return true;
     }
+
+    bool validateOptionalDamagedHelmetFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/DamagedHelmet/DamagedHelmet.gltf"});
+        if (path.empty()) {
+            return true;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1 ||
+            model.instances.size() != 1) {
+            std::cerr << "Unexpected DamagedHelmet glTF model shape\n";
+            return false;
+        }
+
+        const ark::asset::MeshPrimitiveData& mesh = model.meshes.front();
+        if (mesh.vertices.empty() || mesh.indices.empty()) {
+            std::cerr << "DamagedHelmet mesh data is empty\n";
+            return false;
+        }
+
+        const ark::asset::MaterialData& material = model.materials.front();
+        if (!material.hasBaseColorTexture() || !material.hasNormalTexture() ||
+            !material.hasMetallicRoughnessTexture() || !material.hasOcclusionTexture() ||
+            !material.hasEmissiveTexture()) {
+            std::cerr << "DamagedHelmet material did not expose expected texture slots\n";
+            return false;
+        }
+
+        // DamagedHelmet fixture has no TANGENT in the checked-in local copy; Phase 0.17 should use fallback.
+        const ark::asset::MeshVertex& firstVertex = mesh.vertices.front();
+        if (!near(firstVertex.tangent[0], 1.0f) || !near(firstVertex.tangent[1], 0.0f) ||
+            !near(firstVertex.tangent[2], 0.0f) || !near(firstVertex.tangent[3], 1.0f)) {
+            std::cerr << "Unexpected DamagedHelmet fallback tangent\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
-                   validateTextureCacheFixture() && validateTangentFixture()
+                   validateTextureCacheFixture() && validateTangentFixture() && validateOptionalDamagedHelmetFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

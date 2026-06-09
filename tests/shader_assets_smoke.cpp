@@ -1,5 +1,7 @@
 #include "asset/ShaderLoader.h"
+#include "core/FileSystem.h"
 
+#include <array>
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -21,6 +23,50 @@ namespace {
 
         return true;
     }
+
+    bool containsText(const std::vector<ark::u8>& data, std::string_view needle) {
+        if (needle.empty() || data.size() < needle.size()) {
+            return false;
+        }
+
+        const std::string_view text{reinterpret_cast<const char*>(data.data()), data.size()};
+        return text.find(needle) != std::string_view::npos;
+    }
+
+    ark::Path findShaderSource(std::string_view fileName) {
+        const ark::Path relative = ark::Path{"shaders"} / ark::Path{fileName};
+        const std::array<ark::Path, 3> candidates{
+            relative,
+            ark::Path{"../"} / relative,
+            ark::Path{"../../"} / relative,
+        };
+
+        return ark::findFirstExistingPath(candidates);
+    }
+
+    bool validateMeshFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("mesh.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find mesh fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read mesh fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct PbrInputs") ||
+            !containsText(shaderSource, "buildWorldNormal") ||
+            !containsText(shaderSource, "evaluateDirectLighting") ||
+            !containsText(shaderSource, "[[vk::binding(13, 0)]]")) {
+            std::cerr << "Mesh fragment shader does not expose expected Phase 0.17 lighting path\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -35,7 +81,7 @@ int main() {
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
-                   meshFragmentShaderValid
+                   meshFragmentShaderValid && validateMeshFragmentShaderSource()
                ? 0
                : 1;
 }
