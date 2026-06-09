@@ -104,6 +104,43 @@ namespace ark {
         return true;
     }
 
+    bool MeshResource::releaseDeferred(rhi::DeviceContext& context) {
+        // 运行期卸载时，copy staging 和 draw buffer 都必须延迟到 frame fence 后析构。
+        if (m_VertexStagingBuffer && !context.deferReleaseBuffer(m_VertexStagingBuffer)) {
+            ARK_ERROR("MeshResource failed to defer vertex staging buffer");
+            return false;
+        }
+
+        if (m_IndexStagingBuffer && !context.deferReleaseBuffer(m_IndexStagingBuffer)) {
+            ARK_ERROR("MeshResource failed to defer index staging buffer");
+            return false;
+        }
+
+        if (m_VertexBuffer && !context.deferReleaseBuffer(m_VertexBuffer)) {
+            ARK_ERROR("MeshResource failed to defer vertex buffer");
+            return false;
+        }
+
+        if (m_IndexBuffer && !context.deferReleaseBuffer(m_IndexBuffer)) {
+            ARK_ERROR("MeshResource failed to defer index buffer");
+            return false;
+        }
+
+        m_IndexCount = 0;
+        m_Uploaded = false;
+        return true;
+    }
+
+    void MeshResource::resetImmediate() {
+        // 只用于 shutdown / GPU idle 或尚未提交使用的路径。
+        m_VertexStagingBuffer.reset();
+        m_IndexStagingBuffer.reset();
+        m_VertexBuffer.reset();
+        m_IndexBuffer.reset();
+        m_IndexCount = 0;
+        m_Uploaded = false;
+    }
+
     void MeshResource::bind(rhi::DeviceContext& context) const {
         if (!isReady()) {
             ARK_ERROR("MeshResource must be uploaded before binding");

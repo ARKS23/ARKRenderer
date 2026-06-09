@@ -42,6 +42,7 @@ namespace ark {
             return false;
         }
 
+        m_UsesExternalTextureCache = &textureCache != &m_LocalTextureCache;
         m_Meshes.clear();
         m_Materials.clear();
         m_Primitives.clear();
@@ -135,12 +136,37 @@ namespace ark {
         return true;
     }
 
+    bool ModelResource::resetDeferred(rhi::DeviceContext& context) {
+        // 先移除 draw 可见元数据和 material 的 texture 引用，再释放底层 GPU resource。
+        m_Instances.clear();
+        m_Primitives.clear();
+        m_Materials.clear();
+
+        for (MeshResource& meshResource : m_Meshes) {
+            if (!meshResource.releaseDeferred(context)) {
+                return false;
+            }
+        }
+
+        if (!m_UsesExternalTextureCache && !m_LocalTextureCache.clearDeferred(context)) {
+            return false;
+        }
+
+        m_Meshes.clear();
+        m_UsesExternalTextureCache = false;
+        return true;
+    }
+
     void ModelResource::reset() {
         m_Instances.clear();
         m_Primitives.clear();
         m_Materials.clear();
+        for (MeshResource& meshResource : m_Meshes) {
+            meshResource.resetImmediate();
+        }
         m_Meshes.clear();
         m_LocalTextureCache.clear();
+        m_UsesExternalTextureCache = false;
     }
 
     std::span<const ModelPrimitiveResource> ModelResource::primitives() const {

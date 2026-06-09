@@ -38,6 +38,7 @@ namespace ark {
         bool create(rhi::RenderDevice& device, const asset::ModelData& model);
         bool create(rhi::RenderDevice& device, TextureCache& textureCache, const asset::ModelData& model);
         bool upload(rhi::DeviceContext& context);
+        bool resetDeferred(rhi::DeviceContext& context);
         void reset();
 
         std::span<const ModelPrimitiveResource> primitives() const;
@@ -73,5 +74,6 @@ namespace ark {
         std::vector<MaterialResource> m_Materials;
         std::vector<ModelPrimitiveResource> m_Primitives;
         std::vector<ModelPrimitiveInstance> m_Instances;
+        bool m_UsesExternalTextureCache = false;
     };
 } // namespace ark

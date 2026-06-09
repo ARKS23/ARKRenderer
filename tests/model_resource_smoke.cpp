@@ -466,6 +466,147 @@ namespace {
         return true;
     }
 
+    bool validateMeshResourceDeferredRelease() {
+        FakeRenderDevice device{};
+        ark::MeshResource meshResource{};
+        if (!meshResource.create(device, makeTriangle("DeferredMesh", 0, 0.0f))) {
+            std::cerr << "MeshResource create failed\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!meshResource.upload(context)) {
+            std::cerr << "MeshResource upload failed\n";
+            return false;
+        }
+
+        if (!meshResource.isReady() || context.bufferUploads != 2 || context.deferredBuffers != 2) {
+            std::cerr << "MeshResource upload counts are invalid\n";
+            return false;
+        }
+
+        if (!meshResource.releaseDeferred(context)) {
+            std::cerr << "MeshResource deferred release failed\n";
+            return false;
+        }
+
+        if (meshResource.isReady() || meshResource.indexCount() != 0 || context.deferredBuffers != 4) {
+            std::cerr << "MeshResource deferred release counts are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateLocalModelResourceDeferredReset() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        ark::asset::MaterialData material{};
+        material.debugName = "LocalResetMaterial";
+        material.baseColorTexturePath = texturePath;
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "LocalResetModel";
+        modelData.materials.push_back(material);
+        modelData.meshes.push_back(makeTriangle("LocalResetTriangle", 0, 0.0f));
+
+        FakeRenderDevice device{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, modelData)) {
+            std::cerr << "Local ModelResource create failed\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!modelResource.upload(context)) {
+            std::cerr << "Local ModelResource upload failed\n";
+            return false;
+        }
+
+        if (context.bufferUploads != 2 || context.textureUploads != 1 || context.deferredBuffers != 3) {
+            std::cerr << "Local ModelResource upload counts are invalid\n";
+            return false;
+        }
+
+        if (!modelResource.resetDeferred(context)) {
+            std::cerr << "Local ModelResource deferred reset failed\n";
+            return false;
+        }
+
+        if (!modelResource.empty() || modelResource.meshCount() != 0 || modelResource.materialCount() != 0 ||
+            modelResource.instanceCount() != 0 || context.deferredBuffers != 5 || context.deferredTextures != 1 ||
+            context.deferredTextureViews != 1 || context.deferredSamplers != 1) {
+            std::cerr << "Local ModelResource deferred reset counts are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateExternalModelResourceDeferredReset() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        ark::asset::MaterialData material{};
+        material.debugName = "ExternalResetMaterial";
+        material.baseColorTexturePath = texturePath;
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "ExternalResetModel";
+        modelData.materials.push_back(material);
+        modelData.meshes.push_back(makeTriangle("ExternalResetTriangle", 0, 0.0f));
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "External ModelResource create failed\n";
+            return false;
+        }
+
+        if (textureCache.size() != 1) {
+            std::cerr << "External texture cache was not populated\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!modelResource.upload(context)) {
+            std::cerr << "External ModelResource upload failed\n";
+            return false;
+        }
+
+        if (!modelResource.resetDeferred(context)) {
+            std::cerr << "External ModelResource deferred reset failed\n";
+            return false;
+        }
+
+        if (!modelResource.empty() || textureCache.size() != 1 || context.deferredBuffers != 5 ||
+            context.deferredTextures != 0 || context.deferredTextureViews != 0 || context.deferredSamplers != 0) {
+            std::cerr << "External ModelResource reset touched external texture cache\n";
+            return false;
+        }
+
+        if (!textureCache.clearDeferred(context)) {
+            std::cerr << "External texture cache deferred clear failed\n";
+            return false;
+        }
+
+        if (textureCache.size() != 0 || context.deferredTextures != 1 || context.deferredTextureViews != 1 ||
+            context.deferredSamplers != 1) {
+            std::cerr << "External texture cache deferred clear counts are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateModelResource() {
         const ark::Path texturePath = findTexturePath();
         if (texturePath.empty()) {
@@ -619,7 +760,9 @@ namespace {
 } // namespace
 
 int main() {
-    return validateTextureResourceDeferredRelease() && validateTextureCacheDeferredClear() && validateModelResource() &&
+    return validateTextureResourceDeferredRelease() && validateTextureCacheDeferredClear() &&
+                   validateMeshResourceDeferredRelease() && validateLocalModelResourceDeferredReset() &&
+                   validateExternalModelResourceDeferredReset() && validateModelResource() &&
                    validateTextureCacheFixtureModelResource()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

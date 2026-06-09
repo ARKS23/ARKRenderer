@@ -19,6 +19,8 @@ namespace ark {
 
         bool create(rhi::RenderDevice& device, const asset::MeshPrimitiveData& mesh);
         bool upload(rhi::DeviceContext& context);
+        bool releaseDeferred(rhi::DeviceContext& context);
+        void resetImmediate();
         void bind(rhi::DeviceContext& context) const;
         rhi::DrawIndexedDesc makeDrawIndexedDesc() const;
 
