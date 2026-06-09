@@ -12,6 +12,7 @@ namespace ark::asset {
         float position[3]{};
         float normal[3]{};
         float uv0[2]{};
+        float tangent[4] = {1.0f, 0.0f, 0.0f, 1.0f};
     };
 
     // 单个可绘制 primitive 的 CPU 数据，保持 asset 层纯数据语义。

@@ -21,6 +21,12 @@ namespace {
         v0.uv0[0] = 0.0f;
         v0.uv0[1] = 0.0f;
 
+        if (v0.tangent[0] != 1.0f || v0.tangent[1] != 0.0f || v0.tangent[2] != 0.0f ||
+            v0.tangent[3] != 1.0f) {
+            std::cerr << "Unexpected default mesh tangent\n";
+            return false;
+        }
+
         ark::asset::MeshVertex v1 = v0;
         v1.position[0] = 1.0f;
         v1.uv0[0] = 1.0f;

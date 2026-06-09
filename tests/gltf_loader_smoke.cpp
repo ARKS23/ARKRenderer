@@ -57,6 +57,12 @@ namespace {
             return false;
         }
 
+        if (!near(firstVertex.tangent[0], 1.0f) || !near(firstVertex.tangent[1], 0.0f) ||
+            !near(firstVertex.tangent[2], 0.0f) || !near(firstVertex.tangent[3], 1.0f)) {
+            std::cerr << "Unexpected fallback glTF tangent data\n";
+            return false;
+        }
+
         const ark::asset::MaterialData& material = model.materials.front();
         if (!material.hasBaseColorTexture() || material.baseColorTexturePath.filename() != "xiaowei.png") {
             std::cerr << "Unexpected glTF material texture path\n";
@@ -80,6 +86,35 @@ namespace {
             !near(material.emissiveFactor[2], 0.3f) || !near(material.normalScale, 0.75f) ||
             !near(material.occlusionStrength, 0.5f)) {
             std::cerr << "Unexpected glTF material factors\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateTangentFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/forward_tangent_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find tangent glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1) {
+            std::cerr << "Unexpected tangent glTF model shape\n";
+            return false;
+        }
+
+        const ark::asset::MeshPrimitiveData& mesh = model.meshes.front();
+        if (mesh.vertices.size() != 4 || mesh.indices.size() != 6) {
+            std::cerr << "Unexpected tangent glTF primitive size\n";
+            return false;
+        }
+
+        const ark::asset::MeshVertex& firstVertex = mesh.vertices.front();
+        if (!near(firstVertex.tangent[0], 0.0f) || !near(firstVertex.tangent[1], 1.0f) ||
+            !near(firstVertex.tangent[2], 0.0f) || !near(firstVertex.tangent[3], -1.0f)) {
+            std::cerr << "Unexpected explicit glTF tangent data\n";
             return false;
         }
 
@@ -210,7 +245,7 @@ namespace {
 
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
-                   validateTextureCacheFixture()
+                   validateTextureCacheFixture() && validateTangentFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

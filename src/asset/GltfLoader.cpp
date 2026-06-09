@@ -19,6 +19,7 @@ namespace ark::asset {
         constexpr const char* PositionAttributeName = "POSITION";
         constexpr const char* NormalAttributeName = "NORMAL";
         constexpr const char* Texcoord0AttributeName = "TEXCOORD_0";
+        constexpr const char* TangentAttributeName = "TANGENT";
         constexpr u32 InvalidMaterialIndex = std::numeric_limits<u32>::max();
 
         using Matrix4 = std::array<float, 16>;
@@ -273,6 +274,25 @@ namespace ark::asset {
             return true;
         }
 
+        bool readFloatVec4(const tinygltf::Model& model,
+                           const tinygltf::Accessor& accessor,
+                           usize elementIndex,
+                           float out[4]) {
+            if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != TINYGLTF_TYPE_VEC4) {
+                return false;
+            }
+
+            u64 stride = 0;
+            const u8* data = accessorData(model, accessor, stride);
+            if (!data) {
+                return false;
+            }
+
+            const u8* element = data + static_cast<u64>(elementIndex) * stride;
+            std::memcpy(out, element, sizeof(float) * 4);
+            return true;
+        }
+
         bool appendIndices(const tinygltf::Model& model,
                            const tinygltf::Accessor& accessor,
                            std::vector<u32>& indices) {
@@ -336,6 +356,7 @@ namespace ark::asset {
             const tinygltf::Accessor* positionAccessor = getAccessor(model, findAttributeAccessor(primitive, PositionAttributeName));
             const tinygltf::Accessor* normalAccessor = getAccessor(model, findAttributeAccessor(primitive, NormalAttributeName));
             const tinygltf::Accessor* uvAccessor = getAccessor(model, findAttributeAccessor(primitive, Texcoord0AttributeName));
+            const tinygltf::Accessor* tangentAccessor = getAccessor(model, findAttributeAccessor(primitive, TangentAttributeName));
             const tinygltf::Accessor* indexAccessor = getAccessor(model, primitive.indices);
 
             if (!positionAccessor || !normalAccessor || !uvAccessor || !indexAccessor) {
@@ -353,6 +374,11 @@ namespace ark::asset {
                 return false;
             }
 
+            if (tangentAccessor && tangentAccessor->count != positionAccessor->count) {
+                ARK_ERROR("glTF TANGENT count does not match POSITION count");
+                return false;
+            }
+
             mesh.vertices.resize(positionAccessor->count);
             for (usize i = 0; i < positionAccessor->count; ++i) {
                 MeshVertex& vertex = mesh.vertices[i];
@@ -360,6 +386,12 @@ namespace ark::asset {
                     !readFloatVec3(model, *normalAccessor, i, vertex.normal) ||
                     !readFloatVec2(model, *uvAccessor, i, vertex.uv0)) {
                     ARK_ERROR("glTF vertex attribute data is invalid");
+                    return false;
+                }
+
+                // TANGENT 是 Phase 0.17 的可选输入；缺失时保留 MeshVertex 默认切线，避免阻断旧 fixture。
+                if (tangentAccessor && !readFloatVec4(model, *tangentAccessor, i, vertex.tangent)) {
+                    ARK_ERROR("glTF TANGENT attribute data is invalid");
                     return false;
                 }
             }

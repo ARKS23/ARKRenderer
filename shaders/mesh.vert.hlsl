@@ -2,12 +2,15 @@ struct VSInput {
     [[vk::location(0)]] float3 position : POSITION0;
     [[vk::location(1)]] float3 normal : NORMAL0;
     [[vk::location(2)]] float2 uv0 : TEXCOORD0;
+    [[vk::location(3)]] float4 tangent : TANGENT0;
 };
 
 struct VSOutput {
     float4 position : SV_Position;
-    [[vk::location(0)]] float3 normal : NORMAL0;
-    [[vk::location(1)]] float2 uv0 : TEXCOORD0;
+    [[vk::location(0)]] float3 worldPosition : POSITION0;
+    [[vk::location(1)]] float3 worldNormal : NORMAL0;
+    [[vk::location(2)]] float4 worldTangent : TANGENT0;
+    [[vk::location(3)]] float2 uv0 : TEXCOORD0;
 };
 
 struct CameraUniform {
@@ -30,7 +33,10 @@ VSOutput main(VSInput input) {
     const float4 worldPosition = mul(g_Object.model, float4(input.position, 1.0f));
     const float4 viewPosition = mul(g_Camera.view, worldPosition);
     output.position = mul(g_Camera.projection, viewPosition);
-    output.normal = input.normal;
+    output.worldPosition = worldPosition.xyz;
+    // Phase 0.17 暂用 model 矩阵变换方向；非等比缩放的 inverse-transpose 留给后续光照完善。
+    output.worldNormal = normalize(mul((float3x3)g_Object.model, input.normal));
+    output.worldTangent = float4(normalize(mul((float3x3)g_Object.model, input.tangent.xyz)), input.tangent.w);
     output.uv0 = input.uv0;
     return output;
 }

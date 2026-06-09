@@ -10,6 +10,7 @@
 #include "rhi/SwapChain.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 #include <cstddef>
 #include <string>
@@ -37,6 +38,15 @@ namespace ark {
 
         static_assert(sizeof(MaterialUniform) == 48);
 
+        struct alignas(16) LightingUniform {
+            glm::vec4 lightDirection;
+            glm::vec4 lightColor;
+            glm::vec4 ambientColor;
+            glm::vec4 cameraPosition;
+        };
+
+        static_assert(sizeof(LightingUniform) == 64);
+
         void addFragmentTextureBindingPair(rhi::DescriptorSetLayoutDesc& desc, u32 imageBinding, u32 samplerBinding) {
             desc.bindings.push_back(rhi::DescriptorBindingDesc{
                 .binding = imageBinding,
@@ -62,6 +72,21 @@ namespace ark {
 
             uniform.view = glm::mat4{1.0f};
             uniform.projection = glm::mat4{1.0f};
+            return uniform;
+        }
+
+        LightingUniform makeLightingUniform(const FrameContext& frameContext) {
+            LightingUniform uniform{};
+            uniform.lightDirection = glm::vec4{glm::normalize(glm::vec3{-0.35f, -0.8f, -0.45f}), 0.0f};
+            uniform.lightColor = glm::vec4{1.0f, 0.96f, 0.88f, 1.0f};
+            uniform.ambientColor = glm::vec4{0.08f, 0.09f, 0.11f, 1.0f};
+            uniform.cameraPosition = glm::vec4{0.0f, 0.0f, -4.0f, 1.0f};
+
+            if (frameContext.view) {
+                const glm::mat4 inverseView = glm::affineInverse(frameContext.view->viewMatrix());
+                uniform.cameraPosition = inverseView[3];
+            }
+
             return uniform;
         }
 
@@ -154,7 +179,8 @@ namespace ark {
             return true;
         }
 
-        if (!updateCameraUniform(frameContext, frameSlot) || !ensurePipeline(frameContext)) {
+        if (!updateCameraUniform(frameContext, frameSlot) || !updateLightingUniform(frameContext, frameSlot) ||
+            !ensurePipeline(frameContext)) {
             return false;
         }
 
@@ -218,6 +244,12 @@ namespace ark {
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 7, 8);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 9, 10);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 11, 12);
+        descriptorSetLayoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 13,
+            .type = rhi::DescriptorType::UniformBuffer,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -231,7 +263,14 @@ namespace ark {
             cameraBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
             m_CameraBuffers[frameSlot] = m_Device->createBuffer(cameraBufferDesc);
 
-            if (!m_CameraBuffers[frameSlot]) {
+            rhi::BufferDesc lightingBufferDesc{};
+            lightingBufferDesc.debugName = "ForwardLightingUniformBuffer";
+            lightingBufferDesc.size = sizeof(LightingUniform);
+            lightingBufferDesc.usage = rhi::BufferUsage::Uniform;
+            lightingBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+            m_LightingBuffers[frameSlot] = m_Device->createBuffer(lightingBufferDesc);
+
+            if (!m_CameraBuffers[frameSlot] || !m_LightingBuffers[frameSlot]) {
                 return false;
             }
         }
@@ -354,6 +393,11 @@ namespace ark {
             .format = rhi::Format::R32G32Float,
             .offset = offsetof(asset::MeshVertex, uv0),
         });
+        vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
+            .location = 3,
+            .format = rhi::Format::R32G32B32A32Float,
+            .offset = offsetof(asset::MeshVertex, tangent),
+        });
 
         rhi::GraphicsPipelineDesc pipelineDesc{};
         pipelineDesc.debugName = "ForwardMeshPipeline";
@@ -383,6 +427,18 @@ namespace ark {
 
         const CameraUniform cameraUniform = makeCameraUniform(frameContext);
         return frameContext.context->updateBuffer(*m_CameraBuffers[frameSlot], &cameraUniform, sizeof(cameraUniform));
+    }
+
+    bool ForwardPass::updateLightingUniform(FrameContext& frameContext, u32 frameSlot) {
+        if (!frameContext.context || frameSlot >= m_LightingBuffers.size() || !m_LightingBuffers[frameSlot]) {
+            ARK_ERROR("ForwardPass requires per-frame lighting buffer");
+            return false;
+        }
+
+        const LightingUniform lightingUniform = makeLightingUniform(frameContext);
+        return frameContext.context->updateBuffer(*m_LightingBuffers[frameSlot],
+                                                  &lightingUniform,
+                                                  sizeof(lightingUniform));
     }
 
     bool ForwardPass::updateObjectUniform(FrameContext& frameContext,
@@ -418,7 +474,8 @@ namespace ark {
 
     bool ForwardPass::updateDrawDescriptorSet(u32 frameSlot, usize drawIndex, MaterialResource& material) {
         if (frameSlot >= m_DrawDescriptors.size() || drawIndex >= m_DrawDescriptors[frameSlot].size() ||
-            !m_CameraBuffers[frameSlot] || !m_DrawDescriptors[frameSlot][drawIndex].objectBuffer ||
+            !m_CameraBuffers[frameSlot] || !m_LightingBuffers[frameSlot] ||
+            !m_DrawDescriptors[frameSlot][drawIndex].objectBuffer ||
             !m_DrawDescriptors[frameSlot][drawIndex].materialBuffer ||
             !m_DrawDescriptors[frameSlot][drawIndex].descriptorSet) {
             ARK_ERROR("ForwardPass requires descriptor resources before descriptor update");
@@ -446,6 +503,11 @@ namespace ark {
         materialDescriptor.buffer = descriptors.materialBuffer.get();
         materialDescriptor.range = sizeof(MaterialUniform);
         descriptors.descriptorSet->updateUniformBuffer(4, materialDescriptor);
+
+        rhi::BufferDescriptor lightingDescriptor{};
+        lightingDescriptor.buffer = m_LightingBuffers[frameSlot].get();
+        lightingDescriptor.range = sizeof(LightingUniform);
+        descriptors.descriptorSet->updateUniformBuffer(13, lightingDescriptor);
         return true;
     }
 

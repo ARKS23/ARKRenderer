@@ -1,7 +1,9 @@
 struct PSInput {
     float4 position : SV_Position;
-    [[vk::location(0)]] float3 normal : NORMAL0;
-    [[vk::location(1)]] float2 uv0 : TEXCOORD0;
+    [[vk::location(0)]] float3 worldPosition : POSITION0;
+    [[vk::location(1)]] float3 worldNormal : NORMAL0;
+    [[vk::location(2)]] float4 worldTangent : TANGENT0;
+    [[vk::location(3)]] float2 uv0 : TEXCOORD0;
 };
 
 [[vk::binding(1, 0)]]
@@ -46,6 +48,16 @@ struct MaterialUniform {
 [[vk::binding(4, 0)]]
 ConstantBuffer<MaterialUniform> g_Material;
 
+struct LightingUniform {
+    float4 lightDirection;
+    float4 lightColor;
+    float4 ambientColor;
+    float4 cameraPosition;
+};
+
+[[vk::binding(13, 0)]]
+ConstantBuffer<LightingUniform> g_Lighting;
+
 float4 main(PSInput input) : SV_Target0 {
     const float4 baseColor = g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0) * g_Material.baseColorFactor;
     const float3 normalSample = g_NormalTexture.Sample(g_NormalSampler, input.uv0).xyz * 2.0f - 1.0f;
@@ -56,16 +68,23 @@ float4 main(PSInput input) : SV_Target0 {
                             g_Material.emissiveFactor.rgb;
 
     const float occlusion = lerp(1.0f, occlusionSample, saturate(g_Material.occlusionStrength));
-    const float2 pbrData = float2(metallicRoughnessSample.b * g_Material.metallicFactor,
-                                  metallicRoughnessSample.g * g_Material.roughnessFactor);
-    const float3 scaledNormal = normalize(float3(normalSample.xy * g_Material.normalScale, normalSample.z));
+    const float metallic = saturate(metallicRoughnessSample.b * g_Material.metallicFactor);
+    const float roughness = saturate(metallicRoughnessSample.g * g_Material.roughnessFactor);
+    const float3 tangentSpaceNormal =
+        normalize(float3(normalSample.xy * g_Material.normalScale, normalSample.z));
 
-    // Phase 0.16 只打通 texture slot 数据链路；MR/normal 的真实光照解释留给后续 PBR。
-    const bool invalidDebugSample = any(abs(scaledNormal) > float3(8.0f, 8.0f, 8.0f)) ||
-                                    any(pbrData < float2(-1.0f, -1.0f));
-    if (invalidDebugSample) {
-        discard;
-    }
+    const float3 n = normalize(input.worldNormal);
+    const float3 t = normalize(input.worldTangent.xyz);
+    const float3 b = normalize(cross(n, t) * input.worldTangent.w);
+    const float3 worldNormal = normalize(mul(tangentSpaceNormal, float3x3(t, b, n)));
+    const float3 lightDirection = normalize(-g_Lighting.lightDirection.xyz);
+    const float3 viewDirection = normalize(g_Lighting.cameraPosition.xyz - input.worldPosition);
+    const float3 halfVector = normalize(lightDirection + viewDirection);
+    const float diffuse = saturate(dot(worldNormal, lightDirection));
+    const float specularPower = lerp(64.0f, 8.0f, roughness);
+    const float specular = pow(saturate(dot(worldNormal, halfVector)), specularPower) *
+                           lerp(0.04f, 1.0f, metallic);
+    const float3 lighting = g_Lighting.ambientColor.rgb + g_Lighting.lightColor.rgb * (diffuse + specular);
 
-    return float4(baseColor.rgb * occlusion + emissive, baseColor.a);
+    return float4(baseColor.rgb * lighting * occlusion + emissive, baseColor.a);
 }

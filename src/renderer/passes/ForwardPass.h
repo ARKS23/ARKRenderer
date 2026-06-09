@@ -38,6 +38,7 @@ namespace ark {
         bool ensureDrawDescriptorResources(u32 frameSlot, usize drawCount);
         bool ensurePipeline(FrameContext& frameContext);
         bool updateCameraUniform(FrameContext& frameContext, u32 frameSlot);
+        bool updateLightingUniform(FrameContext& frameContext, u32 frameSlot);
         bool updateObjectUniform(FrameContext& frameContext,
                                  u32 frameSlot,
                                  usize drawIndex,
@@ -62,6 +63,7 @@ namespace ark {
 
         rhi::RenderDevice* m_Device = nullptr;
         std::array<Scope<rhi::Buffer>, FramesInFlight> m_CameraBuffers;
+        std::array<Scope<rhi::Buffer>, FramesInFlight> m_LightingBuffers;
         Scope<rhi::DescriptorSetLayout> m_DescriptorSetLayout;
         std::array<std::vector<DrawDescriptorResources>, FramesInFlight> m_DrawDescriptors;
         Scope<rhi::Shader> m_VertexShader;

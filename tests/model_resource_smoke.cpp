@@ -171,9 +171,9 @@ namespace {
         int uniformUpdates = 0;
         int sampledImageUpdates = 0;
         int samplerUpdates = 0;
-        std::array<bool, 13> uniformBindings{};
-        std::array<bool, 13> sampledImageBindings{};
-        std::array<bool, 13> samplerBindings{};
+        std::array<bool, 14> uniformBindings{};
+        std::array<bool, 14> sampledImageBindings{};
+        std::array<bool, 14> samplerBindings{};
     };
 
     class FakeFence final : public ark::rhi::Fence {
