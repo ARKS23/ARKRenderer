@@ -2,6 +2,7 @@
 
 #include "asset/TextureLoader.h"
 #include "core/Log.h"
+#include "rhi/DeviceContext.h"
 #include "rhi/RenderDevice.h"
 
 #include <filesystem>
@@ -69,7 +70,21 @@ namespace ark {
         return result;
     }
 
+    bool TextureCache::clearDeferred(rhi::DeviceContext& context) {
+        // 调用方必须先确保没有后续 draw 继续引用这些 TextureResource 指针。
+        for (auto& [key, texture] : m_Textures) {
+            if (texture && !texture->releaseDeferred(context)) {
+                ARK_ERROR("TextureCache failed to defer texture release: {}", key.canonicalPath);
+                return false;
+            }
+        }
+
+        m_Textures.clear();
+        return true;
+    }
+
     void TextureCache::clear() {
+        // shutdown / GPU idle 路径使用；运行期卸载应走 clearDeferred()。
         m_Textures.clear();
     }
 } // namespace ark

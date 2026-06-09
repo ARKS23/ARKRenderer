@@ -8,6 +8,7 @@
 #include <string>
 
 namespace ark::rhi {
+    class DeviceContext;
     class RenderDevice;
 } // namespace ark::rhi
 
@@ -17,6 +18,7 @@ namespace ark {
         TextureCache() = default;
 
         TextureResource* getOrCreate(rhi::RenderDevice& device, const TextureResourceDesc& desc);
+        bool clearDeferred(rhi::DeviceContext& context);
         void clear();
 
         usize size() const {

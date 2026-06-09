@@ -1,10 +1,12 @@
 #include "asset/GltfLoader.h"
 #include "asset/MeshData.h"
+#include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/TextureCache.h"
+#include "renderer/TextureResource.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
 #include "rhi/DeviceContext.h"
@@ -284,6 +286,24 @@ namespace {
             return true;
         }
 
+        bool deferReleaseTexture(ark::Scope<ark::rhi::Texture>& texture) override {
+            ++deferredTextures;
+            texture.reset();
+            return true;
+        }
+
+        bool deferReleaseTextureView(ark::Scope<ark::rhi::TextureView>& textureView) override {
+            ++deferredTextureViews;
+            textureView.reset();
+            return true;
+        }
+
+        bool deferReleaseSampler(ark::Scope<ark::rhi::Sampler>& sampler) override {
+            ++deferredSamplers;
+            sampler.reset();
+            return true;
+        }
+
         void setVertexBuffer(ark::u32, ark::rhi::Buffer&, ark::u64 = 0) override {
         }
 
@@ -305,6 +325,9 @@ namespace {
         int bufferUploads = 0;
         int textureUploads = 0;
         int deferredBuffers = 0;
+        int deferredTextures = 0;
+        int deferredTextureViews = 0;
+        int deferredSamplers = 0;
         int bufferUpdates = 0;
 
     private:
@@ -354,6 +377,93 @@ namespace {
         mesh.indices = {0, 1, 2};
         mesh.materialIndex = materialIndex;
         return mesh;
+    }
+
+    bool validateTextureResourceDeferredRelease() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        ark::asset::ImageData image = ark::asset::loadImageRgba8(texturePath);
+        if (image.empty()) {
+            std::cerr << "Failed to load texture asset\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureResourceDesc desc{};
+        desc.path = texturePath;
+        desc.colorSpace = ark::TextureColorSpace::Srgb;
+        desc.debugName = "DeferredReleaseTexture";
+
+        ark::TextureResource texture{};
+        if (!texture.create(device, image, desc)) {
+            std::cerr << "TextureResource create failed\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!texture.upload(context)) {
+            std::cerr << "TextureResource upload failed\n";
+            return false;
+        }
+
+        if (!texture.isReady() || context.textureUploads != 1 || context.deferredBuffers != 1) {
+            std::cerr << "TextureResource upload did not prepare ready texture\n";
+            return false;
+        }
+
+        if (!texture.releaseDeferred(context)) {
+            std::cerr << "TextureResource deferred release failed\n";
+            return false;
+        }
+
+        if (texture.isReady() || context.deferredTextures != 1 || context.deferredTextureViews != 1 ||
+            context.deferredSamplers != 1 || context.deferredBuffers != 1) {
+            std::cerr << "TextureResource deferred release counts are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateTextureCacheDeferredClear() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::TextureResourceDesc desc{};
+        desc.path = texturePath;
+        desc.colorSpace = ark::TextureColorSpace::Srgb;
+        desc.debugName = "DeferredClearTexture";
+
+        ark::TextureResource* first = textureCache.getOrCreate(device, desc);
+        ark::TextureResource* second = textureCache.getOrCreate(device, desc);
+        if (!first || first != second || textureCache.size() != 1 || device.textureCount != 1 ||
+            device.textureViewCount != 1 || device.samplerCount != 1) {
+            std::cerr << "TextureCache did not reuse texture before deferred clear\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!textureCache.clearDeferred(context)) {
+            std::cerr << "TextureCache deferred clear failed\n";
+            return false;
+        }
+
+        if (textureCache.size() != 0 || context.deferredBuffers != 1 || context.deferredTextures != 1 ||
+            context.deferredTextureViews != 1 || context.deferredSamplers != 1) {
+            std::cerr << "TextureCache deferred clear counts are invalid\n";
+            return false;
+        }
+
+        return true;
     }
 
     bool validateModelResource() {
@@ -509,5 +619,8 @@ namespace {
 } // namespace
 
 int main() {
-    return validateModelResource() && validateTextureCacheFixtureModelResource() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateTextureResourceDeferredRelease() && validateTextureCacheDeferredClear() && validateModelResource() &&
+                   validateTextureCacheFixtureModelResource()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

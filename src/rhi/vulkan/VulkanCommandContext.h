@@ -32,6 +32,9 @@ namespace ark::rhi::vulkan {
         bool uploadTextureData(const TextureUploadDesc& desc) override;
         bool uploadBufferData(const BufferUploadDesc& desc) override;
         bool deferReleaseBuffer(Scope<Buffer>& buffer) override;
+        bool deferReleaseTexture(Scope<Texture>& texture) override;
+        bool deferReleaseTextureView(Scope<TextureView>& textureView) override;
+        bool deferReleaseSampler(Scope<Sampler>& sampler) override;
         void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset) override;
         void setIndexBuffer(Buffer& buffer, IndexType indexType, u64 offset) override;
         void draw(const DrawDesc& desc) override;

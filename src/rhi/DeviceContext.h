@@ -11,6 +11,7 @@ namespace ark::rhi {
     class DescriptorSet;
     struct FrameResource;
     class PipelineState;
+    class Sampler;
     class Texture;
     class TextureView;
 
@@ -106,6 +107,9 @@ namespace ark::rhi {
         virtual bool uploadTextureData(const TextureUploadDesc& desc) = 0;
         virtual bool uploadBufferData(const BufferUploadDesc& desc) = 0;
         virtual bool deferReleaseBuffer(Scope<Buffer>& buffer) = 0;
+        virtual bool deferReleaseTexture(Scope<Texture>& texture) = 0;
+        virtual bool deferReleaseTextureView(Scope<TextureView>& textureView) = 0;
+        virtual bool deferReleaseSampler(Scope<Sampler>& sampler) = 0;
         virtual void setVertexBuffer(u32 slot, Buffer& buffer, u64 offset = 0) = 0;
         virtual void setIndexBuffer(Buffer& buffer, IndexType indexType = IndexType::UInt32, u64 offset = 0) = 0;
         virtual void draw(const DrawDesc& desc) = 0;

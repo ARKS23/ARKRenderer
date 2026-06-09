@@ -6,6 +6,7 @@
 #include "rhi/vulkan/VulkanDescriptorSet.h"
 #include "rhi/vulkan/VulkanDevice.h"
 #include "rhi/vulkan/VulkanPipelineState.h"
+#include "rhi/vulkan/VulkanSampler.h"
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
 
@@ -738,6 +739,11 @@ namespace ark::rhi::vulkan {
             return false;
         }
 
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseBuffer must be called outside rendering scope");
+            return false;
+        }
+
         if (!m_RecordingFrame->deferredDeletion) {
             ARK_ERROR("VulkanCommandContext::deferReleaseBuffer requires deferred deletion queue");
             return false;
@@ -750,6 +756,96 @@ namespace ark::rhi::vulkan {
         }
 
         m_RecordingFrame->deferredDeletion->deferReleaseBuffer(std::move(buffer));
+        return true;
+    }
+
+    bool VulkanCommandContext::deferReleaseTexture(Scope<Texture>& texture) {
+        if (!texture) {
+            return true;
+        }
+
+        if (!m_RecordingFrame || !m_IsRecording) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTexture requires active frame recording");
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTexture must be called outside rendering scope");
+            return false;
+        }
+
+        if (!m_RecordingFrame->deferredDeletion) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTexture requires deferred deletion queue");
+            return false;
+        }
+
+        VulkanTexture* vulkanTexture = dynamic_cast<VulkanTexture*>(texture.get());
+        if (!vulkanTexture || vulkanTexture->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTexture requires VulkanTexture");
+            return false;
+        }
+
+        m_RecordingFrame->deferredDeletion->deferReleaseTexture(std::move(texture));
+        return true;
+    }
+
+    bool VulkanCommandContext::deferReleaseTextureView(Scope<TextureView>& textureView) {
+        if (!textureView) {
+            return true;
+        }
+
+        if (!m_RecordingFrame || !m_IsRecording) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTextureView requires active frame recording");
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTextureView must be called outside rendering scope");
+            return false;
+        }
+
+        if (!m_RecordingFrame->deferredDeletion) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTextureView requires deferred deletion queue");
+            return false;
+        }
+
+        VulkanTextureView* vulkanTextureView = dynamic_cast<VulkanTextureView*>(textureView.get());
+        if (!vulkanTextureView || vulkanTextureView->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseTextureView requires VulkanTextureView");
+            return false;
+        }
+
+        m_RecordingFrame->deferredDeletion->deferReleaseTextureView(std::move(textureView));
+        return true;
+    }
+
+    bool VulkanCommandContext::deferReleaseSampler(Scope<Sampler>& sampler) {
+        if (!sampler) {
+            return true;
+        }
+
+        if (!m_RecordingFrame || !m_IsRecording) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseSampler requires active frame recording");
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseSampler must be called outside rendering scope");
+            return false;
+        }
+
+        if (!m_RecordingFrame->deferredDeletion) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseSampler requires deferred deletion queue");
+            return false;
+        }
+
+        VulkanSampler* vulkanSampler = dynamic_cast<VulkanSampler*>(sampler.get());
+        if (!vulkanSampler || vulkanSampler->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::deferReleaseSampler requires VulkanSampler");
+            return false;
+        }
+
+        m_RecordingFrame->deferredDeletion->deferReleaseSampler(std::move(sampler));
         return true;
     }
 

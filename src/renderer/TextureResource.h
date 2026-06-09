@@ -39,6 +39,8 @@ namespace ark {
 
         bool create(rhi::RenderDevice& device, const asset::ImageData& image, const TextureResourceDesc& desc);
         bool upload(rhi::DeviceContext& context);
+        bool releaseDeferred(rhi::DeviceContext& context);
+        void resetImmediate();
 
         bool isReady() const {
             return m_Uploaded && m_Texture && m_TextureView && m_Sampler;

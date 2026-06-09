@@ -124,4 +124,49 @@ namespace ark {
         m_Uploaded = true;
         return true;
     }
+
+    bool TextureResource::releaseDeferred(rhi::DeviceContext& context) {
+        // runtime unload 时把 GPU object 移交给当前 frame deletion queue，避免仍在采样的对象立即析构。
+        if (m_TextureView && !context.deferReleaseTextureView(m_TextureView)) {
+            ARK_ERROR("TextureResource failed to defer texture view");
+            return false;
+        }
+
+        if (m_Sampler && !context.deferReleaseSampler(m_Sampler)) {
+            ARK_ERROR("TextureResource failed to defer sampler");
+            return false;
+        }
+
+        if (m_Texture && !context.deferReleaseTexture(m_Texture)) {
+            ARK_ERROR("TextureResource failed to defer texture");
+            return false;
+        }
+
+        if (m_StagingBuffer && !context.deferReleaseBuffer(m_StagingBuffer)) {
+            ARK_ERROR("TextureResource failed to defer staging buffer");
+            return false;
+        }
+
+        m_Extent = {};
+        m_Format = rhi::Format::Unknown;
+        m_ColorSpace = TextureColorSpace::Linear;
+        m_RowPitch = 0;
+        m_BytesPerPixel = 0;
+        m_Uploaded = false;
+        return true;
+    }
+
+    void TextureResource::resetImmediate() {
+        // 只用于 shutdown / create 失败等 GPU idle 或尚未提交使用的路径。
+        m_StagingBuffer.reset();
+        m_TextureView.reset();
+        m_Sampler.reset();
+        m_Texture.reset();
+        m_Extent = {};
+        m_Format = rhi::Format::Unknown;
+        m_ColorSpace = TextureColorSpace::Linear;
+        m_RowPitch = 0;
+        m_BytesPerPixel = 0;
+        m_Uploaded = false;
+    }
 } // namespace ark
