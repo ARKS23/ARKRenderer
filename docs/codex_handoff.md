@@ -4,7 +4,7 @@
 
 ## 1. 当前状态
 
-ARKRenderer 当前已经完成 Phase 0.10。默认渲染主线已经从早期 pass 内部硬编码资源，推进到 renderer 层的 glTF scene/node transform、RenderScene、RenderQueue 和 ForwardPass 闭环：
+ARKRenderer 当前已经完成 Phase 0.11。默认渲染主线保持 Vulkan Dynamic Rendering + `RenderScene` / `RenderQueue` / `ForwardPass` 多 draw 闭环，同时 texture/material 资源边界已经从 `MaterialResource` 内部硬编码加载，推进到 renderer 层 `TextureResource` / `TextureCache`：
 
 ```text
 Vulkan Dynamic Rendering
@@ -14,7 +14,9 @@ Vulkan Dynamic Rendering
     -> FrameRenderer
         -> prepare() upload stage
             -> MeshResource GPU-only vertex/index upload
-            -> MaterialResource RGBA8 texture upload
+            -> MaterialResource
+                -> TextureResource RGBA8/sRGB texture upload
+                -> TextureCache path + colorSpace reuse
         -> beginRendering(color + depth)
         -> ClearPass
         -> ForwardPass
@@ -36,21 +38,27 @@ shaders/mesh.vert.hlsl
 shaders/mesh.frag.hlsl
 ```
 
-`ForwardPass` 现在只消费 `RenderQueue`，不负责文件查找、glTF 加载或 fallback mesh/material。app 传入的 scene 为空时，`DefaultRenderer` 会使用内部默认 `ModelResource + RenderScene`，加载 `forward_multinode_fixture.gltf` 验证默认多 node / 多 instance draw 路径。
+当前 Phase 0.11 专用测试 fixture：
+
+```text
+assets/models/texture_cache_fixture.gltf
+```
+
+`ForwardPass` 仍只消费 `RenderQueue`，不负责文件查找、glTF 加载、texture cache 或 fallback mesh/material。app 传入的 scene 为空时，`DefaultRenderer` 使用内部默认 `ModelResource + RenderScene` 加载 `forward_multinode_fixture.gltf`，验证默认多 node / 多 instance draw 路径。
 
 ## 2. 最近提交与工作区
 
 最近已推送提交：
 
 ```text
+214b081 完成 Phase10 glTF scene transform 闭环
 a763cb0 完成 Phase09 多 draw 场景队列闭环
 0c1f98e 启动 Phase09 场景队列结构
 1d2134b 完成 Phase08 glTF ForwardPass 闭环
 1dae07f 启动 Phase08 mesh 资源闭环
-d9b80af 实现 DescriptorManager 可增长 pool
 ```
 
-当前 Phase 0.10 相关改动仍在工作区，尚未提交。接手时先执行：
+当前 Phase 0.11 相关改动仍在工作区，尚未提交。接手时先执行：
 
 ```powershell
 git status -sb
@@ -60,8 +68,9 @@ git log --oneline -n 5
 
 注意：
 
-- `assets/models/DamagedHelmet/` 当前是用户放入的未跟踪真实模型资产，本次 Phase 0.10 没有纳入默认 fixture 或测试。
-- `assets/models/forward_multinode_fixture.gltf` 是 Phase 0.10 新增的可控测试 fixture，应纳入提交。
+- `assets/models/DamagedHelmet/` 当前是用户放入的未跟踪真实模型资产，本次 Phase 0.11 没有纳入默认 fixture 或测试。
+- `assets/models/texture_cache_fixture.gltf` 是 Phase 0.11 新增的可控测试 fixture，应纳入 Phase 0.11 提交。
+- `docs/phase/phase11.md` 是 Phase 0.11 新增文档，应纳入 Phase 0.11 提交。
 
 ## 3. 已完成能力
 
@@ -81,7 +90,7 @@ git log --oneline -n 5
 
 - `asset::MeshVertex`、`MeshPrimitiveData`、`MaterialData`、`ModelData` 已建立。
 - `MeshResource` 负责从 CPU mesh 创建 GPU-only vertex/index buffer 和 staging upload。
-- `MaterialResource` 负责从 CPU material 创建 texture/view/sampler/staging，并写入 sampled image/sampler descriptor。
+- `MaterialResource` 最初完成 textured mesh indexed draw 所需 descriptor 写入。
 - `ForwardPass` 完成 textured mesh indexed draw 闭环。
 - `GltfLoader` 建立 glTF 2.0 最小加载路径，图片像素仍交给 `TextureLoader`。
 
@@ -130,32 +139,52 @@ set 0 binding 3: ObjectUniformBuffer
 - `model_resource_smoke` 已验证 scene transform 与 local transform 的组合结果。
 - `docs/phase/phase10.md` 已同步到 0.10.6 完成状态。
 
+### Phase 0.11
+
+- 新增 `docs/phase/phase11.md`。
+- `rhi::Format` 新增 `RGBA8Srgb`。
+- Vulkan 后端已补充 `RGBA8Srgb` 的 format name、`toVkFormat()` 和 `fromVkFormat()` 映射。
+- `VulkanCommandContext::uploadTextureData()` 已允许 `RGBA8Unorm` 和 `RGBA8Srgb` 两种 GPU texture format，CPU upload 字节布局仍保持 RGBA8。
+- 新增 `renderer::TextureResource`，接管 texture/view/sampler/staging buffer 和首次 upload 状态。
+- 新增 `renderer::TextureCache`，使用规范化 path + `TextureColorSpace` 作为 key。
+- glTF baseColor texture 默认通过 `TextureColorSpace::Srgb` 创建为 `RGBA8Srgb` RHI texture。
+- `MaterialResource` 不再直接调用 `TextureLoader`。
+- `MaterialResource` 不再拥有 texture/view/sampler/staging buffer，只保存 `TextureResource*` 引用并负责 descriptor 写入。
+- `ModelResource` 新增 `create(device, textureCache, model)` 重载。
+- `ModelResource` 旧 `create(device, model)` 保留，并使用内部 local `TextureCache` 兼容现有路径。
+- 新增 `assets/models/texture_cache_fixture.gltf`，两个 material 通过不同 texture slot 指向同一个 image。
+- `gltf_loader_smoke` 验证 texture cache fixture 解析为两个 material、两个 primitive，并解析到同一个 baseColor texture path。
+- `model_resource_smoke` 验证 texture cache fixture 只创建一个 sRGB texture/view/sampler，并保持两个 draw item。
+- `framework_headers_smoke` 已纳入 `TextureResource` / `TextureCache` header。
+
 ## 4. 关键代码阅读顺序
 
-建议按以下顺序审核当前 Phase 0.10 闭环：
+建议按以下顺序审核当前 Phase 0.11 闭环：
 
-1. `docs/phase/phase10.md`
-   - 确认 Phase 0.10 完成状态、限制和后续 TODO。
-2. `src/asset/MeshData.h`
-   - 看 `TransformData`、`MeshPrimitiveInstanceData`、`ModelData::instances`。
-3. `src/asset/GltfLoader.h/.cpp`
-   - 看 glTF 2.0 scene/defaultScene、node hierarchy、matrix/TRS 和 instance 生成。
-4. `src/renderer/ModelResource.h/.cpp`
-   - 看 CPU `ModelData` 如何创建 mesh/material resource，并保存 primitive instances。
-5. `src/renderer/RenderQueue.h/.cpp`
-   - 看 scene model transform 与 model-local instance transform 如何组合成 `DrawItem::modelMatrix`。
-6. `src/renderer/RenderView.h`
-   - 看最小 camera view/projection 输入。
-7. `src/app/Application.cpp`
-   - 看默认 `RenderView` 如何初始化并在 resize 后更新 aspect。
-8. `src/renderer/Renderer.cpp`
-   - 看默认 scene 如何加载 `forward_multinode_fixture.gltf`。
+1. `docs/phase/phase11.md`
+   - 确认 Phase 0.11 完成状态、限制和后续 TODO。
+2. `src/rhi/RHICommon.h`
+   - 看 `RGBA8Srgb` 的公共 RHI format 定义。
+3. `src/rhi/vulkan/VulkanCommon.cpp`
+   - 看 `RGBA8Srgb` 到 `VK_FORMAT_R8G8B8A8_SRGB` 的映射。
+4. `src/rhi/vulkan/VulkanCommandContext.cpp`
+   - 看 texture upload 仍只处理 RGBA8 byte layout、mip0/layer0，并允许 Unorm/Srgb 两种 GPU format。
+5. `src/renderer/TextureResource.h/.cpp`
+   - 看 texture/view/sampler/staging 创建、首次 upload 和 staging deferred release。
+6. `src/renderer/TextureCache.h/.cpp`
+   - 看 path + colorSpace key、图片加载和 resource 复用。
+7. `src/renderer/material/MaterialResource.h/.cpp`
+   - 看 material 如何从 GPU texture owner 收缩为 texture 引用和 descriptor writer。
+8. `src/renderer/ModelResource.h/.cpp`
+   - 看 material 创建时如何通过 texture cache 获取 baseColor texture。
 9. `src/renderer/passes/ForwardPass.h/.cpp`
-   - 看 queue draw、per-draw descriptor、camera/object uniform、pipeline 和 draw 调用。
-10. `src/renderer/FrameRenderer.cpp`
+   - 确认 pass 仍只消费 queue、material descriptor 和 draw，不接管 texture cache。
+10. `tests/gltf_loader_smoke.cpp`
+    - 看 texture cache fixture 的 glTF 解析检查。
+11. `tests/model_resource_smoke.cpp`
+    - 看 cache size、sRGB format 和 upload count 的 smoke 断言。
+12. `src/renderer/FrameRenderer.cpp`
     - 确认 `prepare()` 仍在 `beginRendering()` 前，upload 不进入 dynamic rendering scope。
-11. `src/rhi/vulkan/VulkanCommandContext.cpp`
-    - 复查 buffer / texture upload barrier 和 copy 命令。
 
 ## 5. 必须继续遵守的架构边界
 
@@ -169,17 +198,22 @@ docs/phase/phase07.md
 docs/phase/phase08.md
 docs/phase/phase09.md
 docs/phase/phase10.md
+docs/phase/phase11.md
 ```
 
 硬性边界：
 
 - 只有 `src/rhi/vulkan/` 可以包含 Vulkan 头文件和 `Vk*` 类型。
 - `asset/` 只解析外部文件并输出 CPU 数据，不创建 RHI/GPU 资源。
+- `TextureLoader` 只输出 CPU `ImageData`，不决定 GPU sRGB/linear 采样语义。
 - `renderer/` 可以创建和持有 RHI 资源，但不能接触 Vulkan 类型。
+- `TextureResource` 是 renderer 层 GPU texture owner，不属于 asset 层。
+- `TextureCache` 属于 renderer/resource 边界，key 必须包含 color space。
 - `RenderScene` 保存 scene 语义，不创建 GPU 资源。
 - `RenderQueue` 是 draw list，不拥有底层 GPU 资源。
 - `ModelResource` 是 renderer 层 GPU resource owner，通过 RHI 创建资源。
-- `ForwardPass` 只负责 pipeline、descriptor、per-frame/per-draw binding 和 draw，不负责 asset loading。
+- `MaterialResource` 只保存 material 语义和 texture 引用，并负责 descriptor 写入。
+- `ForwardPass` 只负责 pipeline、descriptor、per-frame/per-draw binding 和 draw，不负责 asset loading 或 texture cache。
 - upload 命令必须记录在 dynamic rendering scope 外。
 - 当前继续使用 Vulkan Dynamic Rendering，不引入传统 `VkRenderPass` / `VkFramebuffer`。
 - 日志输出使用英文。
@@ -189,15 +223,17 @@ docs/phase/phase10.md
 
 P0 / 下一阶段优先：
 
-- material / texture cache 尚未实现；多个 material 指向同一贴图时仍可能重复创建 GPU texture resource。
-- baseColor texture 当前仍使用 `RGBA8Unorm`，sRGB 边界尚未落地。
-- texture upload 仍主要覆盖 RGBA8、mip0、array layer 0 路径；mipmap、HDR、压缩纹理未设计完成。
-- deferred deletion 当前主要覆盖 upload staging buffer；完整 GPU object deferred destruction 尚未系统化。
+- texture upload 仍主要覆盖 RGBA8、mip0、array layer 0、tightly packed rows；mipmap、HDR、压缩纹理未设计完成。
+- deferred deletion 当前主要覆盖 upload staging buffer；完整 GPU object deferred destruction 尚未系统化覆盖 texture/view/sampler/pipeline 等运行期释放对象。
+- `TextureCache` 已可复用同一路径同一 colorSpace 的 texture，但还没有 unload/reload、引用计数、统计或全局 ResourceManager handle。
+- `ModelResource` 旧接口使用 local texture cache；真正 renderer 级资源/场景加载入口仍未设计。
 - `GltfLoader` 仍不支持 skin、animation、morph target、glTF extensions、embedded image、data URI image。
 - `RenderView` 仍是最小 camera 数据容器，还没有 camera controller、scene camera 或 app 级 camera API。
 
 P1：
 
+- normal / metallicRoughness / occlusion / emissive texture 仍未接入。
+- non-color texture 的 linear/Unorm 语义还没有材质数据结构支撑。
 - `CubePass` 仍保留为阶段性对照/debug pass；后续应决定保留、隐藏还是清理。
 - `VulkanDescriptorManager` 有 growable pools，但尚无 free/reset 策略和容量统计。
 - shader binding 与 descriptor layout 仍靠人工一致，后续可考虑 reflection 或测试校验。
@@ -214,7 +250,7 @@ P2：
 
 ## 7. 最近验证记录
 
-Phase 0.10 收尾时已运行：
+Phase 0.11 收尾时已运行：
 
 ```powershell
 cmake --build --preset msvc-vcpkg-local-debug
@@ -228,29 +264,27 @@ build passed
 CTest: 8/8 passed
 ```
 
-sandbox smoke 通过。日志确认：
+sandbox smoke 通过。日志确认默认 fixture 仍正常加载：
 
 ```text
 Loaded glTF model: assets/models/forward_multinode_fixture.gltf (primitives=1, materials=1, instances=2)
 ```
 
-0.10.6 本身只同步文档；上述验证来自 0.10.0-0.10.5 实现完成后的验证记录。
-
 ## 8. 推荐下一步
 
 建议下一阶段不要直接进入完整 PBR / RenderGraph / bindless。优先考虑：
 
-1. 最小 `TextureResource` / `TextureCache`，避免重复加载同一 texture。
-2. texture color space：`RGBA8Unorm` 与 `RGBA8Srgb` 的边界。
-3. mipmap upload / generation 策略。
-4. 更完整的 GPU object deferred destruction。
+1. 更完整的 GPU object deferred destruction，覆盖 texture/view/sampler/pipeline 等运行期释放对象。
+2. mipmap upload / generation 策略，包含 `TransferSrc` usage、per-mip barrier 和 blit 支持。
+3. PBR material 最小参数和基础光照。
+4. glTF normal / metallicRoughness / emissive texture 支持。
 5. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
-6. PBR material 参数与基础光照。
+6. RenderGraph 第一版 pass/resource 声明。
 
 ## 9. 下一次 Codex 启动提示
 
 ```text
-请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前 Phase 0.10 完成状态、默认 scene / queue / ForwardPass 渲染路径、glTF 2.0 scene/node transform 最小加载范围、RenderView camera、已知风险和后续建议。
+请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前 Phase 0.11 完成状态、默认 scene / queue / ForwardPass 渲染路径、glTF 2.0 scene/node transform 最小加载范围、RenderView camera、TextureResource / TextureCache / sRGB 边界、已知风险和后续建议。
 
 然后阅读：
 docs/design/framework.md
@@ -260,12 +294,13 @@ docs/phase/phase07.md
 docs/phase/phase08.md
 docs/phase/phase09.md
 docs/phase/phase10.md
+docs/phase/phase11.md
 
-当前默认渲染路径已经是 Vulkan Dynamic Rendering + ClearPass + ForwardPass + RenderScene + RenderQueue + ModelResource + MeshResource + MaterialResource + glTF scene/node primitive instances + RenderView camera uniform + per-draw object uniform + sampled image + sampler + indexed textured multi draw + depth attachment。
+当前默认渲染路径已经是 Vulkan Dynamic Rendering + ClearPass + ForwardPass + RenderScene + RenderQueue + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object uniform + sampled image + sampler + indexed textured multi draw + depth attachment。
 
-不要重复 Phase 0.5 / 0.6 / 0.7 / 0.8 / 0.9 / 0.10 已完成工作。
+不要重复 Phase 0.5 / 0.6 / 0.7 / 0.8 / 0.9 / 0.10 / 0.11 已完成工作。
 
-下一步优先考虑 TextureResource / TextureCache、texture color space、mipmap 策略、更完整的 GPU object deferred destruction 和真正的资源/场景加载入口。不要提前引入完整 RenderGraph、bindless、复杂 PBR 或 glTF 扩展。
+下一步优先考虑完整 GPU object deferred destruction、mipmap upload / generation 策略、PBR material 最小参数、glTF normal / metallicRoughness / emissive texture 和真正的资源/场景加载入口。不要提前引入完整 RenderGraph、bindless 或复杂 glTF 扩展。
 
 如果实现方向与既有设计文档冲突，先说明并更新设计文档，再修改代码。新增代码保持现有风格：左大括号不换行，namespace 内缩进，日志输出用英文，必要注释用简洁中文。不确定的地方写 TODO 或记录到文档，不要假装完成。
 

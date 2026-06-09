@@ -3,6 +3,7 @@
 #include "asset/MeshData.h"
 #include "core/Types.h"
 #include "renderer/MeshResource.h"
+#include "renderer/TextureCache.h"
 #include "renderer/material/MaterialResource.h"
 
 #include <glm/mat4x4.hpp>
@@ -35,6 +36,7 @@ namespace ark {
         ModelResource() = default;
 
         bool create(rhi::RenderDevice& device, const asset::ModelData& model);
+        bool create(rhi::RenderDevice& device, TextureCache& textureCache, const asset::ModelData& model);
         bool upload(rhi::DeviceContext& context);
         void reset();
 
@@ -66,6 +68,7 @@ namespace ark {
         }
 
     private:
+        TextureCache m_LocalTextureCache;
         std::vector<MeshResource> m_Meshes;
         std::vector<MaterialResource> m_Materials;
         std::vector<ModelPrimitiveResource> m_Primitives;

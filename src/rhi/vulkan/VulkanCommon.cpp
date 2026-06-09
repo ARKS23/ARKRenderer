@@ -19,6 +19,8 @@ namespace ark::rhi::vulkan {
             return "BGRA8Unorm";
         case Format::RGBA8Unorm:
             return "RGBA8Unorm";
+        case Format::RGBA8Srgb:
+            return "RGBA8Srgb";
         case Format::RGBA16Float:
             return "RGBA16Float";
         case Format::D24UnormS8UInt:
@@ -44,6 +46,8 @@ namespace ark::rhi::vulkan {
             return "VK_FORMAT_B8G8R8A8_UNORM";
         case VK_FORMAT_R8G8B8A8_UNORM:
             return "VK_FORMAT_R8G8B8A8_UNORM";
+        case VK_FORMAT_R8G8B8A8_SRGB:
+            return "VK_FORMAT_R8G8B8A8_SRGB";
         case VK_FORMAT_R16G16B16A16_SFLOAT:
             return "VK_FORMAT_R16G16B16A16_SFLOAT";
         case VK_FORMAT_D24_UNORM_S8_UINT:
@@ -147,6 +151,8 @@ namespace ark::rhi::vulkan {
             return VK_FORMAT_B8G8R8A8_UNORM;
         case Format::RGBA8Unorm:
             return VK_FORMAT_R8G8B8A8_UNORM;
+        case Format::RGBA8Srgb:
+            return VK_FORMAT_R8G8B8A8_SRGB;
         case Format::RGBA16Float:
             return VK_FORMAT_R16G16B16A16_SFLOAT;
         case Format::D24UnormS8UInt:
@@ -172,8 +178,9 @@ namespace ark::rhi::vulkan {
         case VK_FORMAT_B8G8R8A8_SRGB:
             return Format::BGRA8Unorm;
         case VK_FORMAT_R8G8B8A8_UNORM:
-        case VK_FORMAT_R8G8B8A8_SRGB:
             return Format::RGBA8Unorm;
+        case VK_FORMAT_R8G8B8A8_SRGB:
+            return Format::RGBA8Srgb;
         case VK_FORMAT_R16G16B16A16_SFLOAT:
             return Format::RGBA16Float;
         case VK_FORMAT_D24_UNORM_S8_UINT:

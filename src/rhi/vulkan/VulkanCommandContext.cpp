@@ -559,8 +559,8 @@ namespace ark::rhi::vulkan {
         }
 
         const TextureDesc& textureDesc = texture->getDesc();
-        if (textureDesc.format != Format::RGBA8Unorm) {
-            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports RGBA8Unorm textures only");
+        if (textureDesc.format != Format::RGBA8Unorm && textureDesc.format != Format::RGBA8Srgb) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports RGBA8 textures only");
             return false;
         }
 

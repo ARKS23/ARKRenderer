@@ -16,6 +16,7 @@ namespace ark::rhi {
         R32G32B32A32Float,
         BGRA8Unorm,
         RGBA8Unorm,
+        RGBA8Srgb,
         RGBA16Float,
         D24UnormS8UInt,
         D32Float,

@@ -22,6 +22,10 @@ namespace ark {
     } // namespace
 
     bool ModelResource::create(rhi::RenderDevice& device, const asset::ModelData& model) {
+        return create(device, m_LocalTextureCache, model);
+    }
+
+    bool ModelResource::create(rhi::RenderDevice& device, TextureCache& textureCache, const asset::ModelData& model) {
         if (model.empty()) {
             ARK_ERROR("ModelResource requires non-empty model data");
             return false;
@@ -42,13 +46,29 @@ namespace ark {
         m_Materials.clear();
         m_Primitives.clear();
         m_Instances.clear();
+        m_LocalTextureCache.clear();
         m_Meshes.resize(model.meshes.size());
         m_Materials.resize(model.materials.size());
         m_Primitives.reserve(model.meshes.size());
         m_Instances.reserve(model.instances.empty() ? model.meshes.size() : model.instances.size());
 
         for (usize materialIndex = 0; materialIndex < model.materials.size(); ++materialIndex) {
-            if (!m_Materials[materialIndex].create(device, model.materials[materialIndex])) {
+            const asset::MaterialData& materialData = model.materials[materialIndex];
+            TextureResourceDesc textureDesc{};
+            textureDesc.path = materialData.baseColorTexturePath;
+            textureDesc.colorSpace = TextureColorSpace::Srgb;
+            textureDesc.debugName = materialData.debugName.empty()
+                                        ? "ModelMaterial." + std::to_string(materialIndex) + ".BaseColor"
+                                        : materialData.debugName + ".BaseColor";
+
+            // glTF baseColor texture 按 sRGB 创建；CPU ImageData 仍只是 RGBA8 字节布局。
+            TextureResource* baseColorTexture = textureCache.getOrCreate(device, textureDesc);
+            if (!baseColorTexture) {
+                ARK_ERROR("ModelResource failed to acquire base color texture {}", materialIndex);
+                return false;
+            }
+
+            if (!m_Materials[materialIndex].create(materialData, *baseColorTexture)) {
                 ARK_ERROR("ModelResource failed to create material {}", materialIndex);
                 return false;
             }
@@ -120,6 +140,7 @@ namespace ark {
         m_Primitives.clear();
         m_Materials.clear();
         m_Meshes.clear();
+        m_LocalTextureCache.clear();
     }
 
     std::span<const ModelPrimitiveResource> ModelResource::primitives() const {

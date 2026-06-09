@@ -1,8 +1,10 @@
+#include "asset/GltfLoader.h"
 #include "asset/MeshData.h"
 #include "core/FileSystem.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
+#include "renderer/TextureCache.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
 #include "rhi/DeviceContext.h"
@@ -171,6 +173,7 @@ namespace {
 
         ark::Scope<ark::rhi::Texture> createTexture(const ark::rhi::TextureDesc& desc) override {
             ++textureCount;
+            lastTextureFormat = desc.format;
             return ark::makeScope<FakeTexture>(desc);
         }
 
@@ -214,6 +217,7 @@ namespace {
         int textureCount = 0;
         int textureViewCount = 0;
         int samplerCount = 0;
+        ark::rhi::Format lastTextureFormat = ark::rhi::Format::Unknown;
 
     private:
         ark::rhi::RenderDeviceCaps m_Caps{};
@@ -318,6 +322,16 @@ namespace {
         return ark::findFirstExistingPath(candidates);
     }
 
+    ark::Path findModelPath(const ark::Path& relative) {
+        const std::array<ark::Path, 3> candidates{
+            relative,
+            ark::Path{"../"} / relative,
+            ark::Path{"../../"} / relative,
+        };
+
+        return ark::findFirstExistingPath(candidates);
+    }
+
     ark::asset::MeshPrimitiveData makeTriangle(const char* name, ark::u32 materialIndex, float xOffset) {
         ark::asset::MeshVertex v0{};
         v0.position[0] = -0.5f + xOffset;
@@ -352,10 +366,13 @@ namespace {
         ark::asset::MaterialData material{};
         material.debugName = "SmokeMaterial";
         material.baseColorTexturePath = texturePath;
+        ark::asset::MaterialData duplicateMaterial = material;
+        duplicateMaterial.debugName = "DuplicateSmokeMaterial";
 
         ark::asset::ModelData modelData{};
         modelData.debugName = "SmokeModel";
         modelData.materials.push_back(material);
+        modelData.materials.push_back(duplicateMaterial);
         modelData.meshes.push_back(makeTriangle("TriangleA", 0, -1.0f));
         modelData.meshes.push_back(makeTriangle("TriangleB", 0, 1.0f));
 
@@ -372,15 +389,22 @@ namespace {
         modelData.instances.push_back(instanceB);
 
         FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
         ark::ModelResource modelResource{};
-        if (!modelResource.create(device, modelData)) {
+        if (!modelResource.create(device, textureCache, modelData)) {
             std::cerr << "ModelResource create failed\n";
             return false;
         }
 
         if (modelResource.primitiveCount() != 2 || modelResource.instanceCount() != 2 ||
-            modelResource.meshCount() != 2 || modelResource.materialCount() != 1) {
+            modelResource.meshCount() != 2 || modelResource.materialCount() != 2) {
             std::cerr << "Unexpected ModelResource counts\n";
+            return false;
+        }
+
+        if (textureCache.size() != 1 || device.textureCount != 1 || device.textureViewCount != 1 ||
+            device.samplerCount != 1 || device.lastTextureFormat != ark::rhi::Format::RGBA8Srgb) {
+            std::cerr << "TextureCache did not reuse sRGB base color texture\n";
             return false;
         }
 
@@ -429,8 +453,61 @@ namespace {
 
         return true;
     }
+
+    bool validateTextureCacheFixtureModelResource() {
+        const ark::Path modelPath = findModelPath(ark::Path{"assets/models/texture_cache_fixture.gltf"});
+        if (modelPath.empty()) {
+            std::cerr << "Failed to find texture cache fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
+        if (modelData.empty() || modelData.meshes.size() != 2 || modelData.materials.size() != 2) {
+            std::cerr << "Unexpected texture cache fixture model data\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Texture cache fixture ModelResource create failed\n";
+            return false;
+        }
+
+        if (modelResource.primitiveCount() != 2 || modelResource.materialCount() != 2 ||
+            textureCache.size() != 1 || device.textureCount != 1 || device.textureViewCount != 1 ||
+            device.samplerCount != 1 || device.lastTextureFormat != ark::rhi::Format::RGBA8Srgb) {
+            std::cerr << "Texture cache fixture did not reuse one sRGB texture resource\n";
+            return false;
+        }
+
+        FakeDeviceContext context{};
+        if (!modelResource.upload(context)) {
+            std::cerr << "Texture cache fixture upload failed\n";
+            return false;
+        }
+
+        if (context.bufferUploads != 4 || context.textureUploads != 1 || context.deferredBuffers != 5) {
+            std::cerr << "Unexpected texture cache fixture upload counts\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        scene.addModel(modelResource, glm::mat4{1.0f}, "TextureCacheModel");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        if (queue.size() != 2 || queue.drawItems()[0].material != modelResource.primitiveMaterial(0) ||
+            queue.drawItems()[1].material != modelResource.primitiveMaterial(1)) {
+            std::cerr << "Texture cache fixture queue draw items are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateModelResource() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateModelResource() && validateTextureCacheFixtureModelResource() ? EXIT_SUCCESS : EXIT_FAILURE;
 }

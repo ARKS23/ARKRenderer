@@ -135,10 +135,40 @@ namespace {
 
         return true;
     }
+
+    bool validateTextureCacheFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/texture_cache_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find texture cache glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 2 || model.materials.size() != 2 ||
+            model.instances.size() != 2) {
+            std::cerr << "Unexpected texture cache glTF model shape\n";
+            return false;
+        }
+
+        if (model.meshes[0].materialIndex != 0 || model.meshes[1].materialIndex != 1) {
+            std::cerr << "Unexpected texture cache material remap\n";
+            return false;
+        }
+
+        if (model.materials[0].baseColorTexturePath.empty() ||
+            model.materials[0].baseColorTexturePath != model.materials[1].baseColorTexturePath ||
+            model.materials[0].baseColorTexturePath.filename() != "xiaowei.png") {
+            std::cerr << "Texture cache fixture did not resolve shared texture path\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture()
+    return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
+                   validateTextureCacheFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

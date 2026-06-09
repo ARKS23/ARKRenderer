@@ -24,6 +24,8 @@
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
+#include "renderer/TextureCache.h"
+#include "renderer/TextureResource.h"
 #include "renderer/material/Material.h"
 #include "renderer/material/MaterialResource.h"
 #include "renderer/material/MaterialSystem.h"
@@ -226,6 +228,10 @@ int main() {
     modelData.materials.push_back(materialData);
     ark::asset::GltfLoader gltfLoader{};
     ark::MaterialResource materialResource{};
+    ark::TextureResource textureResource{};
+    ark::TextureCache textureCache{};
+    ark::TextureResourceDesc textureResourceDesc{};
+    textureResourceDesc.colorSpace = ark::TextureColorSpace::Srgb;
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -283,6 +289,9 @@ int main() {
     (void)modelData;
     (void)gltfLoader;
     (void)materialResource;
+    (void)textureResource;
+    (void)textureCache;
+    (void)textureResourceDesc;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
