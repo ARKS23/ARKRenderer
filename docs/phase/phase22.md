@@ -422,6 +422,46 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe
 build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf
 ```
 
+## 当前实现状态
+
+已完成 0.22.0 ~ 0.22.3：
+
+- `TextureTransformData` 已加入 asset 层，默认值为 identity transform。
+- `MaterialTextureSlotData` 已持有 per-slot texture transform。
+- `GltfLoader` 已读取 textureInfo 上的 `KHR_texture_transform`：
+  - `offset`
+  - `scale`
+  - `rotation`
+  - extension 内 `texCoord` override
+- malformed optional transform field 会 warning 并保留默认值，不中断 glTF 加载。
+- extension 内 `texCoord` override 后仍沿用 Phase 0.21 的 0/1/fallback 规则。
+- `MaterialResource` 已缓存 baseColor、normal、metallicRoughness、occlusion、emissive 的 per-slot transform。
+- `MaterialResource::textureTransforms()` 已提供 renderer 层查询入口。
+- `TextureResource` / `TextureCache` 仍不保存 transform，cache key 未加入 transform。
+- `framework_headers_smoke`、`gltf_loader_smoke`、`model_resource_smoke` 已覆盖当前阶段新增 public structs、默认 identity transform 和 MaterialResource transform set。
+
+尚未完成 0.22.4 ~ 0.22.7：
+
+- `ForwardPass::MaterialUniform` 尚未携带 per-slot transform。
+- `mesh.frag.hlsl` 尚未应用 `transformUv()`。
+- 尚未新增 `texture_transform_fixture.gltf`。
+- `shader_assets_smoke` 尚未覆盖 shader transform path。
+- default sandbox / DamagedHelmet optional smoke 尚未在本阶段重新运行。
+
+本轮验证结果：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug
+ctest --preset msvc-vcpkg-debug
+```
+
+结果：
+
+```text
+build passed
+CTest: 8/8 passed
+```
+
 ## 完成标准
 
 Phase 0.22 完成时应满足：

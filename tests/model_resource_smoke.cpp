@@ -32,6 +32,17 @@ namespace {
         return std::fabs(lhs - rhs) < 0.0001f;
     }
 
+    bool textureTransformNear(const ark::MaterialTextureTransform& transform,
+                              float offsetX,
+                              float offsetY,
+                              float scaleX,
+                              float scaleY,
+                              float rotation) {
+        return near(transform.offset[0], offsetX) && near(transform.offset[1], offsetY) &&
+               near(transform.scale[0], scaleX) && near(transform.scale[1], scaleY) &&
+               near(transform.rotation, rotation);
+    }
+
     class FakeBuffer final : public ark::rhi::Buffer {
     public:
         explicit FakeBuffer(const ark::rhi::BufferDesc& desc) : m_Desc(desc) {
@@ -713,6 +724,20 @@ namespace {
         material.roughnessFactor = 0.65f;
         material.normalScale = 0.75f;
         material.occlusionStrength = 0.5f;
+        material.baseColorTexture.transform.offset[0] = 0.1f;
+        material.baseColorTexture.transform.offset[1] = 0.2f;
+        material.baseColorTexture.transform.scale[0] = 2.0f;
+        material.baseColorTexture.transform.scale[1] = 3.0f;
+        material.baseColorTexture.transform.rotation = 0.5f;
+        material.baseColorTexture.transform.hasTransform = true;
+        material.normalTexture.transform.offset[0] = -0.25f;
+        material.normalTexture.transform.scale[0] = 0.75f;
+        material.normalTexture.transform.scale[1] = 0.5f;
+        material.normalTexture.transform.rotation = 1.0f;
+        material.normalTexture.transform.hasTransform = true;
+        material.metallicRoughnessTexture.transform.offset[1] = 0.4f;
+        material.metallicRoughnessTexture.transform.scale[0] = 1.5f;
+        material.metallicRoughnessTexture.transform.hasTransform = true;
 
         ark::MaterialResource materialResource{};
         if (!materialResource.create(material, textures)) {
@@ -728,6 +753,16 @@ namespace {
             !near(factors.roughnessFactor, 0.65f) || !near(factors.normalScale, 0.75f) ||
             !near(factors.occlusionStrength, 0.5f)) {
             std::cerr << "MaterialResource did not preserve multi-slot factors\n";
+            return false;
+        }
+
+        const ark::MaterialTextureTransformSet& transforms = materialResource.textureTransforms();
+        if (!textureTransformNear(transforms.baseColor, 0.1f, 0.2f, 2.0f, 3.0f, 0.5f) ||
+            !textureTransformNear(transforms.normal, -0.25f, 0.0f, 0.75f, 0.5f, 1.0f) ||
+            !textureTransformNear(transforms.metallicRoughness, 0.0f, 0.4f, 1.5f, 1.0f, 0.0f) ||
+            !textureTransformNear(transforms.occlusion, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f) ||
+            !textureTransformNear(transforms.emissive, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f)) {
+            std::cerr << "MaterialResource did not preserve texture transforms\n";
             return false;
         }
 

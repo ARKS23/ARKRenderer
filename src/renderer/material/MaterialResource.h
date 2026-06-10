@@ -42,6 +42,20 @@ namespace ark {
         u32 emissive = 0;
     };
 
+    struct MaterialTextureTransform {
+        float offset[2] = {0.0f, 0.0f};
+        float scale[2] = {1.0f, 1.0f};
+        float rotation = 0.0f;
+    };
+
+    struct MaterialTextureTransformSet {
+        MaterialTextureTransform baseColor;
+        MaterialTextureTransform normal;
+        MaterialTextureTransform metallicRoughness;
+        MaterialTextureTransform occlusion;
+        MaterialTextureTransform emissive;
+    };
+
     struct MaterialTextureBindingSet {
         u32 baseColorImage = 1;
         u32 baseColorSampler = 2;
@@ -80,6 +94,10 @@ namespace ark {
             return m_TextureCoordinates;
         }
 
+        const MaterialTextureTransformSet& textureTransforms() const {
+            return m_TextureTransforms;
+        }
+
         bool isReady() const;
 
     private:
@@ -87,5 +105,6 @@ namespace ark {
         MaterialRenderState m_RenderState;
         MaterialTextureSet m_Textures;
         MaterialTextureCoordinateSet m_TextureCoordinates;
+        MaterialTextureTransformSet m_TextureTransforms;
     };
 } // namespace ark

@@ -10,6 +10,7 @@
 #include <array>
 #include <cstring>
 #include <limits>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,6 +22,7 @@ namespace ark::asset {
         constexpr const char* Texcoord0AttributeName = "TEXCOORD_0";
         constexpr const char* Texcoord1AttributeName = "TEXCOORD_1";
         constexpr const char* TangentAttributeName = "TANGENT";
+        constexpr const char* TextureTransformExtensionName = "KHR_texture_transform";
         constexpr u32 InvalidMaterialIndex = std::numeric_limits<u32>::max();
 
         using Matrix4 = std::array<float, 16>;
@@ -517,6 +519,96 @@ namespace ark::asset {
             return sampler;
         }
 
+        bool readNumberValue(const tinygltf::Value& value, double& output) {
+            if (value.IsNumber()) {
+                output = value.GetNumberAsDouble();
+                return true;
+            }
+
+            return false;
+        }
+
+        bool readFloatArray2(const tinygltf::Value& value,
+                             float output[2],
+                             const char* slotName,
+                             const char* fieldName) {
+            if (!value.IsArray()) {
+                ARK_WARN("glTF KHR_texture_transform field must be a number array: slot={}, field={}",
+                         slotName,
+                         fieldName);
+                return false;
+            }
+
+            const tinygltf::Value::Array& values = value.Get<tinygltf::Value::Array>();
+            if (values.size() != 2) {
+                ARK_WARN("glTF KHR_texture_transform field must have two numbers: slot={}, field={}",
+                         slotName,
+                         fieldName);
+                return false;
+            }
+
+            double x = 0.0;
+            double y = 0.0;
+            if (!readNumberValue(values[0], x) || !readNumberValue(values[1], y)) {
+                ARK_WARN("glTF KHR_texture_transform field contains a non-number value: slot={}, field={}",
+                         slotName,
+                         fieldName);
+                return false;
+            }
+
+            output[0] = static_cast<float>(x);
+            output[1] = static_cast<float>(y);
+            return true;
+        }
+
+        TextureTransformData readTextureTransform(const std::map<std::string, tinygltf::Value>& extensions,
+                                                  int& texCoord,
+                                                  const char* slotName) {
+            TextureTransformData transform{};
+            const auto extensionIter = extensions.find(TextureTransformExtensionName);
+            if (extensionIter == extensions.end()) {
+                return transform;
+            }
+
+            transform.hasTransform = true;
+            if (!extensionIter->second.IsObject()) {
+                ARK_WARN("glTF KHR_texture_transform extension must be an object: slot={}", slotName);
+                return transform;
+            }
+
+            const tinygltf::Value::Object& object = extensionIter->second.Get<tinygltf::Value::Object>();
+            const auto offsetIter = object.find("offset");
+            if (offsetIter != object.end()) {
+                readFloatArray2(offsetIter->second, transform.offset, slotName, "offset");
+            }
+
+            const auto scaleIter = object.find("scale");
+            if (scaleIter != object.end()) {
+                readFloatArray2(scaleIter->second, transform.scale, slotName, "scale");
+            }
+
+            const auto rotationIter = object.find("rotation");
+            if (rotationIter != object.end()) {
+                double rotation = 0.0;
+                if (readNumberValue(rotationIter->second, rotation)) {
+                    transform.rotation = static_cast<float>(rotation);
+                } else {
+                    ARK_WARN("glTF KHR_texture_transform rotation must be a number: slot={}", slotName);
+                }
+            }
+
+            const auto texCoordIter = object.find("texCoord");
+            if (texCoordIter != object.end()) {
+                if (texCoordIter->second.IsInt()) {
+                    texCoord = texCoordIter->second.GetNumberAsInt();
+                } else {
+                    ARK_WARN("glTF KHR_texture_transform texCoord must be an integer: slot={}", slotName);
+                }
+            }
+
+            return transform;
+        }
+
         Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int textureIndex) {
             const tinygltf::Texture* texture = getTexture(model, textureIndex);
             if (!texture) {
@@ -562,6 +654,7 @@ namespace ark::asset {
                                                    const tinygltf::Model& model,
                                                    int textureIndex,
                                                    int texCoord,
+                                                   const std::map<std::string, tinygltf::Value>& extensions,
                                                    const char* slotName) {
             MaterialTextureSlotData slot{};
             slot.path = resolveTexturePath(gltfPath, model, textureIndex);
@@ -574,6 +667,7 @@ namespace ark::asset {
                 return slot;
             }
 
+            slot.transform = readTextureTransform(extensions, texCoord, slotName);
             slot.texCoord = texCoord < 0 ? 0 : static_cast<u32>(texCoord);
             slot.hasSampler = texture->sampler >= 0 &&
                               static_cast<usize>(texture->sampler) < model.samplers.size();
@@ -625,6 +719,7 @@ namespace ark::asset {
                                                            gltfModel,
                                                            pbr.baseColorTexture.index,
                                                            pbr.baseColorTexture.texCoord,
+                                                           pbr.baseColorTexture.extensions,
                                                            "baseColorTexture");
             material.baseColorTexturePath = material.baseColorTexture.path;
             if (material.baseColorTexturePath.empty()) {
@@ -637,24 +732,28 @@ namespace ark::asset {
                                                         gltfModel,
                                                         gltfMaterial.normalTexture.index,
                                                         gltfMaterial.normalTexture.texCoord,
+                                                        gltfMaterial.normalTexture.extensions,
                                                         "normalTexture");
             material.normalTexturePath = material.normalTexture.path;
             material.metallicRoughnessTexture = resolveTextureSlot(gltfPath,
                                                                    gltfModel,
                                                                    pbr.metallicRoughnessTexture.index,
                                                                    pbr.metallicRoughnessTexture.texCoord,
+                                                                   pbr.metallicRoughnessTexture.extensions,
                                                                    "metallicRoughnessTexture");
             material.metallicRoughnessTexturePath = material.metallicRoughnessTexture.path;
             material.occlusionTexture = resolveTextureSlot(gltfPath,
                                                            gltfModel,
                                                            gltfMaterial.occlusionTexture.index,
                                                            gltfMaterial.occlusionTexture.texCoord,
+                                                           gltfMaterial.occlusionTexture.extensions,
                                                            "occlusionTexture");
             material.occlusionTexturePath = material.occlusionTexture.path;
             material.emissiveTexture = resolveTextureSlot(gltfPath,
                                                           gltfModel,
                                                           gltfMaterial.emissiveTexture.index,
                                                           gltfMaterial.emissiveTexture.texCoord,
+                                                          gltfMaterial.emissiveTexture.extensions,
                                                           "emissiveTexture");
             material.emissiveTexturePath = material.emissiveTexture.path;
             if (gltfMaterial.normalTexture.index >= 0 && material.normalTexturePath.empty()) {

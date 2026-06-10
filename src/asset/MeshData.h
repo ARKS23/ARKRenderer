@@ -62,10 +62,18 @@ namespace ark::asset {
         TextureAddressMode addressV = TextureAddressMode::Repeat;
     };
 
+    struct TextureTransformData {
+        float offset[2] = {0.0f, 0.0f};
+        float scale[2] = {1.0f, 1.0f};
+        float rotation = 0.0f;
+        bool hasTransform = false;
+    };
+
     struct MaterialTextureSlotData {
         Path path;
         u32 texCoord = 0;
         TextureSamplerData sampler;
+        TextureTransformData transform;
         bool hasSampler = false;
 
         bool hasTexture() const {

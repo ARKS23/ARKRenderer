@@ -36,6 +36,16 @@ namespace ark {
             return 0;
         }
 
+        MaterialTextureTransform toMaterialTextureTransform(const asset::TextureTransformData& transform) {
+            MaterialTextureTransform result{};
+            result.offset[0] = transform.offset[0];
+            result.offset[1] = transform.offset[1];
+            result.scale[0] = transform.scale[0];
+            result.scale[1] = transform.scale[1];
+            result.rotation = transform.rotation;
+            return result;
+        }
+
         bool updateTextureSlot(rhi::DescriptorSet& descriptorSet,
                                TextureResource* texture,
                                u32 imageBinding,
@@ -88,6 +98,12 @@ namespace ark {
             clampTextureCoordinate(material.metallicRoughnessTexture.texCoord, "metallicRoughness");
         m_TextureCoordinates.occlusion = clampTextureCoordinate(material.occlusionTexture.texCoord, "occlusion");
         m_TextureCoordinates.emissive = clampTextureCoordinate(material.emissiveTexture.texCoord, "emissive");
+        m_TextureTransforms.baseColor = toMaterialTextureTransform(material.baseColorTexture.transform);
+        m_TextureTransforms.normal = toMaterialTextureTransform(material.normalTexture.transform);
+        m_TextureTransforms.metallicRoughness =
+            toMaterialTextureTransform(material.metallicRoughnessTexture.transform);
+        m_TextureTransforms.occlusion = toMaterialTextureTransform(material.occlusionTexture.transform);
+        m_TextureTransforms.emissive = toMaterialTextureTransform(material.emissiveTexture.transform);
         m_Textures = textures;
         return true;
     }

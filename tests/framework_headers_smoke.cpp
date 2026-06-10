@@ -237,6 +237,9 @@ int main() {
     materialData.baseColorTexture.hasSampler = true;
     materialData.baseColorTexture.sampler.minFilter = ark::asset::TextureFilter::Nearest;
     materialData.baseColorTexture.sampler.addressU = ark::asset::TextureAddressMode::MirroredRepeat;
+    materialData.baseColorTexture.transform.offset[0] = 0.125f;
+    materialData.baseColorTexture.transform.scale[0] = 2.0f;
+    materialData.baseColorTexture.transform.hasTransform = true;
     materialData.alphaMode = ark::asset::AlphaMode::Mask;
     materialData.alphaCutoff = 0.42f;
     materialData.doubleSided = true;
@@ -248,6 +251,14 @@ int main() {
     ark::MaterialTextureCoordinateSet textureCoordinates{};
     textureCoordinates.normal = 1;
     if (textureCoordinates.normal != 1) {
+        return EXIT_FAILURE;
+    }
+    ark::MaterialTextureTransform textureTransform{};
+    textureTransform.offset[0] = 0.25f;
+    textureTransform.scale[1] = 0.5f;
+    ark::MaterialTextureTransformSet textureTransforms{};
+    textureTransforms.baseColor = textureTransform;
+    if (textureTransforms.baseColor.offset[0] != 0.25f || textureTransforms.baseColor.scale[1] != 0.5f) {
         return EXIT_FAILURE;
     }
     ark::TextureResource textureResource{};

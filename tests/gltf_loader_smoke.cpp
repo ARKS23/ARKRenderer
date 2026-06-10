@@ -24,6 +24,13 @@ namespace {
                near(vertex.tangent[2], 0.0f) && near(vertex.tangent[3], 1.0f);
     }
 
+    bool isIdentityTransform(const ark::asset::TextureTransformData& transform) {
+        return !transform.hasTransform &&
+               near(transform.offset[0], 0.0f) && near(transform.offset[1], 0.0f) &&
+               near(transform.scale[0], 1.0f) && near(transform.scale[1], 1.0f) &&
+               near(transform.rotation, 0.0f);
+    }
+
     ark::Path findFixturePath(const ark::Path& relative) {
         const std::array<ark::Path, 3> candidates{
             relative,
@@ -111,6 +118,15 @@ namespace {
         if (material.alphaMode != ark::asset::AlphaMode::Mask || !near(material.alphaCutoff, 0.42f) ||
             !material.doubleSided) {
             std::cerr << "Unexpected glTF material render state\n";
+            return false;
+        }
+
+        if (!isIdentityTransform(material.baseColorTexture.transform) ||
+            !isIdentityTransform(material.normalTexture.transform) ||
+            !isIdentityTransform(material.metallicRoughnessTexture.transform) ||
+            !isIdentityTransform(material.occlusionTexture.transform) ||
+            !isIdentityTransform(material.emissiveTexture.transform)) {
+            std::cerr << "Unexpected default glTF texture transform data\n";
             return false;
         }
 
