@@ -201,6 +201,7 @@ int main() {
     ark::rhi::SamplerDesc samplerDesc{};
     samplerDesc.debugName = "SmokeSampler";
     samplerDesc.addressU = ark::rhi::AddressMode::ClampToEdge;
+    samplerDesc.addressV = ark::rhi::AddressMode::MirroredRepeat;
     samplerDesc.minFilter = ark::rhi::FilterMode::Nearest;
     ark::rhi::TextureUploadDesc textureUploadDesc{};
     textureUploadDesc.extent = ark::rhi::Extent2D{128, 128};
@@ -223,6 +224,11 @@ int main() {
     meshPrimitive.indices.push_back(0);
     ark::asset::MaterialData materialData{};
     materialData.baseColorTexturePath = "assets/textures/xiaowei.png";
+    materialData.baseColorTexture.path = materialData.baseColorTexturePath;
+    materialData.baseColorTexture.texCoord = 1;
+    materialData.baseColorTexture.hasSampler = true;
+    materialData.baseColorTexture.sampler.minFilter = ark::asset::TextureFilter::Nearest;
+    materialData.baseColorTexture.sampler.addressU = ark::asset::TextureAddressMode::MirroredRepeat;
     ark::asset::ModelData modelData{};
     modelData.meshes.push_back(meshPrimitive);
     modelData.materials.push_back(materialData);

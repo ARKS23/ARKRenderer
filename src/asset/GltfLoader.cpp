@@ -419,12 +419,93 @@ namespace ark::asset {
             return node.name.empty() ? "GltfNode." + std::to_string(nodeIndex) : node.name;
         }
 
-        Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int textureIndex) {
+        const tinygltf::Texture* getTexture(const tinygltf::Model& model, int textureIndex) {
             if (textureIndex < 0 || static_cast<usize>(textureIndex) >= model.textures.size()) {
+                return nullptr;
+            }
+
+            return &model.textures[static_cast<usize>(textureIndex)];
+        }
+
+        TextureFilter toTextureFilter(int filter, TextureFilter fallback) {
+            switch (filter) {
+            case TINYGLTF_TEXTURE_FILTER_NEAREST:
+            case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+            case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+                return TextureFilter::Nearest;
+            case TINYGLTF_TEXTURE_FILTER_LINEAR:
+            case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+            case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+                return TextureFilter::Linear;
+            case -1:
+                return fallback;
+            default:
+                ARK_WARN("glTF sampler filter is unsupported: {}", filter);
+                return fallback;
+            }
+        }
+
+        TextureFilter toTextureMipFilter(int minFilter) {
+            switch (minFilter) {
+            case TINYGLTF_TEXTURE_FILTER_NEAREST:
+            case TINYGLTF_TEXTURE_FILTER_LINEAR:
+            case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+            case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+                return TextureFilter::Nearest;
+            case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+            case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+                return TextureFilter::Linear;
+            case -1:
+                return TextureFilter::Linear;
+            default:
+                ARK_WARN("glTF sampler mip filter is unsupported: {}", minFilter);
+                return TextureFilter::Linear;
+            }
+        }
+
+        TextureAddressMode toTextureAddressMode(int wrapMode) {
+            switch (wrapMode) {
+            case TINYGLTF_TEXTURE_WRAP_REPEAT:
+                return TextureAddressMode::Repeat;
+            case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+                return TextureAddressMode::ClampToEdge;
+            case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+                return TextureAddressMode::MirroredRepeat;
+            default:
+                ARK_WARN("glTF sampler wrap mode is unsupported: {}", wrapMode);
+                return TextureAddressMode::Repeat;
+            }
+        }
+
+        TextureSamplerData resolveTextureSampler(const tinygltf::Model& model,
+                                                 const tinygltf::Texture& texture,
+                                                 const char* slotName) {
+            TextureSamplerData sampler{};
+            if (texture.sampler < 0) {
+                return sampler;
+            }
+
+            if (static_cast<usize>(texture.sampler) >= model.samplers.size()) {
+                ARK_WARN("glTF texture slot references an invalid sampler: {}", slotName);
+                return sampler;
+            }
+
+            const tinygltf::Sampler& gltfSampler = model.samplers[static_cast<usize>(texture.sampler)];
+            sampler.minFilter = toTextureFilter(gltfSampler.minFilter, TextureFilter::Linear);
+            sampler.magFilter = toTextureFilter(gltfSampler.magFilter, TextureFilter::Linear);
+            sampler.mipFilter = toTextureMipFilter(gltfSampler.minFilter);
+            sampler.addressU = toTextureAddressMode(gltfSampler.wrapS);
+            sampler.addressV = toTextureAddressMode(gltfSampler.wrapT);
+            return sampler;
+        }
+
+        Path resolveTexturePath(const Path& gltfPath, const tinygltf::Model& model, int textureIndex) {
+            const tinygltf::Texture* texture = getTexture(model, textureIndex);
+            if (!texture) {
                 return {};
             }
 
-            const int imageIndex = model.textures[static_cast<usize>(textureIndex)].source;
+            const int imageIndex = texture->source;
             if (imageIndex < 0 || static_cast<usize>(imageIndex) >= model.images.size()) {
                 return {};
             }
@@ -442,16 +523,32 @@ namespace ark::asset {
             return gltfPath.parent_path() / uriPath;
         }
 
-        Path resolveOptionalTexturePath(const Path& gltfPath,
-                                        const tinygltf::Model& model,
-                                        int textureIndex,
-                                        const char* slotName) {
-            Path texturePath = resolveTexturePath(gltfPath, model, textureIndex);
-            if (textureIndex >= 0 && texturePath.empty()) {
-                ARK_WARN("glTF optional texture slot is unsupported or invalid: {}", slotName);
+        MaterialTextureSlotData resolveTextureSlot(const Path& gltfPath,
+                                                   const tinygltf::Model& model,
+                                                   int textureIndex,
+                                                   int texCoord,
+                                                   const char* slotName) {
+            MaterialTextureSlotData slot{};
+            slot.path = resolveTexturePath(gltfPath, model, textureIndex);
+            if (textureIndex < 0 || slot.path.empty()) {
+                return slot;
             }
 
-            return texturePath;
+            const tinygltf::Texture* texture = getTexture(model, textureIndex);
+            if (!texture) {
+                return slot;
+            }
+
+            slot.texCoord = texCoord < 0 ? 0 : static_cast<u32>(texCoord);
+            slot.hasSampler = texture->sampler >= 0 &&
+                              static_cast<usize>(texture->sampler) < model.samplers.size();
+            slot.sampler = resolveTextureSampler(model, *texture, slotName);
+            if (slot.texCoord != 0) {
+                ARK_WARN("glTF texture slot uses unsupported texCoord: slot={}, texCoord={}",
+                         slotName,
+                         slot.texCoord);
+            }
+            return slot;
         }
 
         void copyFloatArray(const std::vector<double>& values, float* output, usize count) {
@@ -485,21 +582,54 @@ namespace ark::asset {
             material.normalScale = static_cast<float>(gltfMaterial.normalTexture.scale);
             material.occlusionStrength = static_cast<float>(gltfMaterial.occlusionTexture.strength);
 
-            material.baseColorTexturePath = resolveTexturePath(gltfPath, gltfModel, pbr.baseColorTexture.index);
+            material.baseColorTexture = resolveTextureSlot(gltfPath,
+                                                           gltfModel,
+                                                           pbr.baseColorTexture.index,
+                                                           pbr.baseColorTexture.texCoord,
+                                                           "baseColorTexture");
+            material.baseColorTexturePath = material.baseColorTexture.path;
             if (material.baseColorTexturePath.empty()) {
                 ARK_ERROR("glTF material requires an external baseColorTexture: {}", gltfPath.string());
                 return false;
             }
 
-            // Optional texture slots 缺失时保留空路径，renderer 层后续使用 fallback texture。
-            material.normalTexturePath =
-                resolveOptionalTexturePath(gltfPath, gltfModel, gltfMaterial.normalTexture.index, "normalTexture");
-            material.metallicRoughnessTexturePath = resolveOptionalTexturePath(
-                gltfPath, gltfModel, pbr.metallicRoughnessTexture.index, "metallicRoughnessTexture");
-            material.occlusionTexturePath =
-                resolveOptionalTexturePath(gltfPath, gltfModel, gltfMaterial.occlusionTexture.index, "occlusionTexture");
-            material.emissiveTexturePath =
-                resolveOptionalTexturePath(gltfPath, gltfModel, gltfMaterial.emissiveTexture.index, "emissiveTexture");
+            // Optional texture slots 缺失时保留空路径，renderer 层继续使用 fallback texture。
+            material.normalTexture = resolveTextureSlot(gltfPath,
+                                                        gltfModel,
+                                                        gltfMaterial.normalTexture.index,
+                                                        gltfMaterial.normalTexture.texCoord,
+                                                        "normalTexture");
+            material.normalTexturePath = material.normalTexture.path;
+            material.metallicRoughnessTexture = resolveTextureSlot(gltfPath,
+                                                                   gltfModel,
+                                                                   pbr.metallicRoughnessTexture.index,
+                                                                   pbr.metallicRoughnessTexture.texCoord,
+                                                                   "metallicRoughnessTexture");
+            material.metallicRoughnessTexturePath = material.metallicRoughnessTexture.path;
+            material.occlusionTexture = resolveTextureSlot(gltfPath,
+                                                           gltfModel,
+                                                           gltfMaterial.occlusionTexture.index,
+                                                           gltfMaterial.occlusionTexture.texCoord,
+                                                           "occlusionTexture");
+            material.occlusionTexturePath = material.occlusionTexture.path;
+            material.emissiveTexture = resolveTextureSlot(gltfPath,
+                                                          gltfModel,
+                                                          gltfMaterial.emissiveTexture.index,
+                                                          gltfMaterial.emissiveTexture.texCoord,
+                                                          "emissiveTexture");
+            material.emissiveTexturePath = material.emissiveTexture.path;
+            if (gltfMaterial.normalTexture.index >= 0 && material.normalTexturePath.empty()) {
+                ARK_WARN("glTF optional texture slot is unsupported or invalid: normalTexture");
+            }
+            if (pbr.metallicRoughnessTexture.index >= 0 && material.metallicRoughnessTexturePath.empty()) {
+                ARK_WARN("glTF optional texture slot is unsupported or invalid: metallicRoughnessTexture");
+            }
+            if (gltfMaterial.occlusionTexture.index >= 0 && material.occlusionTexturePath.empty()) {
+                ARK_WARN("glTF optional texture slot is unsupported or invalid: occlusionTexture");
+            }
+            if (gltfMaterial.emissiveTexture.index >= 0 && material.emissiveTexturePath.empty()) {
+                ARK_WARN("glTF optional texture slot is unsupported or invalid: emissiveTexture");
+            }
             return true;
         }
 

@@ -36,12 +36,47 @@ namespace ark::asset {
     };
 
     // CPU 材质数据只表达 glTF 语义；GPU texture / uniform 由 renderer 层创建。
+    enum class TextureFilter {
+        Nearest,
+        Linear,
+    };
+
+    enum class TextureAddressMode {
+        Repeat,
+        ClampToEdge,
+        MirroredRepeat,
+    };
+
+    struct TextureSamplerData {
+        TextureFilter minFilter = TextureFilter::Linear;
+        TextureFilter magFilter = TextureFilter::Linear;
+        TextureFilter mipFilter = TextureFilter::Linear;
+        TextureAddressMode addressU = TextureAddressMode::Repeat;
+        TextureAddressMode addressV = TextureAddressMode::Repeat;
+    };
+
+    struct MaterialTextureSlotData {
+        Path path;
+        u32 texCoord = 0;
+        TextureSamplerData sampler;
+        bool hasSampler = false;
+
+        bool hasTexture() const {
+            return !path.empty();
+        }
+    };
+
     struct MaterialData {
         Path baseColorTexturePath;
         Path normalTexturePath;
         Path metallicRoughnessTexturePath;
         Path occlusionTexturePath;
         Path emissiveTexturePath;
+        MaterialTextureSlotData baseColorTexture;
+        MaterialTextureSlotData normalTexture;
+        MaterialTextureSlotData metallicRoughnessTexture;
+        MaterialTextureSlotData occlusionTexture;
+        MaterialTextureSlotData emissiveTexture;
         float baseColorFactor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; // glTF pbrMetallicRoughness.baseColorFactor。
         float metallicFactor = 1.0f; // glTF metallicFactor，当前进入 material uniform。
         float roughnessFactor = 1.0f; // glTF roughnessFactor，当前进入 material uniform。
@@ -51,23 +86,23 @@ namespace ark::asset {
         std::string debugName;
 
         bool hasBaseColorTexture() const {
-            return !baseColorTexturePath.empty();
+            return baseColorTexture.hasTexture() || !baseColorTexturePath.empty();
         }
 
         bool hasNormalTexture() const {
-            return !normalTexturePath.empty();
+            return normalTexture.hasTexture() || !normalTexturePath.empty();
         }
 
         bool hasMetallicRoughnessTexture() const {
-            return !metallicRoughnessTexturePath.empty();
+            return metallicRoughnessTexture.hasTexture() || !metallicRoughnessTexturePath.empty();
         }
 
         bool hasOcclusionTexture() const {
-            return !occlusionTexturePath.empty();
+            return occlusionTexture.hasTexture() || !occlusionTexturePath.empty();
         }
 
         bool hasEmissiveTexture() const {
-            return !emissiveTexturePath.empty();
+            return emissiveTexture.hasTexture() || !emissiveTexturePath.empty();
         }
     };
 

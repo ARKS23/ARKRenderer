@@ -103,6 +103,15 @@ namespace ark {
         key.source = TextureCacheSource::File;
         key.canonicalPath = normalizeTexturePath(desc.path);
         key.colorSpace = desc.colorSpace;
+        key.hasSamplerOverride = desc.hasSamplerOverride;
+        if (desc.hasSamplerOverride) {
+            key.minFilter = desc.sampler.minFilter;
+            key.magFilter = desc.sampler.magFilter;
+            key.mipFilter = desc.sampler.mipFilter;
+            key.addressU = desc.sampler.addressU;
+            key.addressV = desc.sampler.addressV;
+            key.addressW = desc.sampler.addressW;
+        }
 
         auto existing = m_Textures.find(key);
         if (existing != m_Textures.end()) {

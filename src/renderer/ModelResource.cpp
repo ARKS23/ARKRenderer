@@ -20,12 +20,51 @@ namespace ark {
             return matrix;
         }
 
+        rhi::FilterMode toRhiFilter(asset::TextureFilter filter) {
+            switch (filter) {
+            case asset::TextureFilter::Nearest:
+                return rhi::FilterMode::Nearest;
+            case asset::TextureFilter::Linear:
+                return rhi::FilterMode::Linear;
+            }
+
+            return rhi::FilterMode::Linear;
+        }
+
+        rhi::AddressMode toRhiAddressMode(asset::TextureAddressMode addressMode) {
+            switch (addressMode) {
+            case asset::TextureAddressMode::Repeat:
+                return rhi::AddressMode::Repeat;
+            case asset::TextureAddressMode::ClampToEdge:
+                return rhi::AddressMode::ClampToEdge;
+            case asset::TextureAddressMode::MirroredRepeat:
+                return rhi::AddressMode::MirroredRepeat;
+            }
+
+            return rhi::AddressMode::Repeat;
+        }
+
+        rhi::SamplerDesc toRhiSamplerDesc(const asset::TextureSamplerData& sampler, const std::string& debugName) {
+            rhi::SamplerDesc samplerDesc{};
+            samplerDesc.debugName = debugName + ".Sampler";
+            samplerDesc.minFilter = toRhiFilter(sampler.minFilter);
+            samplerDesc.magFilter = toRhiFilter(sampler.magFilter);
+            samplerDesc.mipFilter = toRhiFilter(sampler.mipFilter);
+            samplerDesc.addressU = toRhiAddressMode(sampler.addressU);
+            samplerDesc.addressV = toRhiAddressMode(sampler.addressV);
+            samplerDesc.addressW = rhi::AddressMode::Repeat;
+            return samplerDesc;
+        }
+
         TextureResource* acquireTexture(rhi::RenderDevice& device,
                                         TextureCache& textureCache,
-                                        const Path& path,
+                                        const asset::MaterialTextureSlotData& slot,
+                                        const Path& legacyPath,
                                         TextureColorSpace colorSpace,
                                         FallbackTextureKind fallbackKind,
                                         const std::string& debugName) {
+            const bool useSlotPath = slot.hasTexture();
+            const Path& path = useSlotPath ? slot.path : legacyPath;
             if (path.empty()) {
                 return textureCache.getOrCreateFallback(device, fallbackKind);
             }
@@ -34,6 +73,10 @@ namespace ark {
             textureDesc.path = path;
             textureDesc.colorSpace = colorSpace;
             textureDesc.debugName = debugName;
+            if (useSlotPath && slot.hasSampler) {
+                textureDesc.sampler = toRhiSamplerDesc(slot.sampler, debugName);
+                textureDesc.hasSamplerOverride = true;
+            }
             return textureCache.getOrCreate(device, textureDesc);
         }
 
@@ -83,13 +126,14 @@ namespace ark {
             const asset::MaterialData& materialData = model.materials[materialIndex];
             MaterialTextureSet textures{};
 
-            if (materialData.baseColorTexturePath.empty()) {
+            if (!materialData.hasBaseColorTexture()) {
                 ARK_ERROR("ModelResource material requires a base color texture {}", materialIndex);
                 return false;
             }
 
             // glTF baseColor / emissive 是颜色纹理；normal / MR / AO 是数据纹理，不能走 sRGB decode。
-            textures.baseColor = acquireTexture(device, textureCache, materialData.baseColorTexturePath,
+            textures.baseColor = acquireTexture(device, textureCache, materialData.baseColorTexture,
+                                                materialData.baseColorTexturePath,
                                                 TextureColorSpace::Srgb, FallbackTextureKind::White,
                                                 makeMaterialTextureDebugName(materialData, materialIndex, "BaseColor"));
             if (!textures.baseColor) {
@@ -97,17 +141,21 @@ namespace ark {
                 return false;
             }
 
-            textures.normal = acquireTexture(device, textureCache, materialData.normalTexturePath,
+            textures.normal = acquireTexture(device, textureCache, materialData.normalTexture,
+                                             materialData.normalTexturePath,
                                              TextureColorSpace::Linear, FallbackTextureKind::FlatNormal,
                                              makeMaterialTextureDebugName(materialData, materialIndex, "Normal"));
             textures.metallicRoughness =
-                acquireTexture(device, textureCache, materialData.metallicRoughnessTexturePath,
+                acquireTexture(device, textureCache, materialData.metallicRoughnessTexture,
+                               materialData.metallicRoughnessTexturePath,
                                TextureColorSpace::Linear, FallbackTextureKind::MetallicRoughnessDefault,
                                makeMaterialTextureDebugName(materialData, materialIndex, "MetallicRoughness"));
-            textures.occlusion = acquireTexture(device, textureCache, materialData.occlusionTexturePath,
+            textures.occlusion = acquireTexture(device, textureCache, materialData.occlusionTexture,
+                                                materialData.occlusionTexturePath,
                                                 TextureColorSpace::Linear, FallbackTextureKind::OcclusionDefault,
                                                 makeMaterialTextureDebugName(materialData, materialIndex, "Occlusion"));
-            textures.emissive = acquireTexture(device, textureCache, materialData.emissiveTexturePath,
+            textures.emissive = acquireTexture(device, textureCache, materialData.emissiveTexture,
+                                               materialData.emissiveTexturePath,
                                                TextureColorSpace::Srgb, FallbackTextureKind::Black,
                                                makeMaterialTextureDebugName(materialData, materialIndex, "Emissive"));
             if (!textures.normal || !textures.metallicRoughness || !textures.occlusion || !textures.emissive) {

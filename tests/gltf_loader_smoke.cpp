@@ -256,6 +256,52 @@ namespace {
         return true;
     }
 
+    bool validateSamplerFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/sampler_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find sampler glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 2 || model.materials.size() != 2) {
+            std::cerr << "Unexpected sampler glTF model shape\n";
+            return false;
+        }
+
+        const ark::asset::MaterialTextureSlotData& defaultSlot = model.materials[0].baseColorTexture;
+        if (!defaultSlot.hasTexture() || defaultSlot.hasSampler ||
+            defaultSlot.path.filename() != "xiaowei.png" || defaultSlot.texCoord != 0 ||
+            defaultSlot.sampler.minFilter != ark::asset::TextureFilter::Linear ||
+            defaultSlot.sampler.magFilter != ark::asset::TextureFilter::Linear ||
+            defaultSlot.sampler.mipFilter != ark::asset::TextureFilter::Linear ||
+            defaultSlot.sampler.addressU != ark::asset::TextureAddressMode::Repeat ||
+            defaultSlot.sampler.addressV != ark::asset::TextureAddressMode::Repeat) {
+            std::cerr << "Unexpected default sampler texture slot\n";
+            return false;
+        }
+
+        const ark::asset::MaterialTextureSlotData& explicitSlot = model.materials[1].baseColorTexture;
+        if (!explicitSlot.hasTexture() || !explicitSlot.hasSampler ||
+            explicitSlot.path.filename() != "xiaowei.png" ||
+            explicitSlot.texCoord != 1 ||
+            explicitSlot.sampler.minFilter != ark::asset::TextureFilter::Nearest ||
+            explicitSlot.sampler.magFilter != ark::asset::TextureFilter::Nearest ||
+            explicitSlot.sampler.mipFilter != ark::asset::TextureFilter::Linear ||
+            explicitSlot.sampler.addressU != ark::asset::TextureAddressMode::ClampToEdge ||
+            explicitSlot.sampler.addressV != ark::asset::TextureAddressMode::MirroredRepeat) {
+            std::cerr << "Unexpected explicit sampler texture slot\n";
+            return false;
+        }
+
+        if (model.materials[1].baseColorTexturePath != explicitSlot.path) {
+            std::cerr << "Legacy texture path did not mirror texture slot path\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateOptionalDamagedHelmetFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/DamagedHelmet/DamagedHelmet.gltf"});
         if (path.empty()) {
@@ -308,7 +354,8 @@ namespace {
 
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
-                   validateTextureCacheFixture() && validateTangentFixture() && validateOptionalDamagedHelmetFixture()
+                   validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
+                   validateOptionalDamagedHelmetFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

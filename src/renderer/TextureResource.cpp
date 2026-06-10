@@ -19,6 +19,18 @@ namespace ark {
         rhi::Format toTextureFormat(TextureColorSpace colorSpace) {
             return colorSpace == TextureColorSpace::Srgb ? rhi::Format::RGBA8Srgb : rhi::Format::RGBA8Unorm;
         }
+
+        rhi::SamplerDesc makeDefaultSamplerDesc(const std::string& debugName, u32 mipLevels) {
+            rhi::SamplerDesc samplerDesc{};
+            samplerDesc.debugName = debugName + ".Sampler";
+            samplerDesc.minFilter = rhi::FilterMode::Linear;
+            samplerDesc.magFilter = rhi::FilterMode::Linear;
+            samplerDesc.mipFilter = mipLevels > 1 ? rhi::FilterMode::Linear : rhi::FilterMode::Nearest;
+            samplerDesc.addressU = rhi::AddressMode::Repeat;
+            samplerDesc.addressV = rhi::AddressMode::Repeat;
+            samplerDesc.addressW = rhi::AddressMode::Repeat;
+            return samplerDesc;
+        }
     } // namespace
 
     bool TextureResource::create(rhi::RenderDevice& device,
@@ -85,14 +97,11 @@ namespace ark {
             return false;
         }
 
-        rhi::SamplerDesc samplerDesc{};
-        samplerDesc.debugName = debugName + ".Sampler";
-        samplerDesc.minFilter = rhi::FilterMode::Linear;
-        samplerDesc.magFilter = rhi::FilterMode::Linear;
-        samplerDesc.mipFilter = m_MipLevels > 1 ? rhi::FilterMode::Linear : rhi::FilterMode::Nearest;
-        samplerDesc.addressU = rhi::AddressMode::Repeat;
-        samplerDesc.addressV = rhi::AddressMode::Repeat;
-        samplerDesc.addressW = rhi::AddressMode::Repeat;
+        rhi::SamplerDesc samplerDesc =
+            desc.hasSamplerOverride ? desc.sampler : makeDefaultSamplerDesc(debugName, m_MipLevels);
+        if (samplerDesc.debugName.empty()) {
+            samplerDesc.debugName = debugName + ".Sampler";
+        }
         m_Sampler = device.createSampler(samplerDesc);
         if (!m_Sampler) {
             ARK_ERROR("TextureResource failed to create sampler: {}", debugName);

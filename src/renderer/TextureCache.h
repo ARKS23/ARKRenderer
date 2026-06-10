@@ -46,6 +46,13 @@ namespace ark {
             std::string canonicalPath;
             TextureColorSpace colorSpace = TextureColorSpace::Linear;
             FallbackTextureKind fallbackKind = FallbackTextureKind::White;
+            bool hasSamplerOverride = false;
+            rhi::FilterMode minFilter = rhi::FilterMode::Linear;
+            rhi::FilterMode magFilter = rhi::FilterMode::Linear;
+            rhi::FilterMode mipFilter = rhi::FilterMode::Linear;
+            rhi::AddressMode addressU = rhi::AddressMode::Repeat;
+            rhi::AddressMode addressV = rhi::AddressMode::Repeat;
+            rhi::AddressMode addressW = rhi::AddressMode::Repeat;
 
             bool operator<(const TextureCacheKey& other) const {
                 if (source != other.source) {
@@ -57,7 +64,28 @@ namespace ark {
                 if (colorSpace != other.colorSpace) {
                     return static_cast<int>(colorSpace) < static_cast<int>(other.colorSpace);
                 }
-                return static_cast<int>(fallbackKind) < static_cast<int>(other.fallbackKind);
+                if (fallbackKind != other.fallbackKind) {
+                    return static_cast<int>(fallbackKind) < static_cast<int>(other.fallbackKind);
+                }
+                if (hasSamplerOverride != other.hasSamplerOverride) {
+                    return hasSamplerOverride < other.hasSamplerOverride;
+                }
+                if (minFilter != other.minFilter) {
+                    return static_cast<int>(minFilter) < static_cast<int>(other.minFilter);
+                }
+                if (magFilter != other.magFilter) {
+                    return static_cast<int>(magFilter) < static_cast<int>(other.magFilter);
+                }
+                if (mipFilter != other.mipFilter) {
+                    return static_cast<int>(mipFilter) < static_cast<int>(other.mipFilter);
+                }
+                if (addressU != other.addressU) {
+                    return static_cast<int>(addressU) < static_cast<int>(other.addressU);
+                }
+                if (addressV != other.addressV) {
+                    return static_cast<int>(addressV) < static_cast<int>(other.addressV);
+                }
+                return static_cast<int>(addressW) < static_cast<int>(other.addressW);
             }
         };
 

@@ -31,6 +31,8 @@ namespace ark {
         TextureColorSpace colorSpace = TextureColorSpace::Linear;
         // 默认生成 mip chain，真实资产采样质量优先；特殊测试或后续离线 mip 路径可显式关闭。
         bool generateMips = true;
+        rhi::SamplerDesc sampler;
+        bool hasSamplerOverride = false;
         std::string debugName;
     };
 

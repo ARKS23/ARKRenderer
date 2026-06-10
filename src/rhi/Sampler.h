@@ -11,6 +11,7 @@ namespace ark::rhi {
     enum class AddressMode {
         Repeat,
         ClampToEdge,
+        MirroredRepeat,
     };
 
     struct SamplerDesc {

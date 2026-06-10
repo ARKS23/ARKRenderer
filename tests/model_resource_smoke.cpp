@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <span>
+#include <vector>
 
 namespace {
     bool near(float lhs, float rhs) {
@@ -214,6 +215,7 @@ namespace {
         ark::Scope<ark::rhi::Sampler> createSampler(const ark::rhi::SamplerDesc& desc) override {
             ++samplerCount;
             lastSamplerDesc = desc;
+            samplerDescs.push_back(desc);
             return ark::makeScope<FakeSampler>(desc);
         }
 
@@ -249,6 +251,7 @@ namespace {
         ark::rhi::TextureDesc lastTextureDesc{};
         ark::rhi::TextureViewDesc lastTextureViewDesc{};
         ark::rhi::SamplerDesc lastSamplerDesc{};
+        std::vector<ark::rhi::SamplerDesc> samplerDescs;
         ark::rhi::Format lastTextureFormat = ark::rhi::Format::Unknown;
 
     private:
@@ -415,6 +418,22 @@ namespace {
         return mesh;
     }
 
+    bool hasSamplerDesc(const FakeRenderDevice& device,
+                        ark::rhi::FilterMode minFilter,
+                        ark::rhi::FilterMode magFilter,
+                        ark::rhi::FilterMode mipFilter,
+                        ark::rhi::AddressMode addressU,
+                        ark::rhi::AddressMode addressV) {
+        for (const ark::rhi::SamplerDesc& desc : device.samplerDescs) {
+            if (desc.minFilter == minFilter && desc.magFilter == magFilter &&
+                desc.mipFilter == mipFilter && desc.addressU == addressU && desc.addressV == addressV) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool validateTextureResourceDeferredRelease() {
         const ark::Path texturePath = findTexturePath();
         if (texturePath.empty()) {
@@ -561,6 +580,55 @@ namespace {
         if (textureCache.size() != 0 || context.deferredBuffers != 1 || context.deferredTextures != 1 ||
             context.deferredTextureViews != 1 || context.deferredSamplers != 1) {
             std::cerr << "TextureCache deferred clear counts are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateTextureCacheSamplerKey() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::TextureResourceDesc defaultDesc{};
+        defaultDesc.path = texturePath;
+        defaultDesc.colorSpace = ark::TextureColorSpace::Srgb;
+        defaultDesc.debugName = "SamplerKeyDefault";
+
+        ark::TextureResource* defaultTexture = textureCache.getOrCreate(device, defaultDesc);
+        ark::TextureResource* defaultTextureAgain = textureCache.getOrCreate(device, defaultDesc);
+
+        ark::TextureResourceDesc explicitDesc = defaultDesc;
+        explicitDesc.debugName = "SamplerKeyExplicit";
+        explicitDesc.hasSamplerOverride = true;
+        explicitDesc.sampler.debugName = "SamplerKeyExplicit.Sampler";
+        explicitDesc.sampler.minFilter = ark::rhi::FilterMode::Nearest;
+        explicitDesc.sampler.magFilter = ark::rhi::FilterMode::Nearest;
+        explicitDesc.sampler.mipFilter = ark::rhi::FilterMode::Linear;
+        explicitDesc.sampler.addressU = ark::rhi::AddressMode::ClampToEdge;
+        explicitDesc.sampler.addressV = ark::rhi::AddressMode::MirroredRepeat;
+        explicitDesc.sampler.addressW = ark::rhi::AddressMode::Repeat;
+
+        ark::TextureResource* explicitTexture = textureCache.getOrCreate(device, explicitDesc);
+        if (!defaultTexture || !explicitTexture || defaultTexture != defaultTextureAgain ||
+            defaultTexture == explicitTexture || textureCache.size() != 2 || device.textureCount != 2 ||
+            device.textureViewCount != 2 || device.samplerCount != 2) {
+            std::cerr << "TextureCache sampler key did not separate sampler variants\n";
+            return false;
+        }
+
+        if (!hasSamplerDesc(device,
+                            ark::rhi::FilterMode::Nearest,
+                            ark::rhi::FilterMode::Nearest,
+                            ark::rhi::FilterMode::Linear,
+                            ark::rhi::AddressMode::ClampToEdge,
+                            ark::rhi::AddressMode::MirroredRepeat)) {
+            std::cerr << "TextureCache explicit sampler desc was not created\n";
             return false;
         }
 
@@ -1045,15 +1113,66 @@ namespace {
 
         return true;
     }
+
+    bool validateModelResourceSamplerOverride() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset\n";
+            return false;
+        }
+
+        ark::asset::MaterialData material{};
+        material.debugName = "SamplerOverrideMaterial";
+        material.baseColorTexture.path = texturePath;
+        material.baseColorTexture.hasSampler = true;
+        material.baseColorTexture.sampler.minFilter = ark::asset::TextureFilter::Nearest;
+        material.baseColorTexture.sampler.magFilter = ark::asset::TextureFilter::Nearest;
+        material.baseColorTexture.sampler.mipFilter = ark::asset::TextureFilter::Linear;
+        material.baseColorTexture.sampler.addressU = ark::asset::TextureAddressMode::ClampToEdge;
+        material.baseColorTexture.sampler.addressV = ark::asset::TextureAddressMode::MirroredRepeat;
+        material.baseColorTexturePath = material.baseColorTexture.path;
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "SamplerOverrideModel";
+        modelData.materials.push_back(material);
+        modelData.meshes.push_back(makeTriangle("SamplerOverrideTriangle", 0, 0.0f));
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Sampler override ModelResource create failed\n";
+            return false;
+        }
+
+        if (textureCache.size() != 5 || device.textureCount != 5 || device.textureViewCount != 5 ||
+            device.samplerCount != 5) {
+            std::cerr << "Sampler override ModelResource resource counts are invalid\n";
+            return false;
+        }
+
+        if (!hasSamplerDesc(device,
+                            ark::rhi::FilterMode::Nearest,
+                            ark::rhi::FilterMode::Nearest,
+                            ark::rhi::FilterMode::Linear,
+                            ark::rhi::AddressMode::ClampToEdge,
+                            ark::rhi::AddressMode::MirroredRepeat)) {
+            std::cerr << "ModelResource did not pass asset sampler to RHI sampler desc\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
     return validateTextureResourceDeferredRelease() && validateTextureResourceMipDesc() &&
-                   validateTextureCacheDeferredClear() && validateTextureCacheFallbacks() &&
+                   validateTextureCacheDeferredClear() && validateTextureCacheSamplerKey() &&
+                   validateTextureCacheFallbacks() &&
                    validateMaterialResourceTextureSlots() && validateMeshResourceDeferredRelease() &&
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
-                   validateTextureCacheFixtureModelResource()
+                   validateTextureCacheFixtureModelResource() && validateModelResourceSamplerOverride()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

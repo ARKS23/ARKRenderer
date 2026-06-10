@@ -33,6 +33,8 @@ namespace ark::rhi::vulkan {
                 return VK_SAMPLER_ADDRESS_MODE_REPEAT;
             case AddressMode::ClampToEdge:
                 return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            case AddressMode::MirroredRepeat:
+                return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
             }
 
             return VK_SAMPLER_ADDRESS_MODE_REPEAT;
