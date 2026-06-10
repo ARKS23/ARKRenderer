@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/Window.h"
+#include "core/FileSystem.h"
 #include "core/Memory.h"
 
 namespace ark {
@@ -8,6 +9,7 @@ namespace ark {
 
     struct ApplicationDesc {
         WindowDesc window;
+        Path defaultModelPath;
     };
 
     class Application {

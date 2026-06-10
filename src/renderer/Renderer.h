@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/FileSystem.h"
 #include "core/Memory.h"
 #include "rhi/RHICommon.h"
 
@@ -11,6 +12,7 @@ namespace ark {
     struct RendererDesc {
         rhi::NativeWindowHandle nativeWindow;
         rhi::Extent2D extent{1280, 720};
+        Path defaultModelPath;
         bool enableValidation = false;
     };
 

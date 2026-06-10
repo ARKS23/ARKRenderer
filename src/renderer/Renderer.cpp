@@ -32,7 +32,20 @@ namespace ark {
             return desc;
         }
 
-        Path findDefaultSandboxModelFile() {
+        Path findSandboxModelFile(const Path& overridePath) {
+            if (!overridePath.empty()) {
+                if (overridePath.is_absolute()) {
+                    return fileExists(overridePath) ? overridePath : Path{};
+                }
+
+                const std::array<Path, 3> overrideCandidates{
+                    overridePath,
+                    Path{"../"} / overridePath,
+                    Path{"../../"} / overridePath,
+                };
+                return findFirstExistingPath(overrideCandidates);
+            }
+
             const Path relative = Path{DefaultSandboxModelAssetPath};
             const std::array<Path, 3> candidates{
                 relative,
@@ -45,7 +58,8 @@ namespace ark {
 
         class DefaultRenderer final : public Renderer {
         public:
-            explicit DefaultRenderer(const RendererDesc& desc) : m_Extent(desc.extent) {
+            explicit DefaultRenderer(const RendererDesc& desc)
+                : m_DefaultModelPath(desc.defaultModelPath), m_Extent(desc.extent) {
                 // Renderer 只组装公共 RHI 描述，具体后端对象由内部工厂创建。
                 rhi::RenderBackendDesc backendDesc{};
                 backendDesc.device.desc.backend = rhi::RenderBackendType::Vulkan;
@@ -179,12 +193,17 @@ namespace ark {
             }
 
             bool createDefaultScene() {
-                const Path modelPath = findDefaultSandboxModelFile();
+                const Path modelPath = findSandboxModelFile(m_DefaultModelPath);
                 if (modelPath.empty()) {
-                    ARK_WARN("Default sandbox model fixture was not found: {}", DefaultSandboxModelAssetPath);
+                    if (m_DefaultModelPath.empty()) {
+                        ARK_WARN("Default sandbox model fixture was not found: {}", DefaultSandboxModelAssetPath);
+                    } else {
+                        ARK_WARN("Requested sandbox model was not found: {}", m_DefaultModelPath.string());
+                    }
                     return false;
                 }
 
+                ARK_INFO("Using sandbox model: {}", modelPath.string());
                 asset::ModelData modelData = asset::loadGltfModel(modelPath);
                 if (modelData.empty()) {
                     ARK_WARN("Default sandbox model fixture is empty: {}", modelPath.string());
@@ -228,6 +247,7 @@ namespace ark {
             ModelResource m_DefaultModel;
             RenderScene m_DefaultScene;
             RenderQueue m_RenderQueue;
+            Path m_DefaultModelPath;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
             bool m_RenderingPaused = false;

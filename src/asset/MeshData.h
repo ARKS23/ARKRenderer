@@ -99,4 +99,6 @@ namespace ark::asset {
             return meshes.empty();
         }
     };
+
+    bool generateTangents(MeshPrimitiveData& mesh);
 } // namespace ark::asset

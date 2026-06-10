@@ -239,6 +239,7 @@ int main() {
     ark::RendererDesc rendererDesc{};
     rendererDesc.nativeWindow = nativeWindow;
     rendererDesc.extent = swapChainDesc.extent;
+    rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
 
     ark::FrameContext frameContext{};
     ark::MeshResource meshResource{};

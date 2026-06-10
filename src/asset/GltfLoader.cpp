@@ -380,6 +380,7 @@ namespace ark::asset {
             }
 
             mesh.vertices.resize(positionAccessor->count);
+            mesh.debugName = "GltfPrimitive";
             for (usize i = 0; i < positionAccessor->count; ++i) {
                 MeshVertex& vertex = mesh.vertices[i];
                 if (!readFloatVec3(model, *positionAccessor, i, vertex.position) ||
@@ -389,7 +390,7 @@ namespace ark::asset {
                     return false;
                 }
 
-                // TANGENT 是 Phase 0.17 的可选输入；缺失时保留 MeshVertex 默认切线，避免阻断旧 fixture。
+                // glTF TANGENT 是可选输入；缺失时在索引读取后由 CPU helper 根据 UV 生成。
                 if (tangentAccessor && !readFloatVec4(model, *tangentAccessor, i, vertex.tangent)) {
                     ARK_ERROR("glTF TANGENT attribute data is invalid");
                     return false;
@@ -400,8 +401,12 @@ namespace ark::asset {
                 return false;
             }
 
+            if (!tangentAccessor && !generateTangents(mesh)) {
+                ARK_ERROR("glTF tangent generation failed");
+                return false;
+            }
+
             mesh.materialIndex = primitive.material >= 0 ? static_cast<u32>(primitive.material) : 0;
-            mesh.debugName = "GltfPrimitive";
             return !mesh.empty();
         }
 

@@ -25,7 +25,10 @@ namespace ark {
 
         struct alignas(16) ObjectUniform {
             glm::mat4 model;
+            glm::mat4 normalMatrix;
         };
+
+        static_assert(sizeof(ObjectUniform) == 128);
 
         struct alignas(16) MaterialUniform {
             glm::vec4 baseColorFactor;
@@ -453,6 +456,8 @@ namespace ark {
 
         ObjectUniform objectUniform{};
         objectUniform.model = modelMatrix;
+        // normalMatrix 用于非等比缩放下的法线/切线方向变换。
+        objectUniform.normalMatrix = glm::inverseTranspose(modelMatrix);
         return frameContext.context->updateBuffer(*m_DrawDescriptors[frameSlot][drawIndex].objectBuffer,
                                                   &objectUniform, sizeof(objectUniform));
     }

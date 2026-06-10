@@ -36,6 +36,7 @@ namespace ark {
         RendererDesc rendererDesc{};
         rendererDesc.nativeWindow = m_Window->getNativeWindowHandle();
         rendererDesc.extent = m_Window->getExtent();
+        rendererDesc.defaultModelPath = m_Desc.defaultModelPath;
 #ifndef NDEBUG
         rendererDesc.enableValidation = true;
 #endif

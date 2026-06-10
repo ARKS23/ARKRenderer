@@ -20,6 +20,7 @@ struct CameraUniform {
 
 struct ObjectUniform {
     float4x4 model;
+    float4x4 normalMatrix;
 };
 
 [[vk::binding(0, 0)]]
@@ -34,9 +35,11 @@ VSOutput main(VSInput input) {
     const float4 viewPosition = mul(g_Camera.view, worldPosition);
     output.position = mul(g_Camera.projection, viewPosition);
     output.worldPosition = worldPosition.xyz;
-    // Phase 0.17 暂用 model 矩阵变换方向；非等比缩放的 inverse-transpose 留给后续光照完善。
-    output.worldNormal = normalize(mul((float3x3)g_Object.model, input.normal));
-    output.worldTangent = float4(normalize(mul((float3x3)g_Object.model, input.tangent.xyz)), input.tangent.w);
+    const float3 worldNormal = normalize(mul((float3x3)g_Object.normalMatrix, input.normal));
+    float3 worldTangent = normalize(mul((float3x3)g_Object.model, input.tangent.xyz));
+    worldTangent = normalize(worldTangent - worldNormal * dot(worldNormal, worldTangent));
+    output.worldNormal = worldNormal;
+    output.worldTangent = float4(worldTangent, input.tangent.w);
     output.uv0 = input.uv0;
     return output;
 }

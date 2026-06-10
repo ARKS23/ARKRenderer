@@ -11,6 +11,19 @@ namespace {
         return std::fabs(lhs - rhs) < 0.0001f;
     }
 
+    bool validTangent(const ark::asset::MeshVertex& vertex) {
+        const float length = std::sqrt(vertex.tangent[0] * vertex.tangent[0] +
+                                       vertex.tangent[1] * vertex.tangent[1] +
+                                       vertex.tangent[2] * vertex.tangent[2]);
+        return std::isfinite(length) && near(length, 1.0f) &&
+               (near(vertex.tangent[3], 1.0f) || near(vertex.tangent[3], -1.0f));
+    }
+
+    bool isDefaultTangent(const ark::asset::MeshVertex& vertex) {
+        return near(vertex.tangent[0], 1.0f) && near(vertex.tangent[1], 0.0f) &&
+               near(vertex.tangent[2], 0.0f) && near(vertex.tangent[3], 1.0f);
+    }
+
     ark::Path findFixturePath(const ark::Path& relative) {
         const std::array<ark::Path, 3> candidates{
             relative,
@@ -57,9 +70,10 @@ namespace {
             return false;
         }
 
-        if (!near(firstVertex.tangent[0], 1.0f) || !near(firstVertex.tangent[1], 0.0f) ||
-            !near(firstVertex.tangent[2], 0.0f) || !near(firstVertex.tangent[3], 1.0f)) {
-            std::cerr << "Unexpected fallback glTF tangent data\n";
+        if (!validTangent(firstVertex) || !near(firstVertex.tangent[0], 1.0f) ||
+            !near(firstVertex.tangent[1], 0.0f) || !near(firstVertex.tangent[2], 0.0f) ||
+            !near(firstVertex.tangent[3], -1.0f)) {
+            std::cerr << "Unexpected generated glTF tangent data\n";
             return false;
         }
 
@@ -269,11 +283,22 @@ namespace {
             return false;
         }
 
-        // DamagedHelmet fixture has no TANGENT in the checked-in local copy; Phase 0.17 should use fallback.
         const ark::asset::MeshVertex& firstVertex = mesh.vertices.front();
-        if (!near(firstVertex.tangent[0], 1.0f) || !near(firstVertex.tangent[1], 0.0f) ||
-            !near(firstVertex.tangent[2], 0.0f) || !near(firstVertex.tangent[3], 1.0f)) {
-            std::cerr << "Unexpected DamagedHelmet fallback tangent\n";
+        if (!validTangent(firstVertex)) {
+            std::cerr << "DamagedHelmet generated invalid tangent\n";
+            return false;
+        }
+
+        bool hasNonDefaultTangent = false;
+        for (const ark::asset::MeshVertex& vertex : mesh.vertices) {
+            if (!isDefaultTangent(vertex)) {
+                hasNonDefaultTangent = true;
+                break;
+            }
+        }
+
+        if (!hasNonDefaultTangent) {
+            std::cerr << "DamagedHelmet did not generate non-default tangent data\n";
             return false;
         }
 

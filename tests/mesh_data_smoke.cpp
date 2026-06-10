@@ -1,9 +1,21 @@
 #include "asset/MeshData.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
 namespace {
+    bool near(float lhs, float rhs) {
+        return std::fabs(lhs - rhs) < 0.0001f;
+    }
+
+    bool validateTangent(const ark::asset::MeshVertex& vertex) {
+        const float length = std::sqrt(vertex.tangent[0] * vertex.tangent[0] +
+                                       vertex.tangent[1] * vertex.tangent[1] +
+                                       vertex.tangent[2] * vertex.tangent[2]);
+        return near(length, 1.0f) && (near(vertex.tangent[3], 1.0f) || near(vertex.tangent[3], -1.0f));
+    }
+
     bool validateMeshPrimitive() {
         ark::asset::MeshPrimitiveData primitive{};
         primitive.debugName = "SmokePrimitive";
@@ -57,6 +69,68 @@ namespace {
         return true;
     }
 
+    bool validateTangentGeneration() {
+        ark::asset::MeshVertex v0{};
+        v0.position[0] = -1.0f;
+        v0.normal[2] = 1.0f;
+
+        ark::asset::MeshVertex v1 = v0;
+        v1.position[0] = 1.0f;
+        v1.uv0[0] = 1.0f;
+
+        ark::asset::MeshVertex v2 = v0;
+        v2.position[1] = 1.0f;
+        v2.uv0[1] = 1.0f;
+
+        ark::asset::MeshPrimitiveData primitive{};
+        primitive.debugName = "GeneratedTangentTriangle";
+        primitive.vertices = {v0, v1, v2};
+        primitive.indices = {0, 1, 2};
+        if (!ark::asset::generateTangents(primitive)) {
+            std::cerr << "Tangent generation failed\n";
+            return false;
+        }
+
+        const ark::asset::MeshVertex& firstVertex = primitive.vertices.front();
+        if (!near(firstVertex.tangent[0], 1.0f) || !near(firstVertex.tangent[1], 0.0f) ||
+            !near(firstVertex.tangent[2], 0.0f) || !near(firstVertex.tangent[3], 1.0f)) {
+            std::cerr << "Unexpected generated tangent\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateDegenerateTangentFallback() {
+        ark::asset::MeshVertex v0{};
+        v0.position[0] = -1.0f;
+        v0.normal[2] = 1.0f;
+
+        ark::asset::MeshVertex v1 = v0;
+        v1.position[0] = 1.0f;
+
+        ark::asset::MeshVertex v2 = v0;
+        v2.position[1] = 1.0f;
+
+        ark::asset::MeshPrimitiveData primitive{};
+        primitive.debugName = "DegenerateUvTriangle";
+        primitive.vertices = {v0, v1, v2};
+        primitive.indices = {0, 1, 2};
+        if (!ark::asset::generateTangents(primitive)) {
+            std::cerr << "Degenerate tangent generation failed\n";
+            return false;
+        }
+
+        for (const ark::asset::MeshVertex& vertex : primitive.vertices) {
+            if (!validateTangent(vertex)) {
+                std::cerr << "Degenerate tangent fallback is invalid\n";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     bool validateModelData() {
         ark::asset::MaterialData material{};
         if (material.hasBaseColorTexture()) {
@@ -95,5 +169,8 @@ namespace {
 } // namespace
 
 int main() {
-    return validateMeshPrimitive() && validateModelData() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateMeshPrimitive() && validateTangentGeneration() && validateDegenerateTangentFallback() &&
+                   validateModelData()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

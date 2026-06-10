@@ -67,6 +67,28 @@ namespace {
 
         return true;
     }
+
+    bool validateMeshVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("mesh.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find mesh vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read mesh vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "float4x4 normalMatrix") ||
+            !containsText(shaderSource, "g_Object.normalMatrix")) {
+            std::cerr << "Mesh vertex shader does not expose expected Phase 0.18 normal matrix path\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -81,7 +103,7 @@ int main() {
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
-                   meshFragmentShaderValid && validateMeshFragmentShaderSource()
+                   meshFragmentShaderValid && validateMeshVertexShaderSource() && validateMeshFragmentShaderSource()
                ? 0
                : 1;
 }
