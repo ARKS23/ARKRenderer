@@ -1,12 +1,31 @@
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/MeshResource.h"
+#include "renderer/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
 
 #include <cstdlib>
 #include <iostream>
 
 namespace {
+    bool createMaterial(ark::MaterialResource& resource,
+                        ark::TextureResource& texture,
+                        ark::asset::AlphaMode alphaMode,
+                        const char* debugName) {
+        ark::asset::MaterialData material{};
+        material.baseColorTexture.path = ark::Path{"queue_dummy_base_color.png"};
+        material.alphaMode = alphaMode;
+        material.debugName = debugName;
+
+        ark::MaterialTextureSet textures{};
+        textures.baseColor = &texture;
+        textures.normal = &texture;
+        textures.metallicRoughness = &texture;
+        textures.occlusion = &texture;
+        textures.emissive = &texture;
+        return resource.create(material, textures);
+    }
+
     bool validateSceneQueueBuild() {
         ark::MeshResource meshA{};
         ark::MeshResource meshB{};
@@ -59,8 +78,62 @@ namespace {
 
         return true;
     }
+
+    bool validateAlphaBucketOrder() {
+        ark::TextureResource texture{};
+        ark::MeshResource opaqueMeshA{};
+        ark::MeshResource opaqueMeshB{};
+        ark::MeshResource maskMesh{};
+        ark::MeshResource blendMeshA{};
+        ark::MeshResource blendMeshB{};
+        ark::MaterialResource opaqueMaterialA{};
+        ark::MaterialResource opaqueMaterialB{};
+        ark::MaterialResource maskMaterial{};
+        ark::MaterialResource blendMaterialA{};
+        ark::MaterialResource blendMaterialB{};
+
+        if (!createMaterial(opaqueMaterialA, texture, ark::asset::AlphaMode::Opaque, "OpaqueA") ||
+            !createMaterial(opaqueMaterialB, texture, ark::asset::AlphaMode::Opaque, "OpaqueB") ||
+            !createMaterial(maskMaterial, texture, ark::asset::AlphaMode::Mask, "Mask") ||
+            !createMaterial(blendMaterialA, texture, ark::asset::AlphaMode::Blend, "BlendA") ||
+            !createMaterial(blendMaterialB, texture, ark::asset::AlphaMode::Blend, "BlendB")) {
+            std::cerr << "Failed to create alpha bucket test materials\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        scene.addObject(blendMeshA, blendMaterialA, glm::mat4{1.0f}, "BlendA");
+        scene.addObject(opaqueMeshA, opaqueMaterialA, glm::mat4{1.0f}, "OpaqueA");
+        scene.addObject(maskMesh, maskMaterial, glm::mat4{1.0f}, "Mask");
+        scene.addObject(blendMeshB, blendMaterialB, glm::mat4{1.0f}, "BlendB");
+        scene.addObject(opaqueMeshB, opaqueMaterialB, glm::mat4{1.0f}, "OpaqueB");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        if (drawItems.size() != 5) {
+            std::cerr << "RenderQueue alpha bucket test produced unexpected item count\n";
+            return false;
+        }
+
+        if (drawItems[0].material != &opaqueMaterialA || drawItems[1].material != &opaqueMaterialB ||
+            drawItems[2].material != &maskMaterial || drawItems[3].material != &blendMaterialA ||
+            drawItems[4].material != &blendMaterialB) {
+            std::cerr << "RenderQueue did not order alpha buckets as expected\n";
+            return false;
+        }
+
+        if (drawItems[0].debugName != "OpaqueA" || drawItems[1].debugName != "OpaqueB" ||
+            drawItems[2].debugName != "Mask" || drawItems[3].debugName != "BlendA" ||
+            drawItems[4].debugName != "BlendB") {
+            std::cerr << "RenderQueue did not preserve stable order within alpha buckets\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateSceneQueueBuild() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateSceneQueueBuild() && validateAlphaBucketOrder() ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -1203,6 +1203,74 @@ namespace {
         return true;
     }
 
+    bool validateRenderQueueAlphaBucketsForModelResource() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset for alpha bucket model\n";
+            return false;
+        }
+
+        auto makeMaterial = [&texturePath](const char* name, ark::asset::AlphaMode alphaMode) {
+            ark::asset::MaterialData material{};
+            material.debugName = name;
+            material.baseColorTexturePath = texturePath;
+            material.alphaMode = alphaMode;
+            return material;
+        };
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "AlphaBucketModel";
+        modelData.materials.push_back(makeMaterial("BlendA", ark::asset::AlphaMode::Blend));
+        modelData.materials.push_back(makeMaterial("OpaqueA", ark::asset::AlphaMode::Opaque));
+        modelData.materials.push_back(makeMaterial("Mask", ark::asset::AlphaMode::Mask));
+        modelData.materials.push_back(makeMaterial("BlendB", ark::asset::AlphaMode::Blend));
+        modelData.materials.push_back(makeMaterial("OpaqueB", ark::asset::AlphaMode::Opaque));
+        modelData.meshes.push_back(makeTriangle("BlendPrimitiveA", 0, -2.0f));
+        modelData.meshes.push_back(makeTriangle("OpaquePrimitiveA", 1, -1.0f));
+        modelData.meshes.push_back(makeTriangle("MaskPrimitive", 2, 0.0f));
+        modelData.meshes.push_back(makeTriangle("BlendPrimitiveB", 3, 1.0f));
+        modelData.meshes.push_back(makeTriangle("OpaquePrimitiveB", 4, 2.0f));
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Alpha bucket ModelResource create failed\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        scene.addModel(modelResource, glm::mat4{1.0f}, "AlphaBucketModel");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        if (drawItems.size() != 5) {
+            std::cerr << "Alpha bucket model queue item count is invalid\n";
+            return false;
+        }
+
+        if (drawItems[0].material != modelResource.primitiveMaterial(1) ||
+            drawItems[1].material != modelResource.primitiveMaterial(4) ||
+            drawItems[2].material != modelResource.primitiveMaterial(2) ||
+            drawItems[3].material != modelResource.primitiveMaterial(0) ||
+            drawItems[4].material != modelResource.primitiveMaterial(3)) {
+            std::cerr << "RenderQueue did not bucket model primitive materials correctly\n";
+            return false;
+        }
+
+        if (drawItems[0].debugName != "OpaquePrimitiveA" ||
+            drawItems[1].debugName != "OpaquePrimitiveB" ||
+            drawItems[2].debugName != "MaskPrimitive" ||
+            drawItems[3].debugName != "BlendPrimitiveA" ||
+            drawItems[4].debugName != "BlendPrimitiveB") {
+            std::cerr << "RenderQueue did not preserve model primitive order within alpha buckets\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateTexcoord1ModelResource() {
         const ark::Path modelPath = findModelPath(ark::Path{"assets/models/texcoord1_fixture.gltf"});
         if (modelPath.empty()) {
@@ -1366,6 +1434,7 @@ int main() {
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
                    validateTextureCacheFixtureModelResource() && validateAlphaModesModelResource() &&
+                   validateRenderQueueAlphaBucketsForModelResource() &&
                    validateTexcoord1ModelResource() &&
                    validateTextureTransformModelResource() &&
                    validateModelResourceSamplerOverride()
