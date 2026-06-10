@@ -177,6 +177,14 @@ namespace ark {
             blendState.colorAttachment.alphaBlendOp = rhi::BlendOp::Add;
             return blendState;
         }
+
+        rhi::CullMode makeCullMode(const MaterialRenderState& renderState) {
+            return renderState.doubleSided ? rhi::CullMode::None : rhi::CullMode::Back;
+        }
+
+        rhi::FrontFace makeFrontFace() {
+            return rhi::FrontFace::CounterClockwise;
+        }
     } // namespace
 
     ForwardPass::~ForwardPass() = default;
@@ -479,8 +487,8 @@ namespace ark {
         pipelineDesc.layout = m_PipelineLayout.get();
         pipelineDesc.vertexInput.buffers.push_back(vertexLayout);
         pipelineDesc.topology = rhi::PrimitiveTopology::TriangleList;
-        // TODO: 当前保持 None，避免在确认 glTF winding / projection 前引入 culling 回归。
-        pipelineDesc.rasterState.cullMode = rhi::CullMode::None;
+        pipelineDesc.rasterState.cullMode = makeCullMode(renderState);
+        pipelineDesc.rasterState.frontFace = makeFrontFace();
         pipelineDesc.depthStencilState.enableDepthTest = true;
         pipelineDesc.depthStencilState.enableDepthWrite = renderState.alphaMode != asset::AlphaMode::Blend;
         pipelineDesc.depthStencilState.depthCompareOp = rhi::CompareOp::Less;

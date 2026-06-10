@@ -202,6 +202,8 @@ if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_texture_loader_smoke tests/texture_loader_smoke.cpp)
 
     if(ARK_DXC_SUPPORTED)
+        ark_add_smoke_test(ark_forward_pass_pipeline_smoke tests/forward_pass_pipeline_smoke.cpp)
+        add_dependencies(ark_forward_pass_pipeline_smoke ark_shaders)
         ark_add_smoke_test(ark_shader_assets_smoke tests/shader_assets_smoke.cpp)
         add_dependencies(ark_shader_assets_smoke ark_shaders)
     endif()
