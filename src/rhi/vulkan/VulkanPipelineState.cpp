@@ -94,6 +94,30 @@ namespace ark::rhi::vulkan {
             return VK_COMPARE_OP_LESS;
         }
 
+        VkBlendFactor toVkBlendFactor(BlendFactor factor) {
+            switch (factor) {
+            case BlendFactor::Zero:
+                return VK_BLEND_FACTOR_ZERO;
+            case BlendFactor::One:
+                return VK_BLEND_FACTOR_ONE;
+            case BlendFactor::SrcAlpha:
+                return VK_BLEND_FACTOR_SRC_ALPHA;
+            case BlendFactor::OneMinusSrcAlpha:
+                return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            }
+
+            return VK_BLEND_FACTOR_ONE;
+        }
+
+        VkBlendOp toVkBlendOp(BlendOp op) {
+            switch (op) {
+            case BlendOp::Add:
+                return VK_BLEND_OP_ADD;
+            }
+
+            return VK_BLEND_OP_ADD;
+        }
+
         VulkanShader* requireVulkanShader(Shader* shader, const char* name) {
             VulkanShader* vulkanShader = dynamic_cast<VulkanShader*>(shader);
             if (!vulkanShader || vulkanShader->getHandle() == VK_NULL_HANDLE) {
@@ -197,6 +221,16 @@ namespace ark::rhi::vulkan {
 
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.blendEnable = m_Desc.blendState.colorAttachment.enableBlend ? VK_TRUE : VK_FALSE;
+        colorBlendAttachment.srcColorBlendFactor =
+            toVkBlendFactor(m_Desc.blendState.colorAttachment.srcColorBlendFactor);
+        colorBlendAttachment.dstColorBlendFactor =
+            toVkBlendFactor(m_Desc.blendState.colorAttachment.dstColorBlendFactor);
+        colorBlendAttachment.colorBlendOp = toVkBlendOp(m_Desc.blendState.colorAttachment.colorBlendOp);
+        colorBlendAttachment.srcAlphaBlendFactor =
+            toVkBlendFactor(m_Desc.blendState.colorAttachment.srcAlphaBlendFactor);
+        colorBlendAttachment.dstAlphaBlendFactor =
+            toVkBlendFactor(m_Desc.blendState.colorAttachment.dstAlphaBlendFactor);
+        colorBlendAttachment.alphaBlendOp = toVkBlendOp(m_Desc.blendState.colorAttachment.alphaBlendOp);
         colorBlendAttachment.colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 

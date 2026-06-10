@@ -20,6 +20,12 @@ namespace ark {
         float occlusionStrength = 1.0f;
     };
 
+    struct MaterialRenderState {
+        asset::AlphaMode alphaMode = asset::AlphaMode::Opaque;
+        float alphaCutoff = 0.5f;
+        bool doubleSided = false;
+    };
+
     struct MaterialTextureSet {
         TextureResource* baseColor = nullptr;
         TextureResource* normal = nullptr;
@@ -58,10 +64,15 @@ namespace ark {
             return m_Textures;
         }
 
+        const MaterialRenderState& renderState() const {
+            return m_RenderState;
+        }
+
         bool isReady() const;
 
     private:
         MaterialFactors m_Factors;
+        MaterialRenderState m_RenderState;
         MaterialTextureSet m_Textures;
     };
 } // namespace ark

@@ -68,6 +68,9 @@ namespace ark {
         m_Factors.roughnessFactor = material.roughnessFactor;
         m_Factors.normalScale = material.normalScale;
         m_Factors.occlusionStrength = material.occlusionStrength;
+        m_RenderState.alphaMode = material.alphaMode;
+        m_RenderState.alphaCutoff = material.alphaCutoff;
+        m_RenderState.doubleSided = material.doubleSided;
         m_Textures = textures;
         return true;
     }

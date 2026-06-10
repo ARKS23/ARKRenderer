@@ -103,6 +103,12 @@ namespace {
             return false;
         }
 
+        if (material.alphaMode != ark::asset::AlphaMode::Mask || !near(material.alphaCutoff, 0.42f) ||
+            !material.doubleSided) {
+            std::cerr << "Unexpected glTF material render state\n";
+            return false;
+        }
+
         return true;
     }
 
@@ -302,6 +308,50 @@ namespace {
         return true;
     }
 
+    bool validateAlphaModesFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/alpha_modes_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find alpha modes glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 3 || model.materials.size() != 3 ||
+            model.instances.size() != 3) {
+            std::cerr << "Unexpected alpha modes glTF model shape\n";
+            return false;
+        }
+
+        if (model.meshes[0].materialIndex != 0 || model.meshes[1].materialIndex != 1 ||
+            model.meshes[2].materialIndex != 2) {
+            std::cerr << "Unexpected alpha modes material remap\n";
+            return false;
+        }
+
+        const ark::asset::MaterialData& opaque = model.materials[0];
+        const ark::asset::MaterialData& mask = model.materials[1];
+        const ark::asset::MaterialData& blend = model.materials[2];
+        if (opaque.alphaMode != ark::asset::AlphaMode::Opaque || !near(opaque.alphaCutoff, 0.5f) ||
+            opaque.doubleSided || !near(opaque.baseColorFactor[3], 0.25f)) {
+            std::cerr << "Unexpected opaque alpha material state\n";
+            return false;
+        }
+
+        if (mask.alphaMode != ark::asset::AlphaMode::Mask || !near(mask.alphaCutoff, 0.35f) ||
+            !mask.doubleSided || !near(mask.baseColorFactor[3], 0.5f)) {
+            std::cerr << "Unexpected mask alpha material state\n";
+            return false;
+        }
+
+        if (blend.alphaMode != ark::asset::AlphaMode::Blend || !near(blend.alphaCutoff, 0.5f) ||
+            blend.doubleSided || !near(blend.baseColorFactor[3], 0.75f)) {
+            std::cerr << "Unexpected blend alpha material state\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateOptionalDamagedHelmetFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/DamagedHelmet/DamagedHelmet.gltf"});
         if (path.empty()) {
@@ -355,7 +405,7 @@ namespace {
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
                    validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
-                   validateOptionalDamagedHelmetFixture()
+                   validateAlphaModesFixture() && validateOptionalDamagedHelmetFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

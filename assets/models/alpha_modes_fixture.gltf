@@ -1,7 +1,7 @@
 {
   "asset": {
     "version": "2.0",
-    "generator": "ARKRenderer Phase 0.8 fixture"
+    "generator": "ARKRenderer Phase 0.20 alpha modes fixture"
   },
   "scene": 0,
   "scenes": [
@@ -16,7 +16,7 @@
   ],
   "meshes": [
     {
-      "name": "ForwardFixtureQuad",
+      "name": "AlphaModesQuad",
       "primitives": [
         {
           "attributes": {
@@ -27,39 +27,62 @@
           "indices": 3,
           "material": 0,
           "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 4,
+          "material": 1,
+          "mode": 4
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 5,
+          "material": 2,
+          "mode": 4
         }
       ]
     }
   ],
   "materials": [
     {
-      "name": "ForwardFixtureMaterial",
+      "name": "AlphaOpaqueMaterial",
       "pbrMetallicRoughness": {
-        "baseColorFactor": [0.25, 0.5, 0.75, 0.8],
+        "baseColorFactor": [1.0, 1.0, 1.0, 0.25],
         "baseColorTexture": {
           "index": 0
-        },
-        "metallicRoughnessTexture": {
+        }
+      }
+    },
+    {
+      "name": "AlphaMaskMaterial",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1.0, 1.0, 1.0, 0.5],
+        "baseColorTexture": {
           "index": 0
-        },
-        "metallicFactor": 0.35,
-        "roughnessFactor": 0.65
+        }
       },
-      "normalTexture": {
-        "index": 0,
-        "scale": 0.75
-      },
-      "occlusionTexture": {
-        "index": 0,
-        "strength": 0.5
-      },
-      "emissiveTexture": {
-        "index": 0
-      },
-      "emissiveFactor": [0.1, 0.2, 0.3],
       "alphaMode": "MASK",
-      "alphaCutoff": 0.42,
+      "alphaCutoff": 0.35,
       "doubleSided": true
+    },
+    {
+      "name": "AlphaBlendMaterial",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1.0, 1.0, 1.0, 0.75],
+        "baseColorTexture": {
+          "index": 0
+        }
+      },
+      "alphaMode": "BLEND",
+      "doubleSided": false
     }
   ],
   "textures": [
@@ -97,6 +120,16 @@
     {
       "buffer": 0,
       "byteOffset": 128,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 140,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 128,
       "byteLength": 24
     }
   ],
@@ -123,6 +156,18 @@
     },
     {
       "bufferView": 3,
+      "componentType": 5125,
+      "count": 3,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5125,
+      "count": 3,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 5,
       "componentType": 5125,
       "count": 6,
       "type": "SCALAR"

@@ -925,6 +925,9 @@ namespace {
         material.roughnessFactor = 0.7f;
         material.normalScale = 0.6f;
         material.occlusionStrength = 0.9f;
+        material.alphaMode = ark::asset::AlphaMode::Mask;
+        material.alphaCutoff = 0.35f;
+        material.doubleSided = true;
         ark::asset::MaterialData duplicateMaterial = material;
         duplicateMaterial.debugName = "DuplicateSmokeMaterial";
 
@@ -1006,6 +1009,13 @@ namespace {
             !near(materialFactors.normalScale, 0.6f) ||
             !near(materialFactors.occlusionStrength, 0.9f)) {
             std::cerr << "ModelResource did not preserve material factors\n";
+            return false;
+        }
+
+        const ark::MaterialRenderState& renderState = modelResource.primitiveMaterial(0)->renderState();
+        if (renderState.alphaMode != ark::asset::AlphaMode::Mask || !near(renderState.alphaCutoff, 0.35f) ||
+            !renderState.doubleSided) {
+            std::cerr << "ModelResource did not preserve material render state\n";
             return false;
         }
 
@@ -1114,6 +1124,50 @@ namespace {
         return true;
     }
 
+    bool validateAlphaModesModelResource() {
+        const ark::Path modelPath = findModelPath(ark::Path{"assets/models/alpha_modes_fixture.gltf"});
+        if (modelPath.empty()) {
+            std::cerr << "Failed to find alpha modes fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
+        if (modelData.empty() || modelData.meshes.size() != 3 || modelData.materials.size() != 3) {
+            std::cerr << "Unexpected alpha modes fixture model data\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Alpha modes ModelResource create failed\n";
+            return false;
+        }
+
+        if (modelResource.primitiveCount() != 3 || modelResource.materialCount() != 3 ||
+            textureCache.size() != 5 || device.textureCount != 5 || device.textureViewCount != 5 ||
+            device.samplerCount != 5) {
+            std::cerr << "Alpha modes fixture resource counts are invalid\n";
+            return false;
+        }
+
+        const ark::MaterialRenderState& opaque = modelResource.primitiveMaterial(0)->renderState();
+        const ark::MaterialRenderState& mask = modelResource.primitiveMaterial(1)->renderState();
+        const ark::MaterialRenderState& blend = modelResource.primitiveMaterial(2)->renderState();
+        if (opaque.alphaMode != ark::asset::AlphaMode::Opaque || !near(opaque.alphaCutoff, 0.5f) ||
+            opaque.doubleSided ||
+            mask.alphaMode != ark::asset::AlphaMode::Mask || !near(mask.alphaCutoff, 0.35f) ||
+            !mask.doubleSided ||
+            blend.alphaMode != ark::asset::AlphaMode::Blend || !near(blend.alphaCutoff, 0.5f) ||
+            blend.doubleSided) {
+            std::cerr << "Alpha modes MaterialResource render state is invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateModelResourceSamplerOverride() {
         const ark::Path texturePath = findTexturePath();
         if (texturePath.empty()) {
@@ -1172,7 +1226,8 @@ int main() {
                    validateMaterialResourceTextureSlots() && validateMeshResourceDeferredRelease() &&
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
-                   validateTextureCacheFixtureModelResource() && validateModelResourceSamplerOverride()
+                   validateTextureCacheFixtureModelResource() && validateAlphaModesModelResource() &&
+                   validateModelResourceSamplerOverride()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

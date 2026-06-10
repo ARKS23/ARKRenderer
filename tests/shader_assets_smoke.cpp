@@ -60,8 +60,12 @@ namespace {
         if (!containsText(shaderSource, "struct PbrInputs") ||
             !containsText(shaderSource, "buildWorldNormal") ||
             !containsText(shaderSource, "evaluateDirectLighting") ||
-            !containsText(shaderSource, "[[vk::binding(13, 0)]]")) {
-            std::cerr << "Mesh fragment shader does not expose expected Phase 0.17 lighting path\n";
+            !containsText(shaderSource, "[[vk::binding(13, 0)]]") ||
+            !containsText(shaderSource, "alphaCutoff") ||
+            !containsText(shaderSource, "AlphaModeMask") ||
+            !containsText(shaderSource, "discard") ||
+            !containsText(shaderSource, "AlphaModeBlend")) {
+            std::cerr << "Mesh fragment shader does not expose expected lighting and alpha path\n";
             return false;
         }
 

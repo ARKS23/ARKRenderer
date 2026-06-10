@@ -56,8 +56,25 @@ namespace ark::rhi {
         CompareOp depthCompareOp = CompareOp::Less;
     };
 
+    enum class BlendFactor {
+        Zero,
+        One,
+        SrcAlpha,
+        OneMinusSrcAlpha,
+    };
+
+    enum class BlendOp {
+        Add,
+    };
+
     struct ColorBlendAttachmentDesc {
         bool enableBlend = false;
+        BlendFactor srcColorBlendFactor = BlendFactor::One;
+        BlendFactor dstColorBlendFactor = BlendFactor::Zero;
+        BlendOp colorBlendOp = BlendOp::Add;
+        BlendFactor srcAlphaBlendFactor = BlendFactor::One;
+        BlendFactor dstAlphaBlendFactor = BlendFactor::Zero;
+        BlendOp alphaBlendOp = BlendOp::Add;
     };
 
     struct BlendStateDesc {

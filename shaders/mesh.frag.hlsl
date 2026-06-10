@@ -43,10 +43,16 @@ struct MaterialUniform {
     float roughnessFactor;
     float normalScale;
     float occlusionStrength;
+    float alphaCutoff;
+    float alphaMode;
+    float2 padding;
 };
 
 [[vk::binding(4, 0)]]
 ConstantBuffer<MaterialUniform> g_Material;
+
+static const float AlphaModeMask = 1.0f;
+static const float AlphaModeBlend = 2.0f;
 
 struct LightingUniform {
     float4 lightDirection;
@@ -121,5 +127,10 @@ float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
 
 float4 main(PSInput input) : SV_Target0 {
     const PbrInputs inputs = readPbrInputs(input);
-    return float4(evaluateDirectLighting(inputs, input.worldPosition), inputs.baseColor.a);
+    if (g_Material.alphaMode == AlphaModeMask && inputs.baseColor.a < g_Material.alphaCutoff) {
+        discard;
+    }
+
+    const float outputAlpha = g_Material.alphaMode == AlphaModeBlend ? inputs.baseColor.a : 1.0f;
+    return float4(evaluateDirectLighting(inputs, input.worldPosition), outputAlpha);
 }

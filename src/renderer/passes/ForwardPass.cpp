@@ -37,9 +37,12 @@ namespace ark {
             float roughnessFactor = 1.0f;
             float normalScale = 1.0f;
             float occlusionStrength = 1.0f;
+            float alphaCutoff = 0.5f;
+            float alphaMode = 0.0f;
+            glm::vec2 padding{0.0f};
         };
 
-        static_assert(sizeof(MaterialUniform) == 48);
+        static_assert(sizeof(MaterialUniform) == 64);
 
         struct alignas(16) LightingUniform {
             glm::vec4 lightDirection;
@@ -95,6 +98,7 @@ namespace ark {
 
         MaterialUniform makeMaterialUniform(const MaterialResource& material) {
             const MaterialFactors& factors = material.factors();
+            const MaterialRenderState& renderState = material.renderState();
 
             MaterialUniform uniform{};
             uniform.baseColorFactor = glm::vec4{
@@ -113,7 +117,25 @@ namespace ark {
             uniform.roughnessFactor = factors.roughnessFactor;
             uniform.normalScale = factors.normalScale;
             uniform.occlusionStrength = factors.occlusionStrength;
+            uniform.alphaCutoff = renderState.alphaCutoff;
+            uniform.alphaMode = static_cast<float>(renderState.alphaMode);
             return uniform;
+        }
+
+        rhi::BlendStateDesc makeBlendState(asset::AlphaMode alphaMode) {
+            rhi::BlendStateDesc blendState{};
+            if (alphaMode != asset::AlphaMode::Blend) {
+                return blendState;
+            }
+
+            blendState.colorAttachment.enableBlend = true;
+            blendState.colorAttachment.srcColorBlendFactor = rhi::BlendFactor::SrcAlpha;
+            blendState.colorAttachment.dstColorBlendFactor = rhi::BlendFactor::OneMinusSrcAlpha;
+            blendState.colorAttachment.colorBlendOp = rhi::BlendOp::Add;
+            blendState.colorAttachment.srcAlphaBlendFactor = rhi::BlendFactor::One;
+            blendState.colorAttachment.dstAlphaBlendFactor = rhi::BlendFactor::OneMinusSrcAlpha;
+            blendState.colorAttachment.alphaBlendOp = rhi::BlendOp::Add;
+            return blendState;
         }
     } // namespace
 
@@ -182,12 +204,9 @@ namespace ark {
             return true;
         }
 
-        if (!updateCameraUniform(frameContext, frameSlot) || !updateLightingUniform(frameContext, frameSlot) ||
-            !ensurePipeline(frameContext)) {
+        if (!updateCameraUniform(frameContext, frameSlot) || !updateLightingUniform(frameContext, frameSlot)) {
             return false;
         }
-
-        frameContext.context->setPipeline(*m_Pipeline);
         if (!frameContext.queue || frameContext.queue->empty()) {
             return true;
         }
@@ -360,22 +379,28 @@ namespace ark {
         return true;
     }
 
-    bool ForwardPass::ensurePipeline(FrameContext& frameContext) {
+    rhi::PipelineState* ForwardPass::getOrCreatePipeline(FrameContext& frameContext, const MaterialResource& material) {
         if (!m_Device || !frameContext.swapChain) {
             ARK_ERROR("ForwardPass requires RenderDevice and SwapChain");
-            return false;
+            return nullptr;
         }
 
         const rhi::SwapChainDesc& swapChainDesc = frameContext.swapChain->getDesc();
-        const rhi::Format colorFormat = swapChainDesc.colorFormat;
-        const rhi::Format depthFormat = swapChainDesc.depthFormat;
-        if (m_Pipeline && m_PipelineColorFormat == colorFormat && m_PipelineDepthFormat == depthFormat) {
-            return true;
+        const MaterialRenderState& renderState = material.renderState();
+        ForwardPipelineKey key{};
+        key.colorFormat = swapChainDesc.colorFormat;
+        key.depthFormat = swapChainDesc.depthFormat;
+        key.alphaMode = renderState.alphaMode;
+        key.doubleSided = renderState.doubleSided;
+
+        auto existing = m_Pipelines.find(key);
+        if (existing != m_Pipelines.end()) {
+            return existing->second.get();
         }
 
         if (!m_VertexShader || !m_FragmentShader || !m_PipelineLayout) {
             ARK_ERROR("ForwardPass requires shader modules and pipeline layout");
-            return false;
+            return nullptr;
         }
 
         rhi::VertexBufferLayoutDesc vertexLayout{};
@@ -409,17 +434,23 @@ namespace ark {
         pipelineDesc.layout = m_PipelineLayout.get();
         pipelineDesc.vertexInput.buffers.push_back(vertexLayout);
         pipelineDesc.topology = rhi::PrimitiveTopology::TriangleList;
+        // TODO: 当前保持 None，避免在确认 glTF winding / projection 前引入 culling 回归。
         pipelineDesc.rasterState.cullMode = rhi::CullMode::None;
         pipelineDesc.depthStencilState.enableDepthTest = true;
-        pipelineDesc.depthStencilState.enableDepthWrite = true;
+        pipelineDesc.depthStencilState.enableDepthWrite = renderState.alphaMode != asset::AlphaMode::Blend;
         pipelineDesc.depthStencilState.depthCompareOp = rhi::CompareOp::Less;
-        pipelineDesc.colorFormat = colorFormat;
-        pipelineDesc.depthFormat = depthFormat;
+        pipelineDesc.blendState = makeBlendState(renderState.alphaMode);
+        pipelineDesc.colorFormat = key.colorFormat;
+        pipelineDesc.depthFormat = key.depthFormat;
 
-        m_Pipeline = m_Device->createGraphicsPipeline(pipelineDesc);
-        m_PipelineColorFormat = colorFormat;
-        m_PipelineDepthFormat = depthFormat;
-        return m_Pipeline != nullptr;
+        Scope<rhi::PipelineState> pipeline = m_Device->createGraphicsPipeline(pipelineDesc);
+        if (!pipeline) {
+            return nullptr;
+        }
+
+        rhi::PipelineState* result = pipeline.get();
+        m_Pipelines.emplace(key, std::move(pipeline));
+        return result;
     }
 
     bool ForwardPass::updateCameraUniform(FrameContext& frameContext, u32 frameSlot) {
@@ -538,7 +569,13 @@ namespace ark {
             return false;
         }
 
+        rhi::PipelineState* pipeline = getOrCreatePipeline(frameContext, material);
+        if (!pipeline) {
+            return false;
+        }
+
         DrawDescriptorResources& descriptors = m_DrawDescriptors[frameSlot][drawIndex];
+        frameContext.context->setPipeline(*pipeline);
         frameContext.context->bindDescriptorSet(0, *descriptors.descriptorSet);
         mesh.bind(*frameContext.context);
         frameContext.context->drawIndexed(mesh.makeDrawIndexedDesc());

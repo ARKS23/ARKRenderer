@@ -172,6 +172,13 @@ int main() {
     graphicsPipelineDesc.depthStencilState.enableDepthTest = true;
     graphicsPipelineDesc.depthStencilState.enableDepthWrite = true;
     graphicsPipelineDesc.depthStencilState.depthCompareOp = ark::rhi::CompareOp::Less;
+    graphicsPipelineDesc.blendState.colorAttachment.enableBlend = true;
+    graphicsPipelineDesc.blendState.colorAttachment.srcColorBlendFactor = ark::rhi::BlendFactor::SrcAlpha;
+    graphicsPipelineDesc.blendState.colorAttachment.dstColorBlendFactor = ark::rhi::BlendFactor::OneMinusSrcAlpha;
+    graphicsPipelineDesc.blendState.colorAttachment.colorBlendOp = ark::rhi::BlendOp::Add;
+    graphicsPipelineDesc.blendState.colorAttachment.srcAlphaBlendFactor = ark::rhi::BlendFactor::One;
+    graphicsPipelineDesc.blendState.colorAttachment.dstAlphaBlendFactor = ark::rhi::BlendFactor::OneMinusSrcAlpha;
+    graphicsPipelineDesc.blendState.colorAttachment.alphaBlendOp = ark::rhi::BlendOp::Add;
 
     ark::rhi::RenderingDesc renderingDesc{};
     renderingDesc.extent = swapChainDesc.extent;
@@ -229,6 +236,9 @@ int main() {
     materialData.baseColorTexture.hasSampler = true;
     materialData.baseColorTexture.sampler.minFilter = ark::asset::TextureFilter::Nearest;
     materialData.baseColorTexture.sampler.addressU = ark::asset::TextureAddressMode::MirroredRepeat;
+    materialData.alphaMode = ark::asset::AlphaMode::Mask;
+    materialData.alphaCutoff = 0.42f;
+    materialData.doubleSided = true;
     ark::asset::ModelData modelData{};
     modelData.meshes.push_back(meshPrimitive);
     modelData.materials.push_back(materialData);

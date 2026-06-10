@@ -16,6 +16,7 @@
 #include <glm/mat4x4.hpp>
 
 #include <array>
+#include <map>
 #include <vector>
 
 namespace ark {
@@ -36,7 +37,7 @@ namespace ark {
         bool createPipelineResources();
         usize drawItemCount(const FrameContext& frameContext) const;
         bool ensureDrawDescriptorResources(u32 frameSlot, usize drawCount);
-        bool ensurePipeline(FrameContext& frameContext);
+        rhi::PipelineState* getOrCreatePipeline(FrameContext& frameContext, const MaterialResource& material);
         bool updateCameraUniform(FrameContext& frameContext, u32 frameSlot);
         bool updateLightingUniform(FrameContext& frameContext, u32 frameSlot);
         bool updateObjectUniform(FrameContext& frameContext,
@@ -61,6 +62,26 @@ namespace ark {
             Scope<rhi::DescriptorSet> descriptorSet;
         };
 
+        struct ForwardPipelineKey {
+            rhi::Format colorFormat = rhi::Format::Unknown;
+            rhi::Format depthFormat = rhi::Format::Unknown;
+            asset::AlphaMode alphaMode = asset::AlphaMode::Opaque;
+            bool doubleSided = false;
+
+            bool operator<(const ForwardPipelineKey& other) const {
+                if (colorFormat != other.colorFormat) {
+                    return static_cast<int>(colorFormat) < static_cast<int>(other.colorFormat);
+                }
+                if (depthFormat != other.depthFormat) {
+                    return static_cast<int>(depthFormat) < static_cast<int>(other.depthFormat);
+                }
+                if (alphaMode != other.alphaMode) {
+                    return static_cast<int>(alphaMode) < static_cast<int>(other.alphaMode);
+                }
+                return doubleSided < other.doubleSided;
+            }
+        };
+
         rhi::RenderDevice* m_Device = nullptr;
         std::array<Scope<rhi::Buffer>, FramesInFlight> m_CameraBuffers;
         std::array<Scope<rhi::Buffer>, FramesInFlight> m_LightingBuffers;
@@ -69,8 +90,6 @@ namespace ark {
         Scope<rhi::Shader> m_VertexShader;
         Scope<rhi::Shader> m_FragmentShader;
         Scope<rhi::PipelineLayout> m_PipelineLayout;
-        Scope<rhi::PipelineState> m_Pipeline;
-        rhi::Format m_PipelineColorFormat = rhi::Format::Unknown;
-        rhi::Format m_PipelineDepthFormat = rhi::Format::Unknown;
+        std::map<ForwardPipelineKey, Scope<rhi::PipelineState>> m_Pipelines;
     };
 } // namespace ark

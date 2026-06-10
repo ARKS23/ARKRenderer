@@ -523,6 +523,23 @@ namespace ark::asset {
             return gltfPath.parent_path() / uriPath;
         }
 
+        AlphaMode toAlphaMode(const std::string& alphaMode) {
+            if (alphaMode.empty() || alphaMode == "OPAQUE") {
+                return AlphaMode::Opaque;
+            }
+
+            if (alphaMode == "MASK") {
+                return AlphaMode::Mask;
+            }
+
+            if (alphaMode == "BLEND") {
+                return AlphaMode::Blend;
+            }
+
+            ARK_WARN("glTF material alphaMode is unsupported: {}", alphaMode);
+            return AlphaMode::Opaque;
+        }
+
         MaterialTextureSlotData resolveTextureSlot(const Path& gltfPath,
                                                    const tinygltf::Model& model,
                                                    int textureIndex,
@@ -581,6 +598,9 @@ namespace ark::asset {
             material.roughnessFactor = static_cast<float>(pbr.roughnessFactor);
             material.normalScale = static_cast<float>(gltfMaterial.normalTexture.scale);
             material.occlusionStrength = static_cast<float>(gltfMaterial.occlusionTexture.strength);
+            material.alphaMode = toAlphaMode(gltfMaterial.alphaMode);
+            material.alphaCutoff = static_cast<float>(gltfMaterial.alphaCutoff);
+            material.doubleSided = gltfMaterial.doubleSided;
 
             material.baseColorTexture = resolveTextureSlot(gltfPath,
                                                            gltfModel,

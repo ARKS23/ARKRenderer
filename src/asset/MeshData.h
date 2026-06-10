@@ -47,6 +47,12 @@ namespace ark::asset {
         MirroredRepeat,
     };
 
+    enum class AlphaMode {
+        Opaque,
+        Mask,
+        Blend,
+    };
+
     struct TextureSamplerData {
         TextureFilter minFilter = TextureFilter::Linear;
         TextureFilter magFilter = TextureFilter::Linear;
@@ -83,6 +89,9 @@ namespace ark::asset {
         float emissiveFactor[3] = {0.0f, 0.0f, 0.0f}; // glTF emissiveFactor，默认无自发光。
         float normalScale = 1.0f; // glTF normalTexture.scale，后续 normal mapping 使用。
         float occlusionStrength = 1.0f; // glTF occlusionTexture.strength，后续 AO 使用。
+        AlphaMode alphaMode = AlphaMode::Opaque; // glTF alphaMode，控制 ForwardPass pipeline variant。
+        float alphaCutoff = 0.5f; // glTF alphaCutoff，只对 MASK 生效。
+        bool doubleSided = false; // glTF doubleSided，后续映射到 raster cull mode。
         std::string debugName;
 
         bool hasBaseColorTexture() const {
