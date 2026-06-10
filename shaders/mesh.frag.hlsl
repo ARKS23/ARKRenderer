@@ -52,6 +52,16 @@ struct MaterialUniform {
     float occlusionTexCoord;
     float emissiveTexCoord;
     float padding;
+    float4 baseColorUvTransform0;
+    float4 baseColorUvTransform1;
+    float4 normalUvTransform0;
+    float4 normalUvTransform1;
+    float4 metallicRoughnessUvTransform0;
+    float4 metallicRoughnessUvTransform1;
+    float4 occlusionUvTransform0;
+    float4 occlusionUvTransform1;
+    float4 emissiveUvTransform0;
+    float4 emissiveUvTransform1;
 };
 
 [[vk::binding(4, 0)]]
@@ -94,13 +104,39 @@ float2 selectUv(float selector, float2 uv0, float2 uv1) {
     return selector >= 0.5f ? uv1 : uv0;
 }
 
+float2 transformUv(float2 uv, float2 offset, float2 scale, float rotation) {
+    const float s = sin(rotation);
+    const float c = cos(rotation);
+    const float2 scaled = uv * scale;
+    return float2(
+        c * scaled.x - s * scaled.y,
+        s * scaled.x + c * scaled.y
+    ) + offset;
+}
+
 PbrInputs readPbrInputs(PSInput input) {
     PbrInputs inputs;
-    const float2 baseColorUv = selectUv(g_Material.baseColorTexCoord, input.uv0, input.uv1);
-    const float2 normalUv = selectUv(g_Material.normalTexCoord, input.uv0, input.uv1);
-    const float2 metallicRoughnessUv = selectUv(g_Material.metallicRoughnessTexCoord, input.uv0, input.uv1);
-    const float2 occlusionUv = selectUv(g_Material.occlusionTexCoord, input.uv0, input.uv1);
-    const float2 emissiveUv = selectUv(g_Material.emissiveTexCoord, input.uv0, input.uv1);
+    const float2 baseColorUv = transformUv(selectUv(g_Material.baseColorTexCoord, input.uv0, input.uv1),
+                                           g_Material.baseColorUvTransform0.xy,
+                                           g_Material.baseColorUvTransform0.zw,
+                                           g_Material.baseColorUvTransform1.x);
+    const float2 normalUv = transformUv(selectUv(g_Material.normalTexCoord, input.uv0, input.uv1),
+                                        g_Material.normalUvTransform0.xy,
+                                        g_Material.normalUvTransform0.zw,
+                                        g_Material.normalUvTransform1.x);
+    const float2 metallicRoughnessUv =
+        transformUv(selectUv(g_Material.metallicRoughnessTexCoord, input.uv0, input.uv1),
+                    g_Material.metallicRoughnessUvTransform0.xy,
+                    g_Material.metallicRoughnessUvTransform0.zw,
+                    g_Material.metallicRoughnessUvTransform1.x);
+    const float2 occlusionUv = transformUv(selectUv(g_Material.occlusionTexCoord, input.uv0, input.uv1),
+                                           g_Material.occlusionUvTransform0.xy,
+                                           g_Material.occlusionUvTransform0.zw,
+                                           g_Material.occlusionUvTransform1.x);
+    const float2 emissiveUv = transformUv(selectUv(g_Material.emissiveTexCoord, input.uv0, input.uv1),
+                                          g_Material.emissiveUvTransform0.xy,
+                                          g_Material.emissiveUvTransform0.zw,
+                                          g_Material.emissiveUvTransform1.x);
 
     inputs.baseColor = g_BaseColorTexture.Sample(g_BaseColorSampler, baseColorUv) * g_Material.baseColorFactor;
 

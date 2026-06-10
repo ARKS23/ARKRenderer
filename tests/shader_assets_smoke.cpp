@@ -66,11 +66,17 @@ namespace {
             !containsText(shaderSource, "discard") ||
             !containsText(shaderSource, "AlphaModeBlend") ||
             !containsText(shaderSource, "selectUv") ||
+            !containsText(shaderSource, "transformUv") ||
             !containsText(shaderSource, "baseColorTexCoord") ||
             !containsText(shaderSource, "normalTexCoord") ||
             !containsText(shaderSource, "metallicRoughnessTexCoord") ||
             !containsText(shaderSource, "occlusionTexCoord") ||
-            !containsText(shaderSource, "emissiveTexCoord")) {
+            !containsText(shaderSource, "emissiveTexCoord") ||
+            !containsText(shaderSource, "baseColorUvTransform0") ||
+            !containsText(shaderSource, "normalUvTransform0") ||
+            !containsText(shaderSource, "metallicRoughnessUvTransform0") ||
+            !containsText(shaderSource, "occlusionUvTransform0") ||
+            !containsText(shaderSource, "emissiveUvTransform0")) {
             std::cerr << "Mesh fragment shader does not expose expected lighting, alpha and UV selection path\n";
             return false;
         }

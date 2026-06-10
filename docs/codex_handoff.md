@@ -4,7 +4,7 @@
 
 ## 1. 当前状态
 
-ARKRenderer 当前代码实现已完成 Phase 0.21。仓库最新提交还新增了 Phase 0.22 设计文档，但 `KHR_texture_transform` 只完成规划，尚未落地到代码、fixture 或 tests。
+ARKRenderer 当前代码实现已完成 Phase 0.22：`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests。
 
 当前默认渲染主线：
 
@@ -25,9 +25,10 @@ Vulkan Dynamic Rendering
             -> RenderView camera uniform
             -> per-draw object uniform + normal matrix
             -> per-draw material uniform
-               factors + alpha state + per-slot texCoord selectors
+               factors + alpha state + per-slot texCoord selectors + per-slot texture transforms
             -> lighting uniform
             -> baseColor / normal / metallicRoughness / occlusion / emissive sampled images + samplers
+            -> per-slot selectUv() + transformUv() before sampling
             -> alphaMode / doubleSided pipeline variant key
             -> indexed textured mesh draw(s)
         -> endRendering()
@@ -51,32 +52,48 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 
 `assets/models/DamagedHelmet/` 是本地真实模型资产目录，已加入 `.gitignore`，不作为默认资源，也不应在未明确要求时提交。
 
-Phase 0.22 当前只新增：
+Phase 0.22 已完成的主要改动：
 
 ```text
 docs/phase/phase22.md
+src/asset/MeshData.h
+src/asset/GltfLoader.cpp
+src/renderer/material/MaterialResource.h/.cpp
+src/renderer/passes/ForwardPass.cpp
+shaders/mesh.frag.hlsl
+assets/models/texture_transform_fixture.gltf
+tests/gltf_loader_smoke.cpp
+tests/model_resource_smoke.cpp
+tests/shader_assets_smoke.cpp
+tests/framework_headers_smoke.cpp
 ```
 
-它定义下一步 `KHR_texture_transform` 最小闭环，尚未新增 `TextureTransformData`、`texture_transform_fixture.gltf`、shader `transformUv()` 或对应 tests。
+当前支持范围：
+
+- 读取 textureInfo 上的 `KHR_texture_transform`。
+- 支持 `offset`、`scale`、`rotation`。
+- 支持 extension 内 `texCoord` override。
+- 最终 `texCoord` 仍只支持 0/1；超过范围 warning 后 fallback 到 0。
+- transform 是 material texture slot 语义，不进入 `TextureResource` 或 `TextureCache` key。
+- shader 对 baseColor、normal、metallicRoughness、occlusion、emissive 分别应用自己的 transform。
+- 尚不支持 texture transform animation、`TEXCOORD_2+`、完整 glTF extension 系统或 per-UV-set tangent basis。
 
 ## 2. 最近提交与工作区
 
-最近提交：
+最近提交（本次 Phase 0.22 收尾提交前）：
 
 ```text
+47b7af2 完成 Phase22 texture transform 数据流基础
+98aeea9 更新 Codex handoff 至 Phase21
 40b5082 pahse22文档
 a458a5c 完成 Phase21 TEXCOORD1 采样闭环
 7b5307e 完成 Phase20 glTF alpha render states
 039c16f 完成 Phase19 glTF sampler 闭环
 54f4f48 完成 Phase18 tangent 生成与模型验证入口
 0c49e98 完成 Phase17 shader 光照解释收尾
-250f24f 完成 Phase17 tangent 与 lighting uniform 基础
-5aa9bda 完成 Phase16 多纹理材质闭环
-d392e8c 完成 Phase16 texture slots 基础设施
-b7fa9f8 完成 Phase15 glTF material factors 闭环
 ```
 
-本次同步 handoff 前工作区状态：
+本次 Phase 0.22 收尾提交推送后，预期工作区状态：
 
 ```text
 ## main...origin/main
@@ -240,32 +257,46 @@ git log --oneline -n 5
 - 新增 `texcoord1_fixture.gltf`，覆盖 `TEXCOORD_1` 和多 texture slot texCoord。
 - `gltf_loader_smoke`、`model_resource_smoke`、`shader_assets_smoke`、`framework_headers_smoke`、`mesh_data_smoke` 覆盖 Phase 0.21 关键路径。
 
+### Phase 0.22
+
+- `asset::TextureTransformData` 表达 glTF texture transform，默认 identity。
+- `MaterialTextureSlotData` 持有 per-slot transform。
+- `GltfLoader` 读取 textureInfo 上的 `KHR_texture_transform`，支持 `offset`、`scale`、`rotation` 和 extension 内 `texCoord` override。
+- malformed optional transform field warning 后保留默认值，不中断 glTF 加载。
+- extension 内 `texCoord` override 后仍沿用 0/1/fallback 规则。
+- `MaterialResource` 缓存 baseColor、normal、metallicRoughness、occlusion、emissive 的 per-slot transform，并暴露 `textureTransforms()`。
+- `ForwardPass::MaterialUniform` 携带 per-slot texture transform，binding/layout 保持不变。
+- `mesh.frag.hlsl` 对每个 texture slot 执行 `selectUv()` 后再执行 `transformUv()`。
+- baseColor alpha mask 使用 transformed baseColor UV。
+- 新增 `texture_transform_fixture.gltf` 覆盖 `TEXCOORD_0/1`、extension texCoord override 和五个 texture slot 的 transform。
+- `gltf_loader_smoke`、`model_resource_smoke`、`shader_assets_smoke`、`framework_headers_smoke` 覆盖 Phase 0.22 关键路径。
+
 ## 4. 关键代码阅读顺序
 
-建议按以下顺序审核当前 Phase 0.21 闭环和 Phase 0.22 入口：
+建议按以下顺序审核当前 Phase 0.22 闭环：
 
 1. `docs/phase/phase21.md`
-   - 确认当前已完成的 `TEXCOORD_1` / per-slot UV selection 范围和限制。
+   - 回看 `TEXCOORD_1` / per-slot UV selection 的前置范围和限制。
 2. `docs/phase/phase22.md`
-   - 这是下一阶段计划，尚未实现。重点看 `KHR_texture_transform` 数据流、非目标和测试要求。
+   - 确认 `KHR_texture_transform` 最小闭环、当前限制和验证记录。
 3. `src/asset/MeshData.h/.cpp`
-   - 看 `MeshVertex::uv1`、tangent 字段、`MaterialTextureSlotData` 和 `generateTangents()`。
+   - 看 `MeshVertex::uv1`、tangent 字段、`TextureTransformData`、`MaterialTextureSlotData` 和 `generateTangents()`。
 4. `src/asset/GltfLoader.cpp`
-   - 看 sampler、alpha render state、`TEXCOORD_1`、显式/生成 tangent、scene/node instance 的读取路径。
+   - 看 sampler、alpha render state、`TEXCOORD_1`、`KHR_texture_transform`、显式/生成 tangent、scene/node instance 的读取路径。
 5. `src/renderer/ModelResource.cpp`
    - 看 asset sampler 到 RHI sampler 的转换、texture cache 获取和 fallback texture。
 6. `src/renderer/material/MaterialResource.h/.cpp`
-   - 看 material factors、render state、texture references、per-slot texCoord set 和 descriptor 写入。
+   - 看 material factors、render state、texture references、per-slot texCoord set、per-slot transform set 和 descriptor 写入。
 7. `src/renderer/passes/ForwardPass.cpp`
-   - 看 descriptor layout、pipeline variant key、vertex layout、camera/object/material/lighting uniform、draw loop。
+   - 看 descriptor layout、pipeline variant key、vertex layout、camera/object/material/lighting uniform、per-slot transform 写入和 draw loop。
 8. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
-   - 确认 normal matrix、uv1 传递、per-slot `selectUv()`、alpha mask/blend 和 lighting 路径。
+   - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend 和 lighting 路径。
 9. `src/renderer/FrameRenderer.cpp`
    - 确认 `prepare()` 仍在 `beginRendering()` 前，upload/mip generation/deferred release 不进入 dynamic rendering scope。
 10. `src/rhi/vulkan/VulkanCommandContext.cpp` / `VulkanPipelineState.cpp` / `VulkanSampler.cpp`
     - 看 upload/mip generation scope 检查、blend/cull/depth state、sampler address/filter 映射。
 11. `tests/gltf_loader_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/shader_assets_smoke.cpp`
-    - 看当前 smoke tests 对 sampler、alpha、uv1、shader source 的约束。
+    - 看当前 smoke tests 对 sampler、alpha、uv1、texture transform、shader source 的约束。
 
 ## 5. 必须继续遵守的架构边界
 
@@ -289,7 +320,7 @@ docs/phase/phase22.md
 - `asset/` 不依赖 renderer/RHI/Vulkan；需要新增语义时先放 asset 自有数据结构。
 - tangent generation 属于 asset CPU 后处理，不进入 renderer/RHI/Vulkan。
 - `TextureLoader` 只输出 CPU `ImageData`，不决定 GPU sRGB/linear 采样语义，也不参与 mip generation。
-- texture transform 若实现，属于 material slot 语义；不要放进 `TextureResource` 或 `TextureCache` key。
+- texture transform 属于 material slot 语义；不要放进 `TextureResource` 或 `TextureCache` key。
 - `renderer/` 可以创建和持有 RHI 资源，但不能接触 Vulkan 类型。
 - `RenderScene` 保存 scene 语义，不创建 GPU 资源。
 - `RenderQueue` 是 draw list，不拥有底层 GPU 资源；当前不做透明排序。
@@ -306,11 +337,11 @@ docs/phase/phase22.md
 
 P0 / 下一阶段优先：
 
-- Phase 0.22 `KHR_texture_transform` 尚未实现；当前只读取 textureInfo `texCoord`，不处理 offset / scale / rotation / extension texCoord override。
 - Blend draw 仍未做 back-to-front sorting；当前只保证 pipeline state 和 shader output 正确，不声明透明排序完全正确。
 - `doubleSided` 已进入 asset、material resource 和 pipeline variant key，但 `ForwardPass` 当前仍保持 `CullMode::None`，后续需要确认 glTF winding / projection 后再收紧 culling。
 - tangent generation 不是 MikkTSpace；与 DCC/baker 的 tangent basis 可能不完全一致。
 - tangent generation 仍基于 `uv0`；如果 normal texture 使用 `texCoord=1`，严格 tangent basis 仍是后续改进项。
+- `KHR_texture_transform` 已支持 textureInfo 上的 offset / scale / rotation / texCoord override，但不支持 animation、`TEXCOORD_2+` 或 per-UV-set tangent basis。
 - 当前 direct lighting 仍是最小实现，没有 IBL/HDR/tone mapping。
 - `Renderer` 内部默认 scene 仍是 sandbox 过渡方案；真正 renderer 级资源/场景加载入口尚未设计。
 - `assets/models/DamagedHelmet/` 可作为真实 glTF 2.0 验证对象，但不应作为默认路径或提交依赖。
@@ -321,7 +352,7 @@ P1：
 - texture upload 仍只覆盖 RGBA8 / RGBA8 sRGB、mip0 upload、array layer 0、tightly packed rows。
 - mip generation 只支持 2D color texture、single array layer、GPU blit；不支持离线 mip、array/cubemap、HDR 或压缩纹理。
 - glTF skin、animation、morph target、embedded image、data URI image、`TEXCOORD_2+` 尚未支持。
-- glTF extensions 只规划了下一步 `KHR_texture_transform` 最小支持；`KHR_materials_*` 等仍未支持。
+- glTF extensions 目前只完成 `KHR_texture_transform` 最小支持；`KHR_materials_*` 等仍未支持。
 - sampler cache 尚未独立拆分；同 image 不同 sampler 当前会重复创建 texture/view/sampler。
 - anisotropy、compare sampler、shadow sampler 尚未接入。
 - shader binding 与 descriptor layout 仍靠人工一致，后续可考虑 reflection 或测试校验。
@@ -339,13 +370,11 @@ P2：
 
 ## 7. 最近验证记录
 
-本次 handoff 同步没有重新运行 build/test；当前 macOS 工作区没有 `build/` 目录，仓库 preset 仍以 Windows/MSVC vcpkg 为主。
-
-最新已记录的 Phase 0.21 验证结果来自 `docs/phase/phase21.md`：
+Phase 0.22 收尾在 Windows/MSVC vcpkg debug preset 下完成验证：
 
 ```powershell
-cmake --build --preset msvc-vcpkg-local-debug
-ctest --preset msvc-vcpkg-local-debug
+cmake --build --preset msvc-vcpkg-debug
+ctest --preset msvc-vcpkg-debug
 build/msvc-vcpkg/Debug/ark_sandbox.exe
 build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf
 ```
@@ -356,50 +385,33 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 build passed
 CTest: 8/8 passed
 default sandbox smoke passed
-DamagedHelmet optional smoke passed
+DamagedHelmet sandbox smoke passed
 ```
 
-DamagedHelmet smoke 中已知 warning：
-
-```text
-Tangent generation skipped degenerate triangles: mesh=GltfPrimitive, count=66
-```
-
-该 warning 是当前 tangent generation fallback 路径的输入质量提示，不阻断渲染。
+本轮 sandbox smoke 使用隐藏窗口启动 3 秒后自动停止，用于确认默认场景和 DamagedHelmet 路径不会启动即退出。
 
 ## 8. 推荐下一步
 
-建议下一阶段继续按 `docs/phase/phase22.md` 落地，不要直接进入完整 RenderGraph / bindless。
+Phase 0.22 后建议继续保持小步闭环，不要直接进入完整 RenderGraph / bindless。
 
 优先顺序：
 
-1. `KHR_texture_transform` 最小支持。
-2. transparent sorting / RenderQueue 分桶。
-3. doubleSided culling 精确化。
-4. 可配置 scene light / camera。
-5. 更完整的 direct lighting BRDF。
-6. HDR framebuffer 与 tone mapping。
-7. IBL / environment map / BRDF LUT。
-8. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
-9. pipeline / shader / descriptor layout 的 deferred destruction。
-
-Phase 0.22 实施时重点检查：
-
-- `asset/` 只新增 CPU 数据和 glTF extension 读取，不依赖 renderer/RHI。
-- `MaterialResource` 缓存 per-slot transform。
-- `TextureResource` 不保存 transform。
-- `TextureCache` key 不包含 transform。
-- `ForwardPass` 只扩展 material uniform，不改变 descriptor layout。
-- `mesh.frag.hlsl` 对 baseColor、normal、metallicRoughness、occlusion、emissive 分别应用自己的 transform。
-- alpha mask 必须使用 transformed baseColor UV。
+1. transparent sorting / RenderQueue 分桶。
+2. doubleSided culling 精确化。
+3. 可配置 scene light / camera。
+4. 更完整的 direct lighting BRDF。
+5. HDR framebuffer 与 tone mapping。
+6. IBL / environment map / BRDF LUT。
+7. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
+8. pipeline / shader / descriptor layout 的 deferred destruction。
 
 ## 9. 下一次 Codex 启动提示
 
 ```text
-请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前 Phase 0.21 完成状态，以及 Phase 0.22 只是 KHR_texture_transform 设计文档、尚未实现。
+请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.22：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests。
 
 重点理解当前默认渲染路径：
-Vulkan Dynamic Rendering + Renderer + RenderScene/RenderQueue + FrameRenderer + ClearPass + ForwardPass + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + direct-light-only PBR 输入解释 + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + indexed textured multi draw + depth attachment。
+Vulkan Dynamic Rendering + Renderer + RenderScene/RenderQueue + FrameRenderer + ClearPass + ForwardPass + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + direct-light-only PBR 输入解释 + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment。
 
 然后阅读：
 docs/design/framework.md
@@ -411,8 +423,8 @@ docs/phase/phase20.md
 docs/phase/phase21.md
 docs/phase/phase22.md
 
-不要重复 Phase 0.5 ~ 0.21 已完成工作。
-下一步优先按 docs/phase/phase22.md 实现 KHR_texture_transform 最小闭环。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions、HDR/IBL 或透明排序，除非用户明确改变目标。
+不要重复 Phase 0.5 ~ 0.22 已完成工作。
+不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环。下一步建议从 transparent sorting / RenderQueue 分桶、doubleSided culling 精确化、可配置 scene light / camera 等小步继续。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions、HDR/IBL，除非用户明确改变目标。
 
 如果实现方向与既有设计文档冲突，先说明并更新设计文档，再修改代码。新增代码保持现有风格：左大括号不换行，namespace 内缩进，日志输出用英文，必要注释用简洁中文。不确定的地方写 TODO 或记录到文档，不要假装完成。
 

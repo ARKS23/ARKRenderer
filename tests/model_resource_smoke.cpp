@@ -1241,6 +1241,72 @@ namespace {
         return true;
     }
 
+    bool validateTextureTransformModelResource() {
+        const ark::Path modelPath = findModelPath(ark::Path{"assets/models/texture_transform_fixture.gltf"});
+        if (modelPath.empty()) {
+            std::cerr << "Failed to find texture transform fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
+        if (modelData.empty() || modelData.meshes.size() != 1 || modelData.materials.size() != 1) {
+            std::cerr << "Unexpected texture transform fixture model data\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Texture transform ModelResource create failed\n";
+            return false;
+        }
+
+        if (modelResource.primitiveCount() != 1 || modelResource.materialCount() != 1 ||
+            textureCache.size() != 2 || device.textureCount != 2 ||
+            device.textureViewCount != 2 || device.samplerCount != 2) {
+            std::cerr << "Texture transform fixture resource counts are invalid\n";
+            return false;
+        }
+
+        const ark::MaterialResource* material = modelResource.primitiveMaterial(0);
+        if (!material) {
+            std::cerr << "Texture transform primitive material lookup failed\n";
+            return false;
+        }
+
+        const ark::MaterialTextureCoordinateSet& coordinates = material->textureCoordinates();
+        if (coordinates.baseColor != 1 || coordinates.normal != 0 ||
+            coordinates.metallicRoughness != 1 || coordinates.occlusion != 0 ||
+            coordinates.emissive != 1) {
+            std::cerr << "Texture transform MaterialResource coordinate set is invalid\n";
+            return false;
+        }
+
+        const ark::MaterialTextureTransformSet& transforms = material->textureTransforms();
+        if (!textureTransformNear(transforms.baseColor, 0.125f, 0.25f, 2.0f, 0.5f, 0.5f) ||
+            !textureTransformNear(transforms.normal, -0.25f, 0.0f, 0.75f, 0.5f, 1.0f) ||
+            !textureTransformNear(transforms.metallicRoughness, 0.0f, 0.4f, 1.5f, 1.0f, 0.0f) ||
+            !textureTransformNear(transforms.occlusion, 0.2f, -0.1f, 1.0f, 2.0f, -0.25f) ||
+            !textureTransformNear(transforms.emissive, 0.0f, 0.0f, 1.0f, 1.0f, 0.25f)) {
+            std::cerr << "Texture transform MaterialResource transform set is invalid\n";
+            return false;
+        }
+
+        const ark::MaterialTextureSet& textures = material->textures();
+        if (!textures.baseColor || !textures.normal || !textures.metallicRoughness ||
+            !textures.occlusion || !textures.emissive ||
+            textures.baseColor != textures.emissive ||
+            textures.normal != textures.metallicRoughness ||
+            textures.normal != textures.occlusion ||
+            textures.baseColor == textures.normal) {
+            std::cerr << "Texture transform resources were not reused by color space\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateModelResourceSamplerOverride() {
         const ark::Path texturePath = findTexturePath();
         if (texturePath.empty()) {
@@ -1301,6 +1367,7 @@ int main() {
                    validateModelResource() &&
                    validateTextureCacheFixtureModelResource() && validateAlphaModesModelResource() &&
                    validateTexcoord1ModelResource() &&
+                   validateTextureTransformModelResource() &&
                    validateModelResourceSamplerOverride()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

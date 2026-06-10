@@ -45,9 +45,19 @@ namespace ark {
             float occlusionTexCoord = 0.0f;
             float emissiveTexCoord = 0.0f;
             float padding = 0.0f;
+            glm::vec4 baseColorUvTransform0;
+            glm::vec4 baseColorUvTransform1;
+            glm::vec4 normalUvTransform0;
+            glm::vec4 normalUvTransform1;
+            glm::vec4 metallicRoughnessUvTransform0;
+            glm::vec4 metallicRoughnessUvTransform1;
+            glm::vec4 occlusionUvTransform0;
+            glm::vec4 occlusionUvTransform1;
+            glm::vec4 emissiveUvTransform0;
+            glm::vec4 emissiveUvTransform1;
         };
 
-        static_assert(sizeof(MaterialUniform) == 80);
+        static_assert(sizeof(MaterialUniform) == 240);
 
         struct alignas(16) LightingUniform {
             glm::vec4 lightDirection;
@@ -101,10 +111,19 @@ namespace ark {
             return uniform;
         }
 
+        glm::vec4 makeOffsetScale(const MaterialTextureTransform& transform) {
+            return glm::vec4{transform.offset[0], transform.offset[1], transform.scale[0], transform.scale[1]};
+        }
+
+        glm::vec4 makeRotation(const MaterialTextureTransform& transform) {
+            return glm::vec4{transform.rotation, 0.0f, 0.0f, 0.0f};
+        }
+
         MaterialUniform makeMaterialUniform(const MaterialResource& material) {
             const MaterialFactors& factors = material.factors();
             const MaterialRenderState& renderState = material.renderState();
             const MaterialTextureCoordinateSet& textureCoordinates = material.textureCoordinates();
+            const MaterialTextureTransformSet& textureTransforms = material.textureTransforms();
 
             MaterialUniform uniform{};
             uniform.baseColorFactor = glm::vec4{
@@ -130,6 +149,16 @@ namespace ark {
             uniform.metallicRoughnessTexCoord = static_cast<float>(textureCoordinates.metallicRoughness);
             uniform.occlusionTexCoord = static_cast<float>(textureCoordinates.occlusion);
             uniform.emissiveTexCoord = static_cast<float>(textureCoordinates.emissive);
+            uniform.baseColorUvTransform0 = makeOffsetScale(textureTransforms.baseColor);
+            uniform.baseColorUvTransform1 = makeRotation(textureTransforms.baseColor);
+            uniform.normalUvTransform0 = makeOffsetScale(textureTransforms.normal);
+            uniform.normalUvTransform1 = makeRotation(textureTransforms.normal);
+            uniform.metallicRoughnessUvTransform0 = makeOffsetScale(textureTransforms.metallicRoughness);
+            uniform.metallicRoughnessUvTransform1 = makeRotation(textureTransforms.metallicRoughness);
+            uniform.occlusionUvTransform0 = makeOffsetScale(textureTransforms.occlusion);
+            uniform.occlusionUvTransform1 = makeRotation(textureTransforms.occlusion);
+            uniform.emissiveUvTransform0 = makeOffsetScale(textureTransforms.emissive);
+            uniform.emissiveUvTransform1 = makeRotation(textureTransforms.emissive);
             return uniform;
         }
 

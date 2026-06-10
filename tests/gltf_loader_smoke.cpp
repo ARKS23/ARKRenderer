@@ -31,6 +31,18 @@ namespace {
                near(transform.rotation, 0.0f);
     }
 
+    bool textureTransformNear(const ark::asset::TextureTransformData& transform,
+                              float offsetX,
+                              float offsetY,
+                              float scaleX,
+                              float scaleY,
+                              float rotation) {
+        return transform.hasTransform &&
+               near(transform.offset[0], offsetX) && near(transform.offset[1], offsetY) &&
+               near(transform.scale[0], scaleX) && near(transform.scale[1], scaleY) &&
+               near(transform.rotation, rotation);
+    }
+
     ark::Path findFixturePath(const ark::Path& relative) {
         const std::array<ark::Path, 3> candidates{
             relative,
@@ -412,6 +424,61 @@ namespace {
         return true;
     }
 
+    bool validateTextureTransformFixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/texture_transform_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find texture transform glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1) {
+            std::cerr << "Unexpected texture transform glTF model shape\n";
+            return false;
+        }
+
+        const ark::asset::MeshPrimitiveData& mesh = model.meshes.front();
+        if (mesh.vertices.size() != 4 || mesh.indices.size() != 6) {
+            std::cerr << "Unexpected texture transform primitive size\n";
+            return false;
+        }
+
+        const ark::asset::MeshVertex& firstVertex = mesh.vertices.front();
+        if (!near(firstVertex.uv0[0], 0.0f) || !near(firstVertex.uv0[1], 1.0f) ||
+            !near(firstVertex.uv1[0], 0.25f) || !near(firstVertex.uv1[1], 0.75f)) {
+            std::cerr << "Unexpected texture transform vertex UV data\n";
+            return false;
+        }
+
+        const ark::asset::MaterialData& material = model.materials.front();
+        if (!material.hasBaseColorTexture() || !material.hasNormalTexture() ||
+            !material.hasMetallicRoughnessTexture() || !material.hasOcclusionTexture() ||
+            !material.hasEmissiveTexture()) {
+            std::cerr << "Texture transform fixture did not expose all texture slots\n";
+            return false;
+        }
+
+        if (material.baseColorTexture.texCoord != 1 ||
+            material.normalTexture.texCoord != 0 ||
+            material.metallicRoughnessTexture.texCoord != 1 ||
+            material.occlusionTexture.texCoord != 0 ||
+            material.emissiveTexture.texCoord != 1) {
+            std::cerr << "Unexpected texture transform texCoord slots\n";
+            return false;
+        }
+
+        if (!textureTransformNear(material.baseColorTexture.transform, 0.125f, 0.25f, 2.0f, 0.5f, 0.5f) ||
+            !textureTransformNear(material.normalTexture.transform, -0.25f, 0.0f, 0.75f, 0.5f, 1.0f) ||
+            !textureTransformNear(material.metallicRoughnessTexture.transform, 0.0f, 0.4f, 1.5f, 1.0f, 0.0f) ||
+            !textureTransformNear(material.occlusionTexture.transform, 0.2f, -0.1f, 1.0f, 2.0f, -0.25f) ||
+            !textureTransformNear(material.emissiveTexture.transform, 0.0f, 0.0f, 1.0f, 1.0f, 0.25f)) {
+            std::cerr << "Unexpected texture transform data\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateOptionalDamagedHelmetFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/DamagedHelmet/DamagedHelmet.gltf"});
         if (path.empty()) {
@@ -466,7 +533,7 @@ int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
                    validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
                    validateAlphaModesFixture() && validateTexcoord1Fixture() &&
-                   validateOptionalDamagedHelmetFixture()
+                   validateTextureTransformFixture() && validateOptionalDamagedHelmetFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

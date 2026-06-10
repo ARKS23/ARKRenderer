@@ -424,7 +424,7 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 
 ## 当前实现状态
 
-已完成 0.22.0 ~ 0.22.3：
+已完成 0.22.0 ~ 0.22.7：
 
 - `TextureTransformData` 已加入 asset 层，默认值为 identity transform。
 - `MaterialTextureSlotData` 已持有 per-slot texture transform。
@@ -438,21 +438,26 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 - `MaterialResource` 已缓存 baseColor、normal、metallicRoughness、occlusion、emissive 的 per-slot transform。
 - `MaterialResource::textureTransforms()` 已提供 renderer 层查询入口。
 - `TextureResource` / `TextureCache` 仍不保存 transform，cache key 未加入 transform。
-- `framework_headers_smoke`、`gltf_loader_smoke`、`model_resource_smoke` 已覆盖当前阶段新增 public structs、默认 identity transform 和 MaterialResource transform set。
+- `ForwardPass::MaterialUniform` 已携带 baseColor、normal、metallicRoughness、occlusion、emissive 的 per-slot transform。
+- C++ / HLSL material constant buffer 仍使用 binding 4，descriptor layout 与 pipeline layout 不变。
+- `mesh.frag.hlsl` 已在每个 texture slot 采样前执行 `selectUv()` + `transformUv()`。
+- baseColor alpha mask 使用 transformed baseColor UV。
+- 已新增 `assets/models/texture_transform_fixture.gltf`，覆盖 `TEXCOORD_0/1`、extension 内 `texCoord` override 和五个 texture slot 的 transform。
+- `framework_headers_smoke`、`gltf_loader_smoke`、`model_resource_smoke`、`shader_assets_smoke` 已覆盖 public structs、默认 identity transform、fixture transform 数据、MaterialResource transform set 和 shader transform path。
 
-尚未完成 0.22.4 ~ 0.22.7：
+0.22.7 收尾已完成：
 
-- `ForwardPass::MaterialUniform` 尚未携带 per-slot transform。
-- `mesh.frag.hlsl` 尚未应用 `transformUv()`。
-- 尚未新增 `texture_transform_fixture.gltf`。
-- `shader_assets_smoke` 尚未覆盖 shader transform path。
-- default sandbox / DamagedHelmet optional smoke 尚未在本阶段重新运行。
+- 本文档已同步 Phase 0.22 当前实现状态和验证记录。
+- `docs/codex_handoff.md` 已同步到 Phase 0.22 完成态。
+- 当前限制仍是：只支持 textureInfo 上的 `KHR_texture_transform`、最终 `texCoord` 0/1、无 texture transform animation、tangent generation 仍基于 uv0。
 
 本轮验证结果：
 
 ```powershell
 cmake --build --preset msvc-vcpkg-debug
 ctest --preset msvc-vcpkg-debug
+build/msvc-vcpkg/Debug/ark_sandbox.exe
+build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf
 ```
 
 结果：
@@ -460,6 +465,8 @@ ctest --preset msvc-vcpkg-debug
 ```text
 build passed
 CTest: 8/8 passed
+default sandbox smoke passed
+DamagedHelmet sandbox smoke passed
 ```
 
 ## 完成标准
