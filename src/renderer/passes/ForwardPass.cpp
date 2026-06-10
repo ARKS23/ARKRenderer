@@ -39,10 +39,15 @@ namespace ark {
             float occlusionStrength = 1.0f;
             float alphaCutoff = 0.5f;
             float alphaMode = 0.0f;
-            glm::vec2 padding{0.0f};
+            float baseColorTexCoord = 0.0f;
+            float normalTexCoord = 0.0f;
+            float metallicRoughnessTexCoord = 0.0f;
+            float occlusionTexCoord = 0.0f;
+            float emissiveTexCoord = 0.0f;
+            float padding = 0.0f;
         };
 
-        static_assert(sizeof(MaterialUniform) == 64);
+        static_assert(sizeof(MaterialUniform) == 80);
 
         struct alignas(16) LightingUniform {
             glm::vec4 lightDirection;
@@ -99,6 +104,7 @@ namespace ark {
         MaterialUniform makeMaterialUniform(const MaterialResource& material) {
             const MaterialFactors& factors = material.factors();
             const MaterialRenderState& renderState = material.renderState();
+            const MaterialTextureCoordinateSet& textureCoordinates = material.textureCoordinates();
 
             MaterialUniform uniform{};
             uniform.baseColorFactor = glm::vec4{
@@ -119,6 +125,11 @@ namespace ark {
             uniform.occlusionStrength = factors.occlusionStrength;
             uniform.alphaCutoff = renderState.alphaCutoff;
             uniform.alphaMode = static_cast<float>(renderState.alphaMode);
+            uniform.baseColorTexCoord = static_cast<float>(textureCoordinates.baseColor);
+            uniform.normalTexCoord = static_cast<float>(textureCoordinates.normal);
+            uniform.metallicRoughnessTexCoord = static_cast<float>(textureCoordinates.metallicRoughness);
+            uniform.occlusionTexCoord = static_cast<float>(textureCoordinates.occlusion);
+            uniform.emissiveTexCoord = static_cast<float>(textureCoordinates.emissive);
             return uniform;
         }
 
@@ -423,6 +434,11 @@ namespace ark {
         });
         vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
             .location = 3,
+            .format = rhi::Format::R32G32Float,
+            .offset = offsetof(asset::MeshVertex, uv1),
+        });
+        vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
+            .location = 4,
             .format = rhi::Format::R32G32B32A32Float,
             .offset = offsetof(asset::MeshVertex, tangent),
         });

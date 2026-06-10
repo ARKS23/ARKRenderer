@@ -226,6 +226,7 @@ int main() {
     imageData.bytesPerPixel = 4;
     ark::asset::MeshVertex meshVertex{};
     meshVertex.position[0] = 1.0f;
+    meshVertex.uv1[0] = 0.5f;
     ark::asset::MeshPrimitiveData meshPrimitive{};
     meshPrimitive.vertices.push_back(meshVertex);
     meshPrimitive.indices.push_back(0);
@@ -244,6 +245,11 @@ int main() {
     modelData.materials.push_back(materialData);
     ark::asset::GltfLoader gltfLoader{};
     ark::MaterialResource materialResource{};
+    ark::MaterialTextureCoordinateSet textureCoordinates{};
+    textureCoordinates.normal = 1;
+    if (textureCoordinates.normal != 1) {
+        return EXIT_FAILURE;
+    }
     ark::TextureResource textureResource{};
     ark::TextureCache textureCache{};
     ark::TextureResourceDesc textureResourceDesc{};

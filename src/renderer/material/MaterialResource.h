@@ -34,6 +34,14 @@ namespace ark {
         TextureResource* emissive = nullptr;
     };
 
+    struct MaterialTextureCoordinateSet {
+        u32 baseColor = 0;
+        u32 normal = 0;
+        u32 metallicRoughness = 0;
+        u32 occlusion = 0;
+        u32 emissive = 0;
+    };
+
     struct MaterialTextureBindingSet {
         u32 baseColorImage = 1;
         u32 baseColorSampler = 2;
@@ -68,11 +76,16 @@ namespace ark {
             return m_RenderState;
         }
 
+        const MaterialTextureCoordinateSet& textureCoordinates() const {
+            return m_TextureCoordinates;
+        }
+
         bool isReady() const;
 
     private:
         MaterialFactors m_Factors;
         MaterialRenderState m_RenderState;
         MaterialTextureSet m_Textures;
+        MaterialTextureCoordinateSet m_TextureCoordinates;
     };
 } // namespace ark

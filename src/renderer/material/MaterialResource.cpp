@@ -25,6 +25,17 @@ namespace ark {
             return texture && texture->isReady();
         }
 
+        u32 clampTextureCoordinate(u32 texCoord, const char* slotName) {
+            if (texCoord <= 1) {
+                return texCoord;
+            }
+
+            ARK_WARN("Material texture slot uses unsupported texCoord: slot={}, texCoord={}; fallback to 0",
+                     slotName,
+                     texCoord);
+            return 0;
+        }
+
         bool updateTextureSlot(rhi::DescriptorSet& descriptorSet,
                                TextureResource* texture,
                                u32 imageBinding,
@@ -71,6 +82,12 @@ namespace ark {
         m_RenderState.alphaMode = material.alphaMode;
         m_RenderState.alphaCutoff = material.alphaCutoff;
         m_RenderState.doubleSided = material.doubleSided;
+        m_TextureCoordinates.baseColor = clampTextureCoordinate(material.baseColorTexture.texCoord, "baseColor");
+        m_TextureCoordinates.normal = clampTextureCoordinate(material.normalTexture.texCoord, "normal");
+        m_TextureCoordinates.metallicRoughness =
+            clampTextureCoordinate(material.metallicRoughnessTexture.texCoord, "metallicRoughness");
+        m_TextureCoordinates.occlusion = clampTextureCoordinate(material.occlusionTexture.texCoord, "occlusion");
+        m_TextureCoordinates.emissive = clampTextureCoordinate(material.emissiveTexture.texCoord, "emissive");
         m_Textures = textures;
         return true;
     }

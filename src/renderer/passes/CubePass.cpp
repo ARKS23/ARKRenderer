@@ -55,6 +55,8 @@ namespace ark {
             vertex.normal[2] = nz;
             vertex.uv0[0] = u;
             vertex.uv0[1] = v;
+            vertex.uv1[0] = u;
+            vertex.uv1[1] = v;
             return vertex;
         }
 

@@ -64,8 +64,14 @@ namespace {
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
             !containsText(shaderSource, "discard") ||
-            !containsText(shaderSource, "AlphaModeBlend")) {
-            std::cerr << "Mesh fragment shader does not expose expected lighting and alpha path\n";
+            !containsText(shaderSource, "AlphaModeBlend") ||
+            !containsText(shaderSource, "selectUv") ||
+            !containsText(shaderSource, "baseColorTexCoord") ||
+            !containsText(shaderSource, "normalTexCoord") ||
+            !containsText(shaderSource, "metallicRoughnessTexCoord") ||
+            !containsText(shaderSource, "occlusionTexCoord") ||
+            !containsText(shaderSource, "emissiveTexCoord")) {
+            std::cerr << "Mesh fragment shader does not expose expected lighting, alpha and UV selection path\n";
             return false;
         }
 
@@ -86,8 +92,11 @@ namespace {
         }
 
         if (!containsText(shaderSource, "float4x4 normalMatrix") ||
-            !containsText(shaderSource, "g_Object.normalMatrix")) {
-            std::cerr << "Mesh vertex shader does not expose expected Phase 0.18 normal matrix path\n";
+            !containsText(shaderSource, "g_Object.normalMatrix") ||
+            !containsText(shaderSource, "[[vk::location(3)]] float2 uv1") ||
+            !containsText(shaderSource, "[[vk::location(4)]] float4 tangent") ||
+            !containsText(shaderSource, "output.uv1 = input.uv1")) {
+            std::cerr << "Mesh vertex shader does not expose expected normal matrix and UV1 path\n";
             return false;
         }
 

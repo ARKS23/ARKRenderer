@@ -32,10 +32,17 @@ namespace {
         v0.normal[2] = 1.0f;
         v0.uv0[0] = 0.0f;
         v0.uv0[1] = 0.0f;
+        v0.uv1[0] = 0.25f;
+        v0.uv1[1] = 0.75f;
 
         if (v0.tangent[0] != 1.0f || v0.tangent[1] != 0.0f || v0.tangent[2] != 0.0f ||
             v0.tangent[3] != 1.0f) {
             std::cerr << "Unexpected default mesh tangent\n";
+            return false;
+        }
+
+        if (!near(v0.uv1[0], 0.25f) || !near(v0.uv1[1], 0.75f)) {
+            std::cerr << "Unexpected mesh uv1 data\n";
             return false;
         }
 

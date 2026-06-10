@@ -4,6 +4,7 @@ struct PSInput {
     [[vk::location(1)]] float3 worldNormal : NORMAL0;
     [[vk::location(2)]] float4 worldTangent : TANGENT0;
     [[vk::location(3)]] float2 uv0 : TEXCOORD0;
+    [[vk::location(4)]] float2 uv1 : TEXCOORD1;
 };
 
 [[vk::binding(1, 0)]]
@@ -45,7 +46,12 @@ struct MaterialUniform {
     float occlusionStrength;
     float alphaCutoff;
     float alphaMode;
-    float2 padding;
+    float baseColorTexCoord;
+    float normalTexCoord;
+    float metallicRoughnessTexCoord;
+    float occlusionTexCoord;
+    float emissiveTexCoord;
+    float padding;
 };
 
 [[vk::binding(4, 0)]]
@@ -84,23 +90,33 @@ float3 buildWorldNormal(float3 tangentSpaceNormal, float3 inputNormal, float4 in
     return normalize(mul(tangentSpaceNormal, float3x3(t, b, n)));
 }
 
+float2 selectUv(float selector, float2 uv0, float2 uv1) {
+    return selector >= 0.5f ? uv1 : uv0;
+}
+
 PbrInputs readPbrInputs(PSInput input) {
     PbrInputs inputs;
-    inputs.baseColor = g_BaseColorTexture.Sample(g_BaseColorSampler, input.uv0) * g_Material.baseColorFactor;
+    const float2 baseColorUv = selectUv(g_Material.baseColorTexCoord, input.uv0, input.uv1);
+    const float2 normalUv = selectUv(g_Material.normalTexCoord, input.uv0, input.uv1);
+    const float2 metallicRoughnessUv = selectUv(g_Material.metallicRoughnessTexCoord, input.uv0, input.uv1);
+    const float2 occlusionUv = selectUv(g_Material.occlusionTexCoord, input.uv0, input.uv1);
+    const float2 emissiveUv = selectUv(g_Material.emissiveTexCoord, input.uv0, input.uv1);
 
-    const float3 normalSample = decodeNormal(g_NormalTexture.Sample(g_NormalSampler, input.uv0).xyz);
+    inputs.baseColor = g_BaseColorTexture.Sample(g_BaseColorSampler, baseColorUv) * g_Material.baseColorFactor;
+
+    const float3 normalSample = decodeNormal(g_NormalTexture.Sample(g_NormalSampler, normalUv).xyz);
     const float3 tangentSpaceNormal =
         normalize(float3(normalSample.xy * g_Material.normalScale, normalSample.z));
     inputs.worldNormal = buildWorldNormal(tangentSpaceNormal, input.worldNormal, input.worldTangent);
 
     const float4 metallicRoughnessSample =
-        g_MetallicRoughnessTexture.Sample(g_MetallicRoughnessSampler, input.uv0);
+        g_MetallicRoughnessTexture.Sample(g_MetallicRoughnessSampler, metallicRoughnessUv);
     inputs.metallic = saturate(metallicRoughnessSample.b * g_Material.metallicFactor);
     inputs.roughness = clamp(metallicRoughnessSample.g * g_Material.roughnessFactor, 0.04f, 1.0f);
 
-    const float occlusionSample = g_OcclusionTexture.Sample(g_OcclusionSampler, input.uv0).r;
+    const float occlusionSample = g_OcclusionTexture.Sample(g_OcclusionSampler, occlusionUv).r;
     inputs.occlusion = lerp(1.0f, occlusionSample, saturate(g_Material.occlusionStrength));
-    inputs.emissive = g_EmissiveTexture.Sample(g_EmissiveSampler, input.uv0).rgb *
+    inputs.emissive = g_EmissiveTexture.Sample(g_EmissiveSampler, emissiveUv).rgb *
                       g_Material.emissiveFactor.rgb;
     return inputs;
 }

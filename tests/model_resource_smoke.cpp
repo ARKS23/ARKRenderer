@@ -1168,6 +1168,44 @@ namespace {
         return true;
     }
 
+    bool validateTexcoord1ModelResource() {
+        const ark::Path modelPath = findModelPath(ark::Path{"assets/models/texcoord1_fixture.gltf"});
+        if (modelPath.empty()) {
+            std::cerr << "Failed to find TEXCOORD_1 fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
+        if (modelData.empty() || modelData.meshes.size() != 1 || modelData.materials.size() != 1) {
+            std::cerr << "Unexpected TEXCOORD_1 fixture model data\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "TEXCOORD_1 ModelResource create failed\n";
+            return false;
+        }
+
+        if (!modelResource.primitiveMaterial(0)) {
+            std::cerr << "TEXCOORD_1 primitive material lookup failed\n";
+            return false;
+        }
+
+        const ark::MaterialTextureCoordinateSet& coordinates =
+            modelResource.primitiveMaterial(0)->textureCoordinates();
+        if (coordinates.baseColor != 0 || coordinates.normal != 1 ||
+            coordinates.metallicRoughness != 1 || coordinates.occlusion != 1 ||
+            coordinates.emissive != 1) {
+            std::cerr << "TEXCOORD_1 MaterialResource coordinate set is invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateModelResourceSamplerOverride() {
         const ark::Path texturePath = findTexturePath();
         if (texturePath.empty()) {
@@ -1227,6 +1265,7 @@ int main() {
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
                    validateTextureCacheFixtureModelResource() && validateAlphaModesModelResource() &&
+                   validateTexcoord1ModelResource() &&
                    validateModelResourceSamplerOverride()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

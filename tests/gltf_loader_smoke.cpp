@@ -70,6 +70,11 @@ namespace {
             return false;
         }
 
+        if (!near(firstVertex.uv1[0], firstVertex.uv0[0]) || !near(firstVertex.uv1[1], firstVertex.uv0[1])) {
+            std::cerr << "Unexpected glTF TEXCOORD_1 fallback data\n";
+            return false;
+        }
+
         if (!validTangent(firstVertex) || !near(firstVertex.tangent[0], 1.0f) ||
             !near(firstVertex.tangent[1], 0.0f) || !near(firstVertex.tangent[2], 0.0f) ||
             !near(firstVertex.tangent[3], -1.0f)) {
@@ -352,6 +357,45 @@ namespace {
         return true;
     }
 
+    bool validateTexcoord1Fixture() {
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/texcoord1_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find TEXCOORD_1 glTF fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1) {
+            std::cerr << "Unexpected TEXCOORD_1 glTF model shape\n";
+            return false;
+        }
+
+        const ark::asset::MeshPrimitiveData& mesh = model.meshes.front();
+        if (mesh.vertices.size() != 4 || mesh.indices.size() != 6) {
+            std::cerr << "Unexpected TEXCOORD_1 primitive size\n";
+            return false;
+        }
+
+        const ark::asset::MeshVertex& firstVertex = mesh.vertices.front();
+        if (!near(firstVertex.uv0[0], 0.0f) || !near(firstVertex.uv0[1], 1.0f) ||
+            !near(firstVertex.uv1[0], 0.25f) || !near(firstVertex.uv1[1], 0.75f)) {
+            std::cerr << "Unexpected TEXCOORD_1 vertex data\n";
+            return false;
+        }
+
+        const ark::asset::MaterialData& material = model.materials.front();
+        if (material.baseColorTexture.texCoord != 0 ||
+            material.normalTexture.texCoord != 1 ||
+            material.metallicRoughnessTexture.texCoord != 1 ||
+            material.occlusionTexture.texCoord != 1 ||
+            material.emissiveTexture.texCoord != 1) {
+            std::cerr << "Unexpected material texture coordinate slots\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateOptionalDamagedHelmetFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/DamagedHelmet/DamagedHelmet.gltf"});
         if (path.empty()) {
@@ -405,7 +449,8 @@ namespace {
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
                    validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
-                   validateAlphaModesFixture() && validateOptionalDamagedHelmetFixture()
+                   validateAlphaModesFixture() && validateTexcoord1Fixture() &&
+                   validateOptionalDamagedHelmetFixture()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

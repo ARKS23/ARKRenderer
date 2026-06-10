@@ -19,6 +19,7 @@ namespace ark::asset {
         constexpr const char* PositionAttributeName = "POSITION";
         constexpr const char* NormalAttributeName = "NORMAL";
         constexpr const char* Texcoord0AttributeName = "TEXCOORD_0";
+        constexpr const char* Texcoord1AttributeName = "TEXCOORD_1";
         constexpr const char* TangentAttributeName = "TANGENT";
         constexpr u32 InvalidMaterialIndex = std::numeric_limits<u32>::max();
 
@@ -356,6 +357,7 @@ namespace ark::asset {
             const tinygltf::Accessor* positionAccessor = getAccessor(model, findAttributeAccessor(primitive, PositionAttributeName));
             const tinygltf::Accessor* normalAccessor = getAccessor(model, findAttributeAccessor(primitive, NormalAttributeName));
             const tinygltf::Accessor* uvAccessor = getAccessor(model, findAttributeAccessor(primitive, Texcoord0AttributeName));
+            const tinygltf::Accessor* uv1Accessor = getAccessor(model, findAttributeAccessor(primitive, Texcoord1AttributeName));
             const tinygltf::Accessor* tangentAccessor = getAccessor(model, findAttributeAccessor(primitive, TangentAttributeName));
             const tinygltf::Accessor* indexAccessor = getAccessor(model, primitive.indices);
 
@@ -374,6 +376,11 @@ namespace ark::asset {
                 return false;
             }
 
+            if (uv1Accessor && uv1Accessor->count != positionAccessor->count) {
+                ARK_ERROR("glTF TEXCOORD_1 count does not match POSITION count");
+                return false;
+            }
+
             if (tangentAccessor && tangentAccessor->count != positionAccessor->count) {
                 ARK_ERROR("glTF TANGENT count does not match POSITION count");
                 return false;
@@ -388,6 +395,17 @@ namespace ark::asset {
                     !readFloatVec2(model, *uvAccessor, i, vertex.uv0)) {
                     ARK_ERROR("glTF vertex attribute data is invalid");
                     return false;
+                }
+
+                // TEXCOORD_1 缺失时复制 uv0，避免 shader 读取未定义坐标。
+                if (uv1Accessor) {
+                    if (!readFloatVec2(model, *uv1Accessor, i, vertex.uv1)) {
+                        ARK_ERROR("glTF TEXCOORD_1 attribute data is invalid");
+                        return false;
+                    }
+                } else {
+                    vertex.uv1[0] = vertex.uv0[0];
+                    vertex.uv1[1] = vertex.uv0[1];
                 }
 
                 // glTF TANGENT 是可选输入；缺失时在索引读取后由 CPU helper 根据 UV 生成。
@@ -560,10 +578,11 @@ namespace ark::asset {
             slot.hasSampler = texture->sampler >= 0 &&
                               static_cast<usize>(texture->sampler) < model.samplers.size();
             slot.sampler = resolveTextureSampler(model, *texture, slotName);
-            if (slot.texCoord != 0) {
-                ARK_WARN("glTF texture slot uses unsupported texCoord: slot={}, texCoord={}",
+            if (slot.texCoord > 1) {
+                ARK_WARN("glTF texture slot uses unsupported texCoord: slot={}, texCoord={}; fallback to 0",
                          slotName,
                          slot.texCoord);
+                slot.texCoord = 0;
             }
             return slot;
         }
