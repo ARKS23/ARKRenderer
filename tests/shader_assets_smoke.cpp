@@ -76,8 +76,17 @@ namespace {
             !containsText(shaderSource, "normalUvTransform0") ||
             !containsText(shaderSource, "metallicRoughnessUvTransform0") ||
             !containsText(shaderSource, "occlusionUvTransform0") ||
-            !containsText(shaderSource, "emissiveUvTransform0")) {
-            std::cerr << "Mesh fragment shader does not expose expected lighting, alpha and UV selection path\n";
+            !containsText(shaderSource, "emissiveUvTransform0") ||
+            !containsText(shaderSource, "PI") ||
+            !containsText(shaderSource, "distributionGGX") ||
+            !containsText(shaderSource, "geometrySchlickGGX") ||
+            !containsText(shaderSource, "geometrySmith") ||
+            !containsText(shaderSource, "fresnelSchlick") ||
+            !containsText(shaderSource, "nDotV") ||
+            !containsText(shaderSource, "vDotH") ||
+            !containsText(shaderSource, "f0") ||
+            !containsText(shaderSource, "specularDenominator")) {
+            std::cerr << "Mesh fragment shader does not expose expected BRDF, alpha and UV selection path\n";
             return false;
         }
 

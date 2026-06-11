@@ -69,6 +69,7 @@ ConstantBuffer<MaterialUniform> g_Material;
 
 static const float AlphaModeMask = 1.0f;
 static const float AlphaModeBlend = 2.0f;
+static const float PI = 3.14159265359f;
 
 struct LightingUniform {
     float4 lightDirection;
@@ -157,23 +158,57 @@ PbrInputs readPbrInputs(PSInput input) {
     return inputs;
 }
 
+float distributionGGX(float nDotH, float roughness) {
+    const float alpha = roughness * roughness;
+    const float alphaSquared = alpha * alpha;
+    const float denominatorTerm = nDotH * nDotH * (alphaSquared - 1.0f) + 1.0f;
+    return alphaSquared / max(PI * denominatorTerm * denominatorTerm, 0.0001f);
+}
+
+float geometrySchlickGGX(float nDotV, float roughness) {
+    const float r = roughness + 1.0f;
+    const float k = (r * r) / 8.0f;
+    return nDotV / max(nDotV * (1.0f - k) + k, 0.0001f);
+}
+
+float geometrySmith(float nDotV, float nDotL, float roughness) {
+    const float ggxV = geometrySchlickGGX(nDotV, roughness);
+    const float ggxL = geometrySchlickGGX(nDotL, roughness);
+    return ggxV * ggxL;
+}
+
+float3 fresnelSchlick(float cosTheta, float3 f0) {
+    return f0 + (1.0f - f0) * pow(1.0f - saturate(cosTheta), 5.0f);
+}
+
 float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 n = normalize(inputs.worldNormal);
     const float3 l = normalize(-g_Lighting.lightDirection.xyz);
     const float3 v = normalize(g_Lighting.cameraPosition.xyz - worldPosition);
-    const float3 h = normalize(l + v);
+    const float3 halfVectorSource = l + v;
+    const float3 h = dot(halfVectorSource, halfVectorSource) > 0.0001f ? normalize(halfVectorSource) : n;
     const float nDotL = saturate(dot(n, l));
+    const float nDotV = max(saturate(dot(n, v)), 0.0001f);
     const float nDotH = saturate(dot(n, h));
+    const float vDotH = saturate(dot(v, h));
 
-    const float3 diffuseColor = inputs.baseColor.rgb * (1.0f - inputs.metallic);
-    const float3 specularColor = lerp(float3(0.04f, 0.04f, 0.04f), inputs.baseColor.rgb, inputs.metallic);
-    const float specularPower = lerp(96.0f, 8.0f, inputs.roughness);
-    const float specularStrength = pow(nDotH, specularPower) * (1.0f - inputs.roughness * 0.5f);
+    const float3 albedo = inputs.baseColor.rgb;
+    const float metallic = saturate(inputs.metallic);
+    const float roughness = clamp(inputs.roughness, 0.04f, 1.0f);
 
-    // Phase 0.17 是 direct-light-only 解释：使用 glTF PBR 输入，但不声明完整 BRDF/IBL。
-    const float3 ambient = g_Lighting.ambientColor.rgb * inputs.baseColor.rgb;
-    const float3 direct = g_Lighting.lightColor.rgb * nDotL *
-                          (diffuseColor + specularColor * specularStrength);
+    const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+    const float3 fresnel = fresnelSchlick(vDotH, f0);
+    const float normalDistribution = distributionGGX(nDotH, roughness);
+    const float geometry = geometrySmith(nDotV, nDotL, roughness);
+    const float specularDenominator = max(4.0f * nDotV * nDotL, 0.001f);
+    const float3 specular = (normalDistribution * geometry * fresnel) / specularDenominator;
+
+    const float3 kd = (1.0f - fresnel) * (1.0f - metallic);
+    const float3 diffuse = kd * albedo / PI;
+
+    // Phase 0.26 升级为 Cook-Torrance direct BRDF，但仍不声明完整 HDR/IBL PBR 链路。
+    const float3 ambient = g_Lighting.ambientColor.rgb * albedo;
+    const float3 direct = g_Lighting.lightColor.rgb * nDotL * (diffuse + specular);
     return (ambient + direct) * inputs.occlusion + inputs.emissive;
 }
 
