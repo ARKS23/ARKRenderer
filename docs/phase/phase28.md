@@ -495,6 +495,15 @@ tests/tone_mapping_pass_smoke.cpp
 - 测试不需要真实 Vulkan。
 - 不引入 screenshot golden test。
 
+实现状态（2026-06-11）：
+
+- 已新增 `tests/tone_mapping_pass_smoke.cpp`。
+- 该 test 使用 fake RHI / fake context 捕获 `ToneMappingUniformBuffer` 的实际上传数据。
+- 覆盖正常 `exposure = 1.75` / `outputGamma = 2.0` 到 uniform 的数据流。
+- 覆盖 `exposure < 0` clamp 到 `0`、`outputGamma <= 0` fallback 到 `2.2`。
+- 覆盖 `FrameContext::view == nullptr` 时的默认 tone mapping settings。
+- 覆盖 descriptor layout 的 sampled image / sampler / uniform buffer 三个 binding、per-frame descriptor set、per-frame uniform buffer、fullscreen triangle draw 和 tone mapping pipeline state。
+
 ### 0.28.5 CMake
 
 目标：
@@ -506,6 +515,11 @@ tests/tone_mapping_pass_smoke.cpp
 
 - 只在 `ARK_DXC_SUPPORTED` 下加入依赖 shader bytecode 的 test。
 - 不影响非 DXC 平台已有 tests。
+
+实现状态（2026-06-11）：
+
+- 已在 `CMakeLists.txt` 的 `ARK_DXC_SUPPORTED` 测试块中加入 `ark_tone_mapping_pass_smoke`。
+- 已为该 target 添加 `ark_shaders` 依赖，保证 `ToneMappingPass::setup()` 能加载编译后的 tonemap SPIR-V。
 
 ### 0.28.6 收尾
 
@@ -538,41 +552,38 @@ tests/tone_mapping_pass_smoke.cpp
 - default sandbox 行为不回退。
 - DamagedHelmet optional smoke 不回退。
 
-## 验证计划
+## 验证记录
 
-0.28.0 ~ 0.28.3 完成后，另一台有 Windows/MSVC/vcpkg/DXC 环境的机器需要至少通过：
-
-```powershell
-cmake --build --preset msvc-vcpkg-debug
-ctest --preset msvc-vcpkg-debug
-```
-
-建议 targeted build：
-
-```powershell
-cmake --build --preset msvc-vcpkg-debug --target ark_shader_assets_smoke
-cmake --build --preset msvc-vcpkg-debug --target ark_framework_headers_smoke
-build/msvc-vcpkg/Debug/ark_shader_assets_smoke.exe
-build/msvc-vcpkg/Debug/ark_framework_headers_smoke.exe
-```
-
-如果继续实现 0.28.4 并新增 `ark_tone_mapping_pass_smoke`，再补充：
+2026-06-11 在 Windows/MSVC/vcpkg/DXC debug preset 下完成验证：
 
 ```powershell
 cmake --build --preset msvc-vcpkg-debug --target ark_tone_mapping_pass_smoke
 build/msvc-vcpkg/Debug/ark_tone_mapping_pass_smoke.exe
+cmake --build --preset msvc-vcpkg-debug
+ctest --preset msvc-vcpkg-debug
 ```
 
-runtime smoke：
+runtime smoke 使用隐藏窗口启动 3 秒后自动停止：
 
 ```powershell
 build/msvc-vcpkg/Debug/ark_sandbox.exe
 build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf
 ```
 
+结果：
+
+```text
+targeted ark_tone_mapping_pass_smoke build passed
+ark_tone_mapping_pass_smoke passed
+full build passed
+CTest: 10/10 passed
+default sandbox smoke passed
+DamagedHelmet sandbox smoke passed
+```
+
 ## 当前实现状态
 
-已完成 0.28.0 ~ 0.28.3 的代码编写，尚未在当前 Mac 环境运行 build/test。
+已完成 0.28.0 ~ 0.28.6，并在 Windows/MSVC/vcpkg/DXC 环境完成 build、CTest 和 runtime smoke 验证。
 
 已完成：
 
@@ -587,12 +598,19 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 - shader 使用 `g_ToneMapping.exposure` 和 `g_ToneMapping.inverseOutputGamma`，output helper 命名为 `linearToOutput()`。
 - `shader_assets_smoke` 已更新 tone mapping shader source token。
 - `framework_headers_smoke` 已覆盖 `ToneMappingSettings` public API 编译路径。
+- 新增 `tests/tone_mapping_pass_smoke.cpp`，覆盖 `ToneMappingPass` uniform 数据流、descriptor layout、per-frame resources、pipeline state 和 fullscreen triangle draw。
+- `CMakeLists.txt` 已加入新的 `ark_tone_mapping_pass_smoke` target，并在 DXC 平台下依赖 `ark_shaders`。
+- `cmake --build --preset msvc-vcpkg-debug`、`ctest --preset msvc-vcpkg-debug`、default sandbox smoke 和 DamagedHelmet smoke 均已通过。
 
-尚未完成：
+仍未支持：
 
-- 0.28.4 的独立 fake RHI `ToneMappingPass` uniform 数据流 smoke test 尚未新增。
-- `CMakeLists.txt` 尚未加入新的 `ark_tone_mapping_pass_smoke` target。
-- 当前 Mac 环境未运行 `cmake --build`、`ctest` 或 runtime sandbox smoke。
+- auto exposure / histogram / eye adaptation。
+- bloom。
+- ACES / filmic operator 参数化。
+- sRGB swapchain 自动策略。
+- color grading / LUT。
+- IBL / environment map。
+- 完整 post-process stack / RenderGraph。
 
 ## 完成标准
 
