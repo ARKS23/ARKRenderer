@@ -31,6 +31,14 @@ namespace ark {
         return m_Objects;
     }
 
+    const SceneLighting& RenderScene::lighting() const {
+        return m_Lighting;
+    }
+
+    void RenderScene::setLighting(const SceneLighting& lighting) {
+        m_Lighting = lighting;
+    }
+
     void RenderScene::clear() {
         m_Models.clear();
         m_Objects.clear();

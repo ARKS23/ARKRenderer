@@ -5,6 +5,7 @@
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
 #include "renderer/RenderQueue.h"
+#include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/SwapChain.h"
@@ -96,16 +97,27 @@ namespace ark {
             return uniform;
         }
 
+        glm::vec3 normalizeLightDirection(const glm::vec3& direction) {
+            constexpr float MinDirectionLengthSquared = 1.0e-6f;
+            if (glm::dot(direction, direction) <= MinDirectionLengthSquared) {
+                return glm::normalize(SceneLighting{}.mainLight.direction);
+            }
+
+            return glm::normalize(direction);
+        }
+
         LightingUniform makeLightingUniform(const FrameContext& frameContext) {
+            const SceneLighting defaultLighting{};
+            const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
+
             LightingUniform uniform{};
-            uniform.lightDirection = glm::vec4{glm::normalize(glm::vec3{-0.35f, -0.8f, -0.45f}), 0.0f};
-            uniform.lightColor = glm::vec4{1.0f, 0.96f, 0.88f, 1.0f};
-            uniform.ambientColor = glm::vec4{0.08f, 0.09f, 0.11f, 1.0f};
+            uniform.lightDirection = glm::vec4{normalizeLightDirection(lighting.mainLight.direction), 0.0f};
+            uniform.lightColor = glm::vec4{lighting.mainLight.color, 1.0f};
+            uniform.ambientColor = glm::vec4{lighting.ambientColor, 1.0f};
             uniform.cameraPosition = glm::vec4{0.0f, 0.0f, -4.0f, 1.0f};
 
             if (frameContext.view) {
-                const glm::mat4 inverseView = glm::affineInverse(frameContext.view->viewMatrix());
-                uniform.cameraPosition = inverseView[3];
+                uniform.cameraPosition = glm::vec4{frameContext.view->cameraPosition(), 1.0f};
             }
 
             return uniform;

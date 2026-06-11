@@ -4,10 +4,19 @@
 #include "renderer/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
 namespace {
+    bool near(float a, float b, float epsilon = 0.0001f) {
+        return std::fabs(a - b) <= epsilon;
+    }
+
+    bool nearVec3(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f) {
+        return near(a.x, b.x, epsilon) && near(a.y, b.y, epsilon) && near(a.z, b.z, epsilon);
+    }
+
     bool createMaterial(ark::MaterialResource& resource,
                         ark::TextureResource& texture,
                         ark::asset::AlphaMode alphaMode,
@@ -35,6 +44,25 @@ namespace {
         ark::RenderScene scene{};
         if (!scene.empty() || scene.size() != 0) {
             std::cerr << "New RenderScene is not empty\n";
+            return false;
+        }
+
+        if (!nearVec3(scene.lighting().mainLight.direction, glm::vec3{-0.35f, -0.8f, -0.45f}) ||
+            !nearVec3(scene.lighting().mainLight.color, glm::vec3{1.0f, 0.96f, 0.88f}) ||
+            !nearVec3(scene.lighting().ambientColor, glm::vec3{0.08f, 0.09f, 0.11f})) {
+            std::cerr << "RenderScene default lighting is invalid\n";
+            return false;
+        }
+
+        ark::SceneLighting lighting{};
+        lighting.mainLight.direction = glm::vec3{0.0f, -1.0f, 0.0f};
+        lighting.mainLight.color = glm::vec3{0.2f, 0.4f, 0.8f};
+        lighting.ambientColor = glm::vec3{0.01f, 0.02f, 0.03f};
+        scene.setLighting(lighting);
+        if (!nearVec3(scene.lighting().mainLight.direction, lighting.mainLight.direction) ||
+            !nearVec3(scene.lighting().mainLight.color, lighting.mainLight.color) ||
+            !nearVec3(scene.lighting().ambientColor, lighting.ambientColor)) {
+            std::cerr << "RenderScene did not preserve custom lighting\n";
             return false;
         }
 

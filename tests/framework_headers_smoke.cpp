@@ -82,6 +82,8 @@
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
 
+#include <glm/glm.hpp>
+
 #include <cstdlib>
 
 int main() {
@@ -280,6 +282,11 @@ int main() {
     ark::RenderGraph renderGraph;
     const bool renderGraphExecuted = renderGraph.execute(frameContext);
     ark::RenderScene renderScene{};
+    ark::SceneLighting sceneLighting{};
+    sceneLighting.mainLight.direction = glm::vec3{0.0f, -1.0f, 0.0f};
+    renderScene.setLighting(sceneLighting);
+    ark::RenderView renderView{};
+    renderView.setDefaultPerspective(swapChainDesc.extent);
     ark::RenderQueue renderQueue{};
     ark::Scope<ark::FrameRenderer> frameRenderer = ark::createFrameRenderer();
 
@@ -333,6 +340,8 @@ int main() {
     (void)modelResource;
     (void)renderGraphExecuted;
     (void)renderScene;
+    (void)sceneLighting;
+    (void)renderView;
     (void)renderQueue;
     (void)frameRenderer;
 

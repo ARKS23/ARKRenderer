@@ -2,6 +2,7 @@
 
 #include "core/Types.h"
 
+#include <glm/glm.hpp>
 #include <glm/mat4x4.hpp>
 
 #include <span>
@@ -12,6 +13,16 @@ namespace ark {
     class MaterialResource;
     class MeshResource;
     class ModelResource;
+
+    struct DirectionalLight {
+        glm::vec3 direction{-0.35f, -0.8f, -0.45f};
+        glm::vec3 color{1.0f, 0.96f, 0.88f};
+    };
+
+    struct SceneLighting {
+        DirectionalLight mainLight;
+        glm::vec3 ambientColor{0.08f, 0.09f, 0.11f};
+    };
 
     struct SceneModel {
         ModelResource* model = nullptr;
@@ -47,6 +58,8 @@ namespace ark {
                        std::string debugName = {});
         std::span<const SceneModel> models() const;
         std::span<const SceneObject> objects() const;
+        const SceneLighting& lighting() const;
+        void setLighting(const SceneLighting& lighting);
         void clear();
 
         bool empty() const {
@@ -60,5 +73,6 @@ namespace ark {
     private:
         std::vector<SceneModel> m_Models;
         std::vector<SceneObject> m_Objects;
+        SceneLighting m_Lighting;
     };
 } // namespace ark

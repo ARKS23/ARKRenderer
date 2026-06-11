@@ -21,11 +21,32 @@
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
+#include <glm/glm.hpp>
+
+#include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
 namespace {
+    struct alignas(16) CapturedLightingUniform {
+        glm::vec4 lightDirection;
+        glm::vec4 lightColor;
+        glm::vec4 ambientColor;
+        glm::vec4 cameraPosition;
+    };
+
+    static_assert(sizeof(CapturedLightingUniform) == 64);
+
+    bool near(float a, float b, float epsilon = 0.0001f) {
+        return std::fabs(a - b) <= epsilon;
+    }
+
+    bool nearVec3(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f) {
+        return near(a.x, b.x, epsilon) && near(a.y, b.y, epsilon) && near(a.z, b.z, epsilon);
+    }
+
     class FakeBuffer final : public ark::rhi::Buffer {
     public:
         explicit FakeBuffer(const ark::rhi::BufferDesc& desc) : m_Desc(desc) {
@@ -259,7 +280,13 @@ namespace {
             ++descriptorBinds;
         }
 
-        bool updateBuffer(ark::rhi::Buffer&, const void*, ark::u64, ark::u64 = 0) override {
+        bool updateBuffer(ark::rhi::Buffer& buffer, const void* data, ark::u64 size, ark::u64 = 0) override {
+            if (buffer.getDesc().debugName == "ForwardLightingUniformBuffer" &&
+                size == sizeof(CapturedLightingUniform)) {
+                std::memcpy(&lastLightingUniform, data, sizeof(CapturedLightingUniform));
+                ++lightingUniformUpdates;
+            }
+
             return true;
         }
 
@@ -315,6 +342,8 @@ namespace {
         }
 
         ark::rhi::FrameResource frame{};
+        CapturedLightingUniform lastLightingUniform{};
+        int lightingUniformUpdates = 0;
         int pipelineBinds = 0;
         int descriptorBinds = 0;
         int indexedDraws = 0;
@@ -415,7 +444,9 @@ namespace {
     bool capturePipelineDesc(ark::asset::AlphaMode alphaMode,
                              bool doubleSided,
                              ark::rhi::GraphicsPipelineDesc& pipelineDesc,
-                             FakeDeviceContext& context) {
+                             FakeDeviceContext& context,
+                             const ark::SceneLighting* lighting = nullptr,
+                             const ark::RenderView* customView = nullptr) {
         FakeRenderDevice device{};
         FakeSwapChain swapChain{};
         ark::TextureCache textureCache{};
@@ -429,12 +460,16 @@ namespace {
         }
 
         ark::RenderScene scene{};
+        if (lighting) {
+            scene.setLighting(*lighting);
+        }
         scene.addObject(mesh, material, glm::mat4{1.0f}, "ForwardPipelineDraw");
         ark::RenderQueue queue{};
         queue.build(scene);
 
         ark::RenderView view{};
         view.setDefaultPerspective(swapChain.getDesc().extent);
+        const ark::RenderView& activeView = customView ? *customView : view;
 
         ark::ForwardPass pass{};
         pass.setup(device);
@@ -445,7 +480,7 @@ namespace {
         ark::FrameContext frameContext{};
         frameContext.frameIndex = 0;
         frameContext.scene = &scene;
-        frameContext.view = &view;
+        frameContext.view = &activeView;
         frameContext.queue = &queue;
         frameContext.device = &device;
         frameContext.context = &context;
@@ -464,6 +499,88 @@ namespace {
         }
 
         pipelineDesc = device.pipelineDescs.front();
+        return true;
+    }
+
+    bool validateSceneLightingAndRenderView() {
+        ark::RenderScene scene{};
+        const ark::SceneLighting& defaultLighting = scene.lighting();
+        if (!nearVec3(defaultLighting.mainLight.direction, glm::vec3{-0.35f, -0.8f, -0.45f}) ||
+            !nearVec3(defaultLighting.mainLight.color, glm::vec3{1.0f, 0.96f, 0.88f}) ||
+            !nearVec3(defaultLighting.ambientColor, glm::vec3{0.08f, 0.09f, 0.11f})) {
+            std::cerr << "RenderScene default lighting is invalid\n";
+            return false;
+        }
+
+        ark::SceneLighting customLighting{};
+        customLighting.mainLight.direction = glm::vec3{0.0f, -2.0f, 0.0f};
+        customLighting.mainLight.color = glm::vec3{0.2f, 0.4f, 0.8f};
+        customLighting.ambientColor = glm::vec3{0.01f, 0.02f, 0.03f};
+        scene.setLighting(customLighting);
+        if (!nearVec3(scene.lighting().mainLight.direction, customLighting.mainLight.direction) ||
+            !nearVec3(scene.lighting().mainLight.color, customLighting.mainLight.color) ||
+            !nearVec3(scene.lighting().ambientColor, customLighting.ambientColor)) {
+            std::cerr << "RenderScene did not preserve custom lighting\n";
+            return false;
+        }
+
+        ark::RenderView defaultView{};
+        defaultView.setDefaultPerspective(ark::rhi::Extent2D{1280, 720});
+        if (!nearVec3(defaultView.cameraPosition(), glm::vec3{0.0f, 0.0f, -4.0f})) {
+            std::cerr << "RenderView default camera position is invalid\n";
+            return false;
+        }
+
+        ark::RenderView customView{};
+        const glm::vec3 customCameraPosition{1.5f, 2.5f, -6.0f};
+        customView.setMatrices(glm::mat4{1.0f}, glm::mat4{1.0f}, customCameraPosition);
+        if (!nearVec3(customView.cameraPosition(), customCameraPosition)) {
+            std::cerr << "RenderView did not preserve explicit camera position\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateForwardPassLightingUniform() {
+        ark::SceneLighting customLighting{};
+        customLighting.mainLight.direction = glm::vec3{0.0f, -2.0f, 0.0f};
+        customLighting.mainLight.color = glm::vec3{0.2f, 0.4f, 0.8f};
+        customLighting.ambientColor = glm::vec3{0.01f, 0.02f, 0.03f};
+
+        ark::RenderView view{};
+        const glm::vec3 cameraPosition{1.5f, 2.5f, -6.0f};
+        view.setMatrices(glm::mat4{1.0f}, glm::mat4{1.0f}, cameraPosition);
+
+        FakeDeviceContext context{};
+        ark::rhi::GraphicsPipelineDesc pipelineDesc{};
+        if (!capturePipelineDesc(ark::asset::AlphaMode::Opaque,
+                                 false,
+                                 pipelineDesc,
+                                 context,
+                                 &customLighting,
+                                 &view)) {
+            return false;
+        }
+
+        if (context.lightingUniformUpdates != 1) {
+            std::cerr << "ForwardPass did not update lighting uniform exactly once\n";
+            return false;
+        }
+
+        const CapturedLightingUniform& uniform = context.lastLightingUniform;
+        if (!nearVec3(glm::vec3{uniform.lightDirection}, glm::vec3{0.0f, -1.0f, 0.0f}) ||
+            !near(uniform.lightDirection.w, 0.0f) ||
+            !nearVec3(glm::vec3{uniform.lightColor}, customLighting.mainLight.color) ||
+            !near(uniform.lightColor.w, 1.0f) ||
+            !nearVec3(glm::vec3{uniform.ambientColor}, customLighting.ambientColor) ||
+            !near(uniform.ambientColor.w, 1.0f) ||
+            !nearVec3(glm::vec3{uniform.cameraPosition}, cameraPosition) ||
+            !near(uniform.cameraPosition.w, 1.0f)) {
+            std::cerr << "ForwardPass lighting uniform did not use scene lighting and view camera position\n";
+            return false;
+        }
+
         return true;
     }
 
@@ -515,5 +632,9 @@ namespace {
 } // namespace
 
 int main() {
-    return validateDoubleSidedCullModes() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateSceneLightingAndRenderView() &&
+                   validateForwardPassLightingUniform() &&
+                   validateDoubleSidedCullModes()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }
