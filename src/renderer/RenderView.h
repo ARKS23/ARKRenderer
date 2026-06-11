@@ -8,6 +8,11 @@
 #include <glm/gtc/matrix_inverse.hpp>
 
 namespace ark {
+    struct ToneMappingSettings {
+        float exposure = 1.0f;
+        float outputGamma = 2.2f;
+    };
+
     class RenderView {
     public:
         void setMatrices(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPosition) {
@@ -44,9 +49,18 @@ namespace ark {
             return m_CameraPosition;
         }
 
+        const ToneMappingSettings& toneMappingSettings() const {
+            return m_ToneMappingSettings;
+        }
+
+        void setToneMappingSettings(const ToneMappingSettings& settings) {
+            m_ToneMappingSettings = settings;
+        }
+
     private:
         glm::mat4 m_View{1.0f};
         glm::mat4 m_Projection{1.0f};
         glm::vec3 m_CameraPosition{0.0f};
+        ToneMappingSettings m_ToneMappingSettings;
     };
 } // namespace ark

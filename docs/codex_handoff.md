@@ -4,7 +4,9 @@
 
 ## 1. 当前状态
 
-ARKRenderer 当前代码实现已完成 Phase 0.27：`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer。
+ARKRenderer 当前代码实现已完成 Phase 0.27，并在当前工作区完成 Phase 0.28.0 ~ 0.28.3 的代码编写，尚未在本机运行 build/test。`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer。
+
+本轮 Phase 0.28.0 ~ 0.28.3 已把 `ToneMappingPass` 从 hardcoded exposure 改为 `RenderView` 持有 `ark::ToneMappingSettings` -> per-frame uniform buffer -> `tonemap.frag.hlsl` constant buffer 的数据流。0.28.4 的 fake RHI uniform 数据流 smoke test、CMake test target、完整 build/CTest/runtime smoke 仍待有 Windows/MSVC/vcpkg/DXC 环境的机器继续完成。
 
 当前默认渲染主线：
 
@@ -44,7 +46,9 @@ Vulkan Dynamic Rendering
         -> ToneMappingPass
             -> fullscreen triangle
             -> sample HDR scene color
-            -> fixed exposure + Reinhard tone mapping + linear-to-sRGB
+            -> RenderView ToneMappingSettings
+            -> per-frame ToneMappingUniformBuffer
+            -> exposure + Reinhard tone mapping + output gamma encoding
         -> endRendering()
         -> Present
 ```
@@ -140,6 +144,18 @@ tests/shader_assets_smoke.cpp
 docs/codex_handoff.md
 ```
 
+Phase 0.28.0 ~ 0.28.3 当前工作区主要改动：
+
+```text
+docs/phase/phase28.md
+src/renderer/RenderView.h
+src/renderer/passes/ToneMappingPass.h/.cpp
+shaders/tonemap.frag.hlsl
+tests/shader_assets_smoke.cpp
+tests/framework_headers_smoke.cpp
+docs/codex_handoff.md
+```
+
 当前支持范围：
 
 - 读取 textureInfo 上的 `KHR_texture_transform`。
@@ -173,27 +189,38 @@ docs/codex_handoff.md
 - `ForwardPass` pipeline key 优先使用 `FrameContext::colorFormat` / `FrameContext::depthFormat`，不再强依赖 swapchain color format。
 - `FrameRenderer` 创建 `RGBA16Float` scene color，usage 为 `RenderTarget | ShaderResource`。
 - `FrameRenderer` 当前是两段 dynamic rendering：Forward scene pass 写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer。
-- `ToneMappingPass` 使用 per-frame descriptor set 采样 scene color，fullscreen triangle 输出固定 exposure + Reinhard tone mapping + linear-to-sRGB。
+- `RenderView` 持有最小 `ToneMappingSettings`：`exposure` 和 `outputGamma`。
+- `ToneMappingPass` 使用 per-frame descriptor set 采样 scene color，并用 per-frame uniform buffer 上传 tone mapping settings。
+- `tonemap.frag.hlsl` 通过 binding 2 的 `ToneMappingUniform` 读取 `exposure` / `inverseOutputGamma`。
+- 默认 `exposure = 1.0`、`outputGamma = 2.2`，保持 Phase 0.27 默认视觉行为。
+- 当前仍缺 0.28.4 独立 fake RHI smoke 来验证 `ToneMappingPass` uniform 数据流。
 - 当前仍是 direct-light-only；尚未支持 IBL、shadow、多光源、bloom 或 auto exposure。
 
 ## 2. 最近提交与工作区
 
-最近提交（本次 Phase 0.27 提交前）：
+最近提交（接手时仍以 `git log --oneline -n 5` 为准）：
 
 ```text
+1b7c3b9 完成 Phase27 HDR tone mapping
 af0d530 完成 Phase26 direct lighting BRDF
 4aaeba4 完成 Phase25 scene light camera
 aefbdd5 完成 Phase24 doubleSided culling
 bea5c01 完成 Phase23 RenderQueue alpha 分桶
 2d4b4f4 完成 Phase22 texture transform 渲染闭环
-47b7af2 完成 Phase22 texture transform 数据流基础
-98aeea9 更新 Codex handoff 至 Phase21
 ```
 
-本次 Phase 0.27 提交推送后，预期工作区状态：
+当前 Phase 0.28.0 ~ 0.28.3 工作尚未提交，预期工作区会看到：
 
 ```text
 ## main...origin/main
+ M docs/codex_handoff.md
+ M shaders/tonemap.frag.hlsl
+ M src/renderer/RenderView.h
+ M src/renderer/passes/ToneMappingPass.cpp
+ M src/renderer/passes/ToneMappingPass.h
+ M tests/framework_headers_smoke.cpp
+ M tests/shader_assets_smoke.cpp
+?? docs/phase/phase28.md
 ```
 
 接手时先执行：
@@ -441,14 +468,33 @@ git log --oneline -n 5
   - fullscreen triangle draw
   - pipeline 按当前 backbuffer color format 创建
 - 新增 `shaders/tonemap.vert.hlsl`，使用 `SV_VertexID` 生成 fullscreen triangle。
-- 新增 `shaders/tonemap.frag.hlsl`，采样 HDR scene color，执行固定 exposure + Reinhard tone mapping + linear-to-sRGB。
+- Phase 0.27 当时新增 `shaders/tonemap.frag.hlsl`，采样 HDR scene color，执行固定 exposure + Reinhard tone mapping + linear-to-sRGB；当前 Phase 0.28 工作区已把 exposure / output gamma 参数化。
 - CMake 已编译 `tonemap.vert.spv` / `tonemap.frag.spv`。
 - `shader_assets_smoke` 已覆盖 tonemap SPIR-V 和关键源码 token。
 - `ark_forward_pass_pipeline_smoke` 已覆盖 `FrameContext::colorFormat = RGBA16Float` 时 ForwardPass pipeline 使用 HDR color format。
 
+### Phase 0.28（0.28.0 ~ 0.28.3 已编写，待验证）
+
+- 新增 `docs/phase/phase28.md`，明确本阶段只做 tone mapping settings / color pipeline 收口，不做 IBL、bloom、auto exposure、ACES/filmic、sRGB swapchain 切换或完整 post-process stack。
+- `RenderView` 新增 `ToneMappingSettings`：
+  - `exposure`
+  - `outputGamma`
+  - `toneMappingSettings()`
+  - `setToneMappingSettings()`
+- `RenderView::setDefaultPerspective()` 不重置用户设置的 tone mapping settings。
+- `ToneMappingPass` 新增 `ToneMappingUniform`，每个 frame slot 创建一个 `ToneMappingUniformBuffer`。
+- `ToneMappingPass` descriptor layout 新增 binding 2 `UniformBuffer`，fragment stage 可见。
+- `ToneMappingPass::execute()` 从 `frameContext.view` 读取 `ToneMappingSettings`，并在 draw fullscreen triangle 前更新当前 frame slot uniform。
+- CPU 侧对 settings 做最小防御：`exposure < 0` clamp 到 `0`，`outputGamma <= 0` fallback 到 `2.2`。
+- `shaders/tonemap.frag.hlsl` 删除 hardcoded `Exposure`，改用 binding 2 `ConstantBuffer<ToneMappingUniform>`。
+- shader 现在使用 `g_ToneMapping.exposure` 和 `g_ToneMapping.inverseOutputGamma`，output encoding helper 命名为 `linearToOutput()`。
+- `shader_assets_smoke` 已更新 source token，覆盖 tone mapping uniform、binding 2、exposure、inverse gamma 和 `linearToOutput()`。
+- `framework_headers_smoke` 已覆盖 `ToneMappingSettings` public API 编译路径。
+- 尚未新增 0.28.4 的独立 fake RHI `ToneMappingPass` uniform 数据流 smoke test，尚未更新 CMake 新 target，也尚未在当前 Mac 环境运行 build/test。
+
 ## 4. 关键代码阅读顺序
 
-建议按以下顺序审核当前 Phase 0.27 闭环：
+建议按以下顺序审核当前 Phase 0.28.0 ~ 0.28.3 工作区：
 
 1. `docs/phase/phase21.md`
    - 回看 `TEXCOORD_1` / per-slot UV selection 的前置范围和限制。
@@ -464,36 +510,38 @@ git log --oneline -n 5
    - 确认 direct lighting BRDF 升级范围、非目标、测试策略和仍不做 HDR/IBL 的限制。
 7. `docs/phase/phase27.md`
    - 确认 HDR scene color / tone mapping 范围、两段 FrameRenderer 调度、测试策略和仍不做 IBL/bloom/auto exposure 的限制。
-8. `src/renderer/FrameContext.h`
+8. `docs/phase/phase28.md`
+   - 确认 tone mapping settings / color pipeline 收口范围、0.28.0 ~ 0.28.3 已完成项和 0.28.4 待补测试。
+9. `src/renderer/FrameContext.h`
    - 看 `sceneColorView`、`colorFormat`、`depthFormat` 的 pass 间共享语义。
-9. `src/renderer/FrameRenderer.cpp`
+10. `src/renderer/FrameRenderer.cpp`
    - 看 `RGBA16Float` scene color 创建、scene pass / tone mapping pass 两段 dynamic rendering、barrier 和 viewport/scissor。
-10. `src/renderer/passes/ToneMappingPass.h/.cpp`
-   - 看 per-frame descriptor set、scene color sampled image/sampler binding、fullscreen triangle draw 和 pipeline format。
-11. `shaders/tonemap.vert.hlsl` / `shaders/tonemap.frag.hlsl`
-   - 看 `SV_VertexID` fullscreen triangle、HDR scene color sampling、fixed exposure、tone mapping 和 linear-to-sRGB。
-12. `src/renderer/RenderScene.h/.cpp`
+11. `src/renderer/RenderView.h`
+   - 看 camera position、`setDefaultPerspective()`、显式 `setMatrices()`、旧 `setMatrices()` 兼容路径和 `ToneMappingSettings`。
+12. `src/renderer/passes/ToneMappingPass.h/.cpp`
+   - 看 per-frame descriptor set、scene color sampled image/sampler binding、per-frame tone mapping uniform buffer、fullscreen triangle draw 和 pipeline format。
+13. `shaders/tonemap.vert.hlsl` / `shaders/tonemap.frag.hlsl`
+   - 看 `SV_VertexID` fullscreen triangle、HDR scene color sampling、uniform exposure、Reinhard tone mapping 和 output gamma encoding。
+14. `src/renderer/RenderScene.h/.cpp`
    - 看 `DirectionalLight`、`SceneLighting`、`RenderScene::lighting()` 和 `RenderScene::setLighting()`。
-13. `src/renderer/RenderView.h`
-   - 看 camera position、`setDefaultPerspective()`、显式 `setMatrices()` 和旧 `setMatrices()` 兼容路径。
-14. `src/asset/MeshData.h/.cpp`
+15. `src/asset/MeshData.h/.cpp`
    - 看 `MeshVertex::uv1`、tangent 字段、`TextureTransformData`、`MaterialTextureSlotData` 和 `generateTangents()`。
-15. `src/asset/GltfLoader.cpp`
+16. `src/asset/GltfLoader.cpp`
    - 看 sampler、alpha render state、`TEXCOORD_1`、`KHR_texture_transform`、显式/生成 tangent、scene/node instance 的读取路径。
-16. `src/renderer/ModelResource.cpp`
+17. `src/renderer/ModelResource.cpp`
    - 看 asset sampler 到 RHI sampler 的转换、texture cache 获取和 fallback texture。
-17. `src/renderer/material/MaterialResource.h/.cpp`
+18. `src/renderer/material/MaterialResource.h/.cpp`
    - 看 material factors、render state、texture references、per-slot texCoord set、per-slot transform set 和 descriptor 写入。
-18. `src/renderer/RenderQueue.cpp`
+19. `src/renderer/RenderQueue.cpp`
    - 看 scene/model draw item 展开、Opaque / Mask / Blend 分桶和 bucket 合并顺序。
-19. `src/renderer/passes/ForwardPass.cpp`
+20. `src/renderer/passes/ForwardPass.cpp`
    - 看 descriptor layout、pipeline variant key、FrameContext attachment format 解耦、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position 读取、per-slot transform 写入和 draw loop。
-20. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
+21. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
    - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend 和 Cook-Torrance direct BRDF 路径。
-21. `src/rhi/vulkan/VulkanCommandContext.cpp` / `VulkanPipelineState.cpp` / `VulkanSampler.cpp`
+22. `src/rhi/vulkan/VulkanCommandContext.cpp` / `VulkanPipelineState.cpp` / `VulkanSampler.cpp`
     - 看 upload/mip generation scope 检查、blend/cull/depth state、sampler address/filter 映射。
-22. `tests/forward_pass_pipeline_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp`
-    - 看当前 smoke tests 对 ForwardPass HDR attachment format、cull state、lighting uniform、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF shader source 和 tone mapping shader source 的约束。
+23. `tests/forward_pass_pipeline_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp` / `tests/framework_headers_smoke.cpp`
+    - 看当前 smoke tests 对 ForwardPass HDR attachment format、cull state、lighting uniform、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF shader source、tone mapping shader source 和 `ToneMappingSettings` public API 的约束。
 
 ## 5. 必须继续遵守的架构边界
 
@@ -513,6 +561,7 @@ docs/phase/phase24.md
 docs/phase/phase25.md
 docs/phase/phase26.md
 docs/phase/phase27.md
+docs/phase/phase28.md
 ```
 
 硬性边界：
@@ -527,6 +576,7 @@ docs/phase/phase27.md
 - `RenderScene` 保存 scene 语义，不创建 GPU 资源。
 - scene lighting 属于 `RenderScene` 语义，不进入 RHI/Vulkan，也不由 `ForwardPass` 决定默认场景策略。
 - camera position 属于 `RenderView` 语义；`ForwardPass` 只读取并写入 uniform。
+- tone mapping settings 属于 `RenderView` 语义；`ToneMappingPass` 只通过 `FrameContext::view` 读取并写入自己的 uniform。
 - direct lighting BRDF 当前只落在 `shaders/mesh.frag.hlsl`；不为 shader 公式升级改 RHI/Vulkan 或 descriptor layout。
 - `RenderQueue` 是 draw list，不拥有底层 GPU 资源；当前只做 Opaque / Mask / Blend alpha bucket ordering，不做完整 transparent sorting。
 - `ModelResource` 是 renderer 层 GPU resource owner，通过 RHI 创建资源。
@@ -536,7 +586,8 @@ docs/phase/phase27.md
 - `ForwardPass` 的 pipeline attachment format 应来自当前 render scope 的 `FrameContext::colorFormat` / `depthFormat`，不要重新绑定到 swapchain format。
 - `FrameRenderer` 当前拥有 frame-level HDR scene color，不放入 `RenderScene`、`ForwardPass` 或 `ToneMappingPass`。
 - `ToneMappingPass` 只负责采样 scene color 并写 backbuffer，不拥有 scene color 生命周期。
-- tone mapping 仍是固定 exposure 的最小 pass，不代表完整 post-process stack。
+- tone mapping 已支持最小 exposure / output gamma 参数化，但仍不代表完整 post-process stack。
+- output encoding 当前只应发生在 tone mapping shader；mesh/lighting shader 继续输出 linear HDR。
 - upload / mip generation / deferred release 命令必须记录在 dynamic rendering scope 外。
 - 当前继续使用 Vulkan Dynamic Rendering，不引入传统 `VkRenderPass` / `VkFramebuffer`。
 - 日志输出使用英文。
@@ -552,7 +603,8 @@ P0 / 下一阶段优先：
 - `KHR_texture_transform` 已支持 textureInfo 上的 offset / scale / rotation / texCoord override，但不支持 animation、`TEXCOORD_2+` 或 per-UV-set tangent basis。
 - `doubleSided=true` 当前只关闭背面剔除，不做 two-sided lighting，也不基于 `gl_FrontFacing` 翻转 normal。
 - 当前 direct lighting 已使用 Cook-Torrance BRDF，并通过 `RGBA16Float` scene color + ToneMappingPass 输出，但仍没有 IBL、shadow 或多光源。
-- tone mapping 当前是固定 exposure + Reinhard，不支持 auto exposure、ACES 参数化、bloom 或 color grading。
+- tone mapping 当前只有手动 `exposure` / `outputGamma` + Reinhard，不支持 auto exposure、ACES 参数化、bloom 或 color grading。
+- Phase 0.28.0 ~ 0.28.3 已编写但未在本机验证；0.28.4 fake RHI `ToneMappingPass` uniform 数据流 smoke test 仍待补。
 - 当前只支持一个 directional light 和 ambient color；不支持 point / spot / area light、shadow、glTF camera 或 `KHR_lights_punctual`。
 - `Renderer` 内部默认 scene 仍是 sandbox 过渡方案；真正 renderer 级资源/场景加载入口尚未设计。
 - `assets/models/DamagedHelmet/` 可作为真实 glTF 2.0 验证对象，但不应作为默认路径或提交依赖。
@@ -611,25 +663,42 @@ DamagedHelmet sandbox smoke passed
 
 本轮 sandbox smoke 使用隐藏窗口启动 3 秒后自动停止，用于确认默认场景和 DamagedHelmet 路径不会启动即退出。期间曾遇到一次并行 MSBuild 写 PDB/tlog 锁和一次脏 `ToneMappingPass.obj` 链接问题；通过顺序构建和单进程 Rebuild 清理中间产物后，完整 build、CTest 和 runtime smoke 均通过。
 
+Phase 0.28.0 ~ 0.28.3 本轮在 Mac 上仅完成代码与文档编写，未运行 build/test/runtime。另一台 Windows/MSVC/vcpkg/DXC 环境接手后建议执行：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_shader_assets_smoke
+cmake --build --preset msvc-vcpkg-debug --target ark_framework_headers_smoke
+build/msvc-vcpkg/Debug/ark_shader_assets_smoke.exe
+build/msvc-vcpkg/Debug/ark_framework_headers_smoke.exe
+cmake --build --preset msvc-vcpkg-debug
+ctest --preset msvc-vcpkg-debug
+build/msvc-vcpkg/Debug/ark_sandbox.exe
+build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf
+```
+
+如果继续做 0.28.4，需要新增 fake RHI `ark_tone_mapping_pass_smoke` 并验证 `ToneMappingUniformBuffer` 上传的 `exposure` / `inverseOutputGamma`。
+
 ## 8. 推荐下一步
 
-Phase 0.27 后建议继续保持小步闭环，不要直接进入完整 RenderGraph / bindless。
+Phase 0.28.0 ~ 0.28.3 后建议先完成验证和 0.28.4 测试闭环，不要直接进入完整 RenderGraph / bindless。
 
 优先顺序：
 
-1. IBL / environment map / BRDF LUT。
-2. bloom 或 exposure 参数化。
-3. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
-4. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
-5. pipeline / shader / descriptor layout 的 deferred destruction。
+1. 在 Windows/MSVC/vcpkg/DXC 环境运行 targeted build、full build、CTest 和 sandbox smoke。
+2. 完成 0.28.4：新增 fake RHI `ToneMappingPass` uniform 数据流 smoke test，并在 CMake 中接入。
+3. Phase 0.28 收尾后再进入 IBL / environment map / BRDF LUT。
+4. bloom、auto exposure、ACES/filmic 或 exposure UI/config 可作为后续独立阶段。
+5. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
+6. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
+7. pipeline / shader / descriptor layout 的 deferred destruction。
 
 ## 9. 下一次 Codex 启动提示
 
 ```text
-请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.27：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 也已完成，Opaque / Mask draw items 会稳定排在 Blend draw items 前；ForwardPass 已按 glTF doubleSided 精确设置 raster culling；RenderScene / RenderView 已提供可配置 scene lighting 和 camera position；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass，ForwardPass 先写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer。
+请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.27，并且当前工作区已编写 Phase 0.28.0 ~ 0.28.3 代码但尚未本机验证：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 也已完成，Opaque / Mask draw items 会稳定排在 Blend draw items 前；ForwardPass 已按 glTF doubleSided 精确设置 raster culling；RenderScene / RenderView 已提供可配置 scene lighting 和 camera position；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass，ForwardPass 先写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer；ToneMappingPass 已从 hardcoded exposure 改为 RenderView 持有 ToneMappingSettings -> per-frame ToneMappingUniformBuffer -> tonemap.frag.hlsl binding 2 constant buffer。
 
 重点理解当前默认渲染路径：
-Vulkan Dynamic Rendering + Renderer + RenderScene scene lighting + RenderView camera matrix/camera position + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + ForwardPass doubleSided culling + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + fixed exposure/Reinhard/linear-to-sRGB + swapchain backbuffer。
+Vulkan Dynamic Rendering + Renderer + RenderScene scene lighting + RenderView camera matrix/camera position + ToneMappingSettings + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + ForwardPass doubleSided culling + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + exposure/Reinhard/output gamma encoding + swapchain backbuffer。
 
 然后阅读：
 docs/design/framework.md
@@ -645,9 +714,10 @@ docs/phase/phase24.md
 docs/phase/phase25.md
 docs/phase/phase26.md
 docs/phase/phase27.md
+docs/phase/phase28.md
 
-不要重复 Phase 0.5 ~ 0.27 已完成工作。
-不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，也不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环。下一步建议从 IBL / environment map / BRDF LUT、bloom/exposure 参数化或 renderer 资源/场景加载入口等小步继续。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
+不要重复 Phase 0.5 ~ 0.27 已完成工作，也不要重复 Phase 0.28.0 ~ 0.28.3 已编写内容。
+不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，也不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环。下一步优先运行 0.28.0 ~ 0.28.3 的 targeted build/full build/CTest/runtime smoke，然后完成 0.28.4 fake RHI ToneMappingPass uniform 数据流 smoke test 和 CMake 接入。Phase 0.28 收尾后再考虑 IBL / environment map / BRDF LUT、bloom/auto exposure 或 renderer 资源/场景加载入口等小步。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
 
 如果实现方向与既有设计文档冲突，先说明并更新设计文档，再修改代码。新增代码保持现有风格：左大括号不换行，namespace 内缩进，日志输出用英文，必要注释用简洁中文。不确定的地方写 TODO 或记录到文档，不要假装完成。
 

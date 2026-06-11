@@ -158,9 +158,12 @@ namespace {
             !containsText(shaderSource, "Texture2D<float4> g_SceneColor") ||
             !containsText(shaderSource, "[[vk::binding(1, 0)]]") ||
             !containsText(shaderSource, "SamplerState g_SceneSampler") ||
-            !containsText(shaderSource, "Exposure") ||
+            !containsText(shaderSource, "struct ToneMappingUniform") ||
+            !containsText(shaderSource, "[[vk::binding(2, 0)]]") ||
+            !containsText(shaderSource, "g_ToneMapping.exposure") ||
+            !containsText(shaderSource, "g_ToneMapping.inverseOutputGamma") ||
             !containsText(shaderSource, "applyToneMapping") ||
-            !containsText(shaderSource, "linearToSrgb") ||
+            !containsText(shaderSource, "linearToOutput") ||
             !containsText(shaderSource, "pow") ||
             !containsText(shaderSource, "Sample")) {
             std::cerr << "Tone mapping fragment shader does not expose expected HDR sampling path\n";

@@ -3,6 +3,8 @@
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
+#include "renderer/RenderView.h"
+#include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
 #include "rhi/DeviceContext.h"
@@ -17,6 +19,31 @@
 #include <cstddef>
 
 namespace ark {
+    namespace {
+        constexpr float DefaultOutputGamma = 2.2f;
+
+        struct alignas(16) ToneMappingUniform {
+            float exposure = 1.0f;
+            float inverseOutputGamma = 1.0f / DefaultOutputGamma;
+            float padding0 = 0.0f;
+            float padding1 = 0.0f;
+        };
+
+        static_assert(sizeof(ToneMappingUniform) == 16);
+
+        ToneMappingUniform makeToneMappingUniform(const FrameContext& frameContext) {
+            const ToneMappingSettings defaultSettings{};
+            const ToneMappingSettings& settings =
+                frameContext.view ? frameContext.view->toneMappingSettings() : defaultSettings;
+
+            ToneMappingUniform uniform{};
+            uniform.exposure = settings.exposure < 0.0f ? 0.0f : settings.exposure;
+            uniform.inverseOutputGamma =
+                settings.outputGamma > 0.0f ? 1.0f / settings.outputGamma : 1.0f / DefaultOutputGamma;
+            return uniform;
+        }
+    } // namespace
+
     ToneMappingPass::~ToneMappingPass() = default;
 
     void ToneMappingPass::setup(rhi::RenderDevice& device) {
@@ -35,7 +62,7 @@ namespace ark {
 
         const u32 frameSlot =
             frameContext.frameResource ? frameContext.frameResource->frameSlot % FramesInFlight : 0;
-        if (!m_DescriptorSets[frameSlot] || !m_Sampler) {
+        if (!m_DescriptorSets[frameSlot] || !m_UniformBuffers[frameSlot] || !m_Sampler) {
             ARK_ERROR("ToneMappingPass requires descriptor resources");
             return false;
         }
@@ -54,6 +81,11 @@ namespace ark {
             samplerDescriptor.sampler = m_Sampler.get();
             m_DescriptorSets[frameSlot]->updateSampler(1, samplerDescriptor);
             m_BoundSceneColorViews[frameSlot] = frameContext.sceneColorView;
+        }
+
+        const ToneMappingUniform uniform = makeToneMappingUniform(frameContext);
+        if (!frameContext.context->updateBuffer(*m_UniformBuffers[frameSlot], &uniform, sizeof(uniform))) {
+            return false;
         }
 
         frameContext.context->setPipeline(*pipeline);
@@ -85,6 +117,12 @@ namespace ark {
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
+        layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 2,
+            .type = rhi::DescriptorType::UniformBuffer,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
 
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(layoutDesc);
         if (!m_DescriptorSetLayout) {
@@ -92,10 +130,22 @@ namespace ark {
         }
 
         for (std::size_t frameSlot = 0; frameSlot < m_DescriptorSets.size(); ++frameSlot) {
+            rhi::BufferDesc uniformBufferDesc{};
+            uniformBufferDesc.debugName = "ToneMappingUniformBuffer";
+            uniformBufferDesc.size = sizeof(ToneMappingUniform);
+            uniformBufferDesc.usage = rhi::BufferUsage::Uniform;
+            uniformBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+            m_UniformBuffers[frameSlot] = m_Device->createBuffer(uniformBufferDesc);
+
             m_DescriptorSets[frameSlot] = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
-            if (!m_DescriptorSets[frameSlot]) {
+            if (!m_UniformBuffers[frameSlot] || !m_DescriptorSets[frameSlot]) {
                 return false;
             }
+
+            rhi::BufferDescriptor uniformDescriptor{};
+            uniformDescriptor.buffer = m_UniformBuffers[frameSlot].get();
+            uniformDescriptor.range = sizeof(ToneMappingUniform);
+            m_DescriptorSets[frameSlot]->updateUniformBuffer(2, uniformDescriptor);
         }
 
         rhi::SamplerDesc samplerDesc{};

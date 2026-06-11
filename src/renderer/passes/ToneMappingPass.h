@@ -8,6 +8,7 @@
 
 namespace ark {
     namespace rhi {
+        class Buffer;
         class DescriptorSet;
         class DescriptorSetLayout;
         class PipelineLayout;
@@ -36,6 +37,7 @@ namespace ark {
         rhi::RenderDevice* m_Device = nullptr;
         Scope<rhi::DescriptorSetLayout> m_DescriptorSetLayout;
         std::array<Scope<rhi::DescriptorSet>, FramesInFlight> m_DescriptorSets;
+        std::array<Scope<rhi::Buffer>, FramesInFlight> m_UniformBuffers;
         std::array<rhi::TextureView*, FramesInFlight> m_BoundSceneColorViews{};
         Scope<rhi::Sampler> m_Sampler;
         Scope<rhi::Shader> m_VertexShader;

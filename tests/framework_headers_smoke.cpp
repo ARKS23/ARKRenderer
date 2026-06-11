@@ -298,6 +298,14 @@ int main() {
     renderScene.setLighting(sceneLighting);
     ark::RenderView renderView{};
     renderView.setDefaultPerspective(swapChainDesc.extent);
+    ark::ToneMappingSettings toneMappingSettings{};
+    toneMappingSettings.exposure = 1.25f;
+    toneMappingSettings.outputGamma = 2.2f;
+    renderView.setToneMappingSettings(toneMappingSettings);
+    if (renderView.toneMappingSettings().exposure != 1.25f ||
+        renderView.toneMappingSettings().outputGamma != 2.2f) {
+        return EXIT_FAILURE;
+    }
     ark::RenderQueue renderQueue{};
     ark::Scope<ark::FrameRenderer> frameRenderer = ark::createFrameRenderer();
 
