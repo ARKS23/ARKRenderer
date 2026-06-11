@@ -212,6 +212,18 @@ namespace ark::rhi::vulkan {
             return stageMask != 0 ? stageMask : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         }
 
+        u32 textureUploadBytesPerPixel(Format format) {
+            switch (format) {
+            case Format::RGBA8Unorm:
+            case Format::RGBA8Srgb:
+                return 4;
+            case Format::RGBA32Float:
+                return 16;
+            default:
+                return 0;
+            }
+        }
+
         void recordTextureSubresourceBarrier(VkCommandBuffer commandBuffer,
                                              VulkanTexture& texture,
                                              u32 baseMipLevel,
@@ -595,8 +607,10 @@ namespace ark::rhi::vulkan {
         }
 
         const TextureDesc& textureDesc = texture->getDesc();
-        if (textureDesc.format != Format::RGBA8Unorm && textureDesc.format != Format::RGBA8Srgb) {
-            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports RGBA8 textures only");
+        const u32 expectedBytesPerPixel = textureUploadBytesPerPixel(textureDesc.format);
+        if (expectedBytesPerPixel == 0) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData does not support texture format {}",
+                      formatName(textureDesc.format));
             return false;
         }
 
@@ -621,8 +635,10 @@ namespace ark::rhi::vulkan {
             return false;
         }
 
-        if (desc.bytesPerPixel != 4) {
-            ARK_ERROR("VulkanCommandContext::uploadTextureData currently supports 4 bytes per pixel only");
+        if (desc.bytesPerPixel != expectedBytesPerPixel) {
+            ARK_ERROR("VulkanCommandContext::uploadTextureData expected {} bytes per pixel for format {}",
+                      expectedBytesPerPixel,
+                      formatName(textureDesc.format));
             return false;
         }
 

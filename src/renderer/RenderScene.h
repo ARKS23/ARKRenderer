@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace ark {
+    class EnvironmentResource;
     class MaterialResource;
     class MeshResource;
     class ModelResource;
@@ -22,6 +23,15 @@ namespace ark {
     struct SceneLighting {
         DirectionalLight mainLight;
         glm::vec3 ambientColor{0.08f, 0.09f, 0.11f};
+    };
+
+    struct SceneEnvironment {
+        EnvironmentResource* environment = nullptr;
+        float intensity = 1.0f;
+
+        bool isEnabled() const {
+            return environment != nullptr && intensity > 0.0f;
+        }
     };
 
     struct SceneModel {
@@ -60,6 +70,9 @@ namespace ark {
         std::span<const SceneObject> objects() const;
         const SceneLighting& lighting() const;
         void setLighting(const SceneLighting& lighting);
+        const SceneEnvironment& environment() const;
+        void setEnvironment(const SceneEnvironment& environment);
+        void clearEnvironment();
         void clear();
 
         bool empty() const {
@@ -74,5 +87,6 @@ namespace ark {
         std::vector<SceneModel> m_Models;
         std::vector<SceneObject> m_Objects;
         SceneLighting m_Lighting;
+        SceneEnvironment m_Environment;
     };
 } // namespace ark

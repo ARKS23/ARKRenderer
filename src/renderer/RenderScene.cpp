@@ -39,6 +39,21 @@ namespace ark {
         m_Lighting = lighting;
     }
 
+    const SceneEnvironment& RenderScene::environment() const {
+        return m_Environment;
+    }
+
+    void RenderScene::setEnvironment(const SceneEnvironment& environment) {
+        m_Environment = environment;
+        if (m_Environment.intensity < 0.0f) {
+            m_Environment.intensity = 0.0f;
+        }
+    }
+
+    void RenderScene::clearEnvironment() {
+        m_Environment = {};
+    }
+
     void RenderScene::clear() {
         m_Models.clear();
         m_Objects.clear();

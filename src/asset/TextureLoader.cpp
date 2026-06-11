@@ -6,27 +6,37 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <cstring>
 #include <limits>
 
 namespace ark::asset {
     namespace {
         constexpr i32 RequestedChannels = 4;
         constexpr u32 Rgba8BytesPerPixel = 4;
+        constexpr u32 Rgba32FloatBytesPerPixel = 16;
 
         // 防止无效尺寸和像素字节数在分配 vector 前溢出。
-        bool isImageSizeValid(i32 width, i32 height) {
+        bool isImageSizeValid(i32 width, i32 height, u32 bytesPerPixel) {
             if (width <= 0 || height <= 0) {
                 return false;
             }
 
             const u64 pixelCount = static_cast<u64>(width) * static_cast<u64>(height);
             const u64 maxByteSize = static_cast<u64>(std::numeric_limits<usize>::max());
-            return pixelCount <= maxByteSize / Rgba8BytesPerPixel;
+            return pixelCount <= maxByteSize / bytesPerPixel;
+        }
+
+        bool isFileSizeValidForStb(usize fileSize) {
+            return fileSize <= static_cast<usize>(std::numeric_limits<int>::max());
         }
     } // namespace
 
     ImageData TextureLoader::loadRgba8(const Path& path) {
         return loadImageRgba8(path);
+    }
+
+    ImageData TextureLoader::loadHdrRgba32F(const Path& path) {
+        return loadImageHdrRgba32F(path);
     }
 
     ImageData loadImageRgba8(const Path& path) {
@@ -40,7 +50,7 @@ namespace ark::asset {
             return {};
         }
 
-        if (fileData.size() > static_cast<usize>(std::numeric_limits<int>::max())) {
+        if (!isFileSizeValidForStb(fileData.size())) {
             ARK_ERROR("Image file is too large for stb_image: {}", path.string());
             return {};
         }
@@ -65,7 +75,7 @@ namespace ark::asset {
             return {};
         }
 
-        if (!isImageSizeValid(width, height)) {
+        if (!isImageSizeValid(width, height, Rgba8BytesPerPixel)) {
             ARK_ERROR("Decoded image has invalid dimensions: {}", path.string());
             stbi_image_free(decodedPixels);
             return {};
@@ -79,6 +89,59 @@ namespace ark::asset {
         const usize byteSize = static_cast<usize>(image.width) * static_cast<usize>(image.height) * Rgba8BytesPerPixel;
         // stb 返回的内存由 stb 管理；拷贝进 ImageData 后立即释放临时内存。
         image.pixels.assign(decodedPixels, decodedPixels + byteSize);
+        stbi_image_free(decodedPixels);
+
+        return image;
+    }
+
+    ImageData loadImageHdrRgba32F(const Path& path) {
+        ImageData image{};
+        image.debugName = path.string();
+
+        const std::vector<u8> fileData = readBinaryFile(path);
+        if (fileData.empty()) {
+            ARK_ERROR("Failed to read HDR image file: {}", path.string());
+            return {};
+        }
+
+        if (!isFileSizeValidForStb(fileData.size())) {
+            ARK_ERROR("HDR image file is too large for stb_image: {}", path.string());
+            return {};
+        }
+
+        const auto* bytes = reinterpret_cast<const stbi_uc*>(fileData.data());
+        const int byteCount = static_cast<int>(fileData.size());
+        if (stbi_is_hdr_from_memory(bytes, byteCount) == 0) {
+            ARK_ERROR("Image is not an HDR image: {}", path.string());
+            return {};
+        }
+
+        i32 width = 0;
+        i32 height = 0;
+        i32 sourceChannels = 0;
+        float* decodedPixels =
+            stbi_loadf_from_memory(bytes, byteCount, &width, &height, &sourceChannels, RequestedChannels);
+        if (!decodedPixels) {
+            const char* reason = stbi_failure_reason();
+            ARK_ERROR("Failed to decode image as RGBA32F: {} ({})", path.string(), reason ? reason : "unknown error");
+            return {};
+        }
+
+        if (!isImageSizeValid(width, height, Rgba32FloatBytesPerPixel)) {
+            ARK_ERROR("Decoded HDR image has invalid dimensions: {}", path.string());
+            stbi_image_free(decodedPixels);
+            return {};
+        }
+
+        image.width = static_cast<u32>(width);
+        image.height = static_cast<u32>(height);
+        image.format = ImageFormat::Rgba32Float;
+        image.bytesPerPixel = Rgba32FloatBytesPerPixel;
+
+        const usize byteSize =
+            static_cast<usize>(image.width) * static_cast<usize>(image.height) * Rgba32FloatBytesPerPixel;
+        image.pixels.resize(byteSize);
+        std::memcpy(image.pixels.data(), decodedPixels, byteSize);
         stbi_image_free(decodedPixels);
 
         return image;

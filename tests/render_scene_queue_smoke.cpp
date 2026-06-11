@@ -1,5 +1,6 @@
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
+#include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
 #include "renderer/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
@@ -66,6 +67,28 @@ namespace {
             return false;
         }
 
+        ark::EnvironmentResource environmentResource{};
+        ark::SceneEnvironment environment{};
+        environment.environment = &environmentResource;
+        environment.intensity = 1.25f;
+        scene.setEnvironment(environment);
+        if (scene.environment().environment != &environmentResource ||
+            !near(scene.environment().intensity, 1.25f) ||
+            !scene.environment().isEnabled()) {
+            std::cerr << "RenderScene did not preserve custom environment\n";
+            return false;
+        }
+
+        environment.intensity = -1.0f;
+        scene.setEnvironment(environment);
+        if (!near(scene.environment().intensity, 0.0f) || scene.environment().isEnabled()) {
+            std::cerr << "RenderScene did not clamp negative environment intensity\n";
+            return false;
+        }
+
+        environment.intensity = 1.25f;
+        scene.setEnvironment(environment);
+
         glm::mat4 transformA{1.0f};
         transformA[3][0] = 2.0f;
         glm::mat4 transformB{1.0f};
@@ -98,6 +121,17 @@ namespace {
         }
 
         scene.clear();
+        if (scene.environment().environment != &environmentResource || !scene.environment().isEnabled()) {
+            std::cerr << "RenderScene clear should preserve scene environment policy\n";
+            return false;
+        }
+
+        scene.clearEnvironment();
+        if (scene.environment().environment != nullptr || scene.environment().isEnabled()) {
+            std::cerr << "RenderScene did not clear environment\n";
+            return false;
+        }
+
         queue.build(scene);
         if (!queue.empty()) {
             std::cerr << "RenderQueue did not clear stale draw items\n";

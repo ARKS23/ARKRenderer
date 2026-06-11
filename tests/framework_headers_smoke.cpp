@@ -16,6 +16,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderGraph.h"
@@ -220,6 +221,10 @@ int main() {
     textureUploadDesc.extent = ark::rhi::Extent2D{128, 128};
     textureUploadDesc.rowPitch = textureUploadDesc.extent.width * 4;
     textureUploadDesc.bytesPerPixel = 4;
+    ark::rhi::TextureUploadDesc hdrTextureUploadDesc{};
+    hdrTextureUploadDesc.extent = ark::rhi::Extent2D{16, 8};
+    hdrTextureUploadDesc.rowPitch = hdrTextureUploadDesc.extent.width * 16;
+    hdrTextureUploadDesc.bytesPerPixel = 16;
     ark::rhi::BufferUploadDesc bufferUploadDesc{};
     bufferUploadDesc.sourceOffset = 0;
     bufferUploadDesc.destinationOffset = 0;
@@ -230,6 +235,11 @@ int main() {
     imageData.height = 2;
     imageData.format = ark::asset::ImageFormat::Rgba8Unorm;
     imageData.bytesPerPixel = 4;
+    ark::asset::ImageData hdrImageData{};
+    hdrImageData.width = 2;
+    hdrImageData.height = 1;
+    hdrImageData.format = ark::asset::ImageFormat::Rgba32Float;
+    hdrImageData.bytesPerPixel = 16;
     ark::asset::MeshVertex meshVertex{};
     meshVertex.position[0] = 1.0f;
     meshVertex.uv1[0] = 0.5f;
@@ -271,6 +281,9 @@ int main() {
     ark::TextureCache textureCache{};
     ark::TextureResourceDesc textureResourceDesc{};
     textureResourceDesc.colorSpace = ark::TextureColorSpace::Srgb;
+    ark::EnvironmentResource environmentResource{};
+    ark::EnvironmentResourceDesc environmentResourceDesc{};
+    environmentResourceDesc.debugName = "SmokeEnvironment";
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -296,6 +309,13 @@ int main() {
     ark::SceneLighting sceneLighting{};
     sceneLighting.mainLight.direction = glm::vec3{0.0f, -1.0f, 0.0f};
     renderScene.setLighting(sceneLighting);
+    ark::SceneEnvironment sceneEnvironment{};
+    sceneEnvironment.environment = &environmentResource;
+    sceneEnvironment.intensity = 1.5f;
+    renderScene.setEnvironment(sceneEnvironment);
+    if (!renderScene.environment().isEnabled() || renderScene.environment().intensity != 1.5f) {
+        return EXIT_FAILURE;
+    }
     ark::RenderView renderView{};
     renderView.setDefaultPerspective(swapChainDesc.extent);
     ark::ToneMappingSettings toneMappingSettings{};
@@ -347,13 +367,17 @@ int main() {
     (void)samplerDescriptor;
     (void)samplerDesc;
     (void)textureUploadDesc;
+    (void)hdrTextureUploadDesc;
     (void)imageData;
+    (void)hdrImageData;
     (void)modelData;
     (void)gltfLoader;
     (void)materialResource;
     (void)textureResource;
     (void)textureCache;
     (void)textureResourceDesc;
+    (void)environmentResource;
+    (void)environmentResourceDesc;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
@@ -362,6 +386,7 @@ int main() {
     (void)renderGraphExecuted;
     (void)renderScene;
     (void)sceneLighting;
+    (void)sceneEnvironment;
     (void)renderView;
     (void)renderQueue;
     (void)frameRenderer;

@@ -23,6 +23,8 @@ namespace ark::rhi::vulkan {
             return "RGBA8Srgb";
         case Format::RGBA16Float:
             return "RGBA16Float";
+        case Format::RGBA32Float:
+            return "RGBA32Float";
         case Format::D24UnormS8UInt:
             return "D24UnormS8UInt";
         case Format::D32Float:
@@ -155,6 +157,8 @@ namespace ark::rhi::vulkan {
             return VK_FORMAT_R8G8B8A8_SRGB;
         case Format::RGBA16Float:
             return VK_FORMAT_R16G16B16A16_SFLOAT;
+        case Format::RGBA32Float:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
         case Format::D24UnormS8UInt:
             return VK_FORMAT_D24_UNORM_S8_UINT;
         case Format::D32Float:

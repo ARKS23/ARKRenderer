@@ -38,8 +38,10 @@ namespace ark::asset {
 
         // LDR RGBA8 便捷入口，语义等同于 loadImageRgba8()。
         static ImageData loadRgba8(const Path& path);
+        static ImageData loadHdrRgba32F(const Path& path);
     };
 
     // Phase 0.7 只提供 LDR RGBA8 路径；HDR 输入必须显式失败，避免动态范围被静默压缩。
     ImageData loadImageRgba8(const Path& path);
+    ImageData loadImageHdrRgba32F(const Path& path);
 } // namespace ark::asset
