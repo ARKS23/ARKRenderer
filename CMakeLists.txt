@@ -83,6 +83,8 @@ if(ARK_DXC_SUPPORTED)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/textured_cube.frag.hlsl" ps_6_0 textured_cube.frag)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/mesh.vert.hlsl" vs_6_0 mesh.vert)
     ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/mesh.frag.hlsl" ps_6_0 mesh.frag)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/tonemap.vert.hlsl" vs_6_0 tonemap.vert)
+    ark_compile_hlsl_shader("${PROJECT_SOURCE_DIR}/shaders/tonemap.frag.hlsl" ps_6_0 tonemap.frag)
 
     add_custom_target(ark_shaders ALL DEPENDS ${ARK_COMPILED_SHADERS})
 else()

@@ -197,6 +197,22 @@ namespace ark {
         rhi::FrontFace makeFrontFace() {
             return rhi::FrontFace::CounterClockwise;
         }
+
+        rhi::Format resolveColorFormat(const FrameContext& frameContext) {
+            if (frameContext.colorFormat != rhi::Format::Unknown) {
+                return frameContext.colorFormat;
+            }
+
+            return frameContext.swapChain ? frameContext.swapChain->getDesc().colorFormat : rhi::Format::Unknown;
+        }
+
+        rhi::Format resolveDepthFormat(const FrameContext& frameContext) {
+            if (frameContext.depthFormat != rhi::Format::Unknown) {
+                return frameContext.depthFormat;
+            }
+
+            return frameContext.swapChain ? frameContext.swapChain->getDesc().depthFormat : rhi::Format::Unknown;
+        }
     } // namespace
 
     ForwardPass::~ForwardPass() = default;
@@ -440,16 +456,22 @@ namespace ark {
     }
 
     rhi::PipelineState* ForwardPass::getOrCreatePipeline(FrameContext& frameContext, const MaterialResource& material) {
-        if (!m_Device || !frameContext.swapChain) {
-            ARK_ERROR("ForwardPass requires RenderDevice and SwapChain");
+        if (!m_Device) {
+            ARK_ERROR("ForwardPass requires RenderDevice");
             return nullptr;
         }
 
-        const rhi::SwapChainDesc& swapChainDesc = frameContext.swapChain->getDesc();
+        const rhi::Format colorFormat = resolveColorFormat(frameContext);
+        const rhi::Format depthFormat = resolveDepthFormat(frameContext);
+        if (colorFormat == rhi::Format::Unknown) {
+            ARK_ERROR("ForwardPass requires a valid color attachment format");
+            return nullptr;
+        }
+
         const MaterialRenderState& renderState = material.renderState();
         ForwardPipelineKey key{};
-        key.colorFormat = swapChainDesc.colorFormat;
-        key.depthFormat = swapChainDesc.depthFormat;
+        key.colorFormat = colorFormat;
+        key.depthFormat = depthFormat;
         key.alphaMode = renderState.alphaMode;
         key.doubleSided = renderState.doubleSided;
 

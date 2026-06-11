@@ -117,6 +117,58 @@ namespace {
 
         return true;
     }
+
+    bool validateToneMappingVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("tonemap.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find tone mapping vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read tone mapping vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SV_VertexID") ||
+            !containsText(shaderSource, "[[vk::location(0)]] float2 uv") ||
+            !containsText(shaderSource, "positions[3]")) {
+            std::cerr << "Tone mapping vertex shader does not expose expected fullscreen triangle path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateToneMappingFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("tonemap.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find tone mapping fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read tone mapping fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "[[vk::binding(0, 0)]]") ||
+            !containsText(shaderSource, "Texture2D<float4> g_SceneColor") ||
+            !containsText(shaderSource, "[[vk::binding(1, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_SceneSampler") ||
+            !containsText(shaderSource, "Exposure") ||
+            !containsText(shaderSource, "applyToneMapping") ||
+            !containsText(shaderSource, "linearToSrgb") ||
+            !containsText(shaderSource, "pow") ||
+            !containsText(shaderSource, "Sample")) {
+            std::cerr << "Tone mapping fragment shader does not expose expected HDR sampling path\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -128,10 +180,14 @@ int main() {
     const bool texturedCubeFragmentShaderValid = validateCompiledShader("textured_cube.frag.spv");
     const bool meshVertexShaderValid = validateCompiledShader("mesh.vert.spv");
     const bool meshFragmentShaderValid = validateCompiledShader("mesh.frag.spv");
+    const bool toneMappingVertexShaderValid = validateCompiledShader("tonemap.vert.spv");
+    const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
-                   meshFragmentShaderValid && validateMeshVertexShaderSource() && validateMeshFragmentShaderSource()
+                   meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
+                   validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
+                   validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource()
                ? 0
                : 1;
 }

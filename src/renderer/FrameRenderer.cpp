@@ -6,7 +6,9 @@
 #include "renderer/RenderPass.h"
 #include "renderer/passes/ClearPass.h"
 #include "renderer/passes/ForwardPass.h"
+#include "renderer/passes/ToneMappingPass.h"
 #include "rhi/DeviceContext.h"
+#include "rhi/RenderDevice.h"
 #include "rhi/ResourceBarrier.h"
 #include "rhi/SwapChain.h"
 #include "rhi/Texture.h"
@@ -16,16 +18,25 @@
 
 namespace ark {
     namespace {
+        constexpr rhi::Format SceneColorFormat = rhi::Format::RGBA16Float;
+
         class DefaultFrameRenderer final : public FrameRenderer {
         public:
             DefaultFrameRenderer()
                 : m_ClearPass(makeScope<ClearPass>()), m_ForwardPass(makeScope<ForwardPass>()),
-                  m_Passes{m_ClearPass.get(), m_ForwardPass.get()} {
+                  m_ToneMappingPass(makeScope<ToneMappingPass>()),
+                  m_ScenePasses{m_ClearPass.get(), m_ForwardPass.get()},
+                  m_PostPasses{m_ToneMappingPass.get()} {
             }
 
             void setup(rhi::RenderDevice& device) override {
+                m_Device = &device;
+
                 // pass 私有 GPU 资源在 setup 阶段创建，避免每帧重复创建 buffer / shader / pipeline。
-                for (RenderPass* pass : m_Passes) {
+                for (RenderPass* pass : m_ScenePasses) {
+                    pass->setup(device);
+                }
+                for (RenderPass* pass : m_PostPasses) {
                     pass->setup(device);
                 }
             }
@@ -44,14 +55,16 @@ namespace ark {
                     return false;
                 }
                 rhi::Texture* depthBuffer = depthBufferView->getTexture();
+                if (!ensureSceneColor(frameContext.extent)) {
+                    return false;
+                }
+                rhi::Texture* sceneColor = m_SceneColor.get();
 
-                // FrameRenderer 负责一帧内的 render scope：资源状态转换 -> beginRendering -> pass -> endRendering。
-                // 这样 Renderer 只保留 acquire / submit / present 外壳，后续可以用 RenderGraph 替换这里的手动调度。
-                // color/depth attachment 进入可写状态；清屏由 beginRendering 的 loadOp=Clear 表达。
+                // Scene pass 写入 HDR scene color，tone mapping pass 再把它映射到 swapchain backbuffer。
                 const std::array<rhi::ResourceBarrier, 2> toRenderTarget{{
                     rhi::ResourceBarrier{
-                        .texture = backBuffer,
-                        .before = backBuffer->getState(),
+                        .texture = sceneColor,
+                        .before = sceneColor->getState(),
                         .after = rhi::ResourceState::RenderTarget,
                     },
                     rhi::ResourceBarrier{
@@ -63,41 +76,58 @@ namespace ark {
                 frameContext.context->pipelineBarrier(toRenderTarget);
 
                 // prepare 阶段专门记录 upload/copy 等 render scope 外命令，避免把 texture copy 放进 dynamic rendering。
-                for (RenderPass* pass : m_Passes) {
+                for (RenderPass* pass : m_ScenePasses) {
+                    if (!pass->prepare(frameContext)) {
+                        return false;
+                    }
+                }
+                for (RenderPass* pass : m_PostPasses) {
                     if (!pass->prepare(frameContext)) {
                         return false;
                     }
                 }
 
-                rhi::RenderingDesc renderingDesc{};
-                renderingDesc.extent = frameContext.extent;
-                renderingDesc.colorAttachment.view = frameContext.backBufferView;
-                renderingDesc.colorAttachment.loadOp = rhi::LoadOp::Clear;
-                renderingDesc.colorAttachment.storeOp = rhi::StoreOp::Store;
-                renderingDesc.colorAttachment.clearColor = frameContext.clearColor;
-                renderingDesc.depthStencilAttachment.view = depthBufferView;
-                renderingDesc.depthStencilAttachment.loadOp = rhi::LoadOp::Clear;
-                renderingDesc.depthStencilAttachment.storeOp = rhi::StoreOp::DontCare;
-                renderingDesc.depthStencilAttachment.clearDepth = 1.0f;
-                renderingDesc.depthStencilAttachment.clearStencil = 0;
-
-                if (!frameContext.context->beginRendering(renderingDesc)) {
+                frameContext.sceneColorView = m_SceneColorView.get();
+                frameContext.colorFormat = SceneColorFormat;
+                frameContext.depthFormat = frameContext.swapChain->getDesc().depthFormat;
+                if (!beginSceneRendering(frameContext, *depthBufferView)) {
                     return false;
                 }
 
-                // viewport / scissor 属于每帧动态状态，跟随当前 backbuffer 尺寸设置，避免 resize 后沿用旧状态。
-                rhi::Viewport viewport{};
-                viewport.width = static_cast<float>(frameContext.extent.width);
-                viewport.height = static_cast<float>(frameContext.extent.height);
-                frameContext.context->setViewport(viewport);
+                setViewportAndScissor(frameContext);
 
-                rhi::ScissorRect scissor{};
-                scissor.width = frameContext.extent.width;
-                scissor.height = frameContext.extent.height;
-                frameContext.context->setScissorRect(scissor);
+                for (RenderPass* pass : m_ScenePasses) {
+                    if (!pass->execute(frameContext)) {
+                        frameContext.context->endRendering();
+                        return false;
+                    }
+                }
 
-                // 目前 pass 顺序固定；RenderGraph 落地后，这里会变成按图调度 pass 和资源 barrier。
-                for (RenderPass* pass : m_Passes) {
+                frameContext.context->endRendering();
+
+                const std::array<rhi::ResourceBarrier, 2> toToneMapping{{
+                    rhi::ResourceBarrier{
+                        .texture = sceneColor,
+                        .before = sceneColor->getState(),
+                        .after = rhi::ResourceState::ShaderResource,
+                    },
+                    rhi::ResourceBarrier{
+                        .texture = backBuffer,
+                        .before = backBuffer->getState(),
+                        .after = rhi::ResourceState::RenderTarget,
+                    },
+                }};
+                frameContext.context->pipelineBarrier(toToneMapping);
+
+                frameContext.colorFormat = frameContext.swapChain->getDesc().colorFormat;
+                frameContext.depthFormat = rhi::Format::Unknown;
+                if (!beginToneMappingRendering(frameContext)) {
+                    return false;
+                }
+
+                setViewportAndScissor(frameContext);
+
+                for (RenderPass* pass : m_PostPasses) {
                     if (!pass->execute(frameContext)) {
                         frameContext.context->endRendering();
                         return false;
@@ -124,9 +154,86 @@ namespace ark {
             }
 
         private:
+            bool ensureSceneColor(rhi::Extent2D extent) {
+                if (!m_Device) {
+                    ARK_ERROR("FrameRenderer requires RenderDevice before creating scene color");
+                    return false;
+                }
+
+                if (!rhi::isValidExtent(extent)) {
+                    ARK_ERROR("FrameRenderer requires a valid scene color extent");
+                    return false;
+                }
+
+                if (m_SceneColor && m_SceneColorView && m_SceneColor->getDesc().extent.width == extent.width &&
+                    m_SceneColor->getDesc().extent.height == extent.height) {
+                    return true;
+                }
+
+                m_SceneColorView.reset();
+                m_SceneColor.reset();
+                m_Extent = extent;
+
+                rhi::TextureDesc textureDesc{};
+                textureDesc.extent = extent;
+                textureDesc.format = SceneColorFormat;
+                textureDesc.usage = rhi::TextureUsage::RenderTarget | rhi::TextureUsage::ShaderResource;
+                m_SceneColor = m_Device->createTexture(textureDesc);
+                if (!m_SceneColor) {
+                    return false;
+                }
+
+                rhi::TextureViewDesc viewDesc{};
+                viewDesc.format = SceneColorFormat;
+                m_SceneColorView = m_Device->createTextureView(*m_SceneColor, viewDesc);
+                return m_SceneColorView != nullptr;
+            }
+
+            bool beginSceneRendering(FrameContext& frameContext, rhi::TextureView& depthBufferView) {
+                rhi::RenderingDesc renderingDesc{};
+                renderingDesc.extent = frameContext.extent;
+                renderingDesc.colorAttachment.view = m_SceneColorView.get();
+                renderingDesc.colorAttachment.loadOp = rhi::LoadOp::Clear;
+                renderingDesc.colorAttachment.storeOp = rhi::StoreOp::Store;
+                renderingDesc.colorAttachment.clearColor = frameContext.clearColor;
+                renderingDesc.depthStencilAttachment.view = &depthBufferView;
+                renderingDesc.depthStencilAttachment.loadOp = rhi::LoadOp::Clear;
+                renderingDesc.depthStencilAttachment.storeOp = rhi::StoreOp::DontCare;
+                renderingDesc.depthStencilAttachment.clearDepth = 1.0f;
+                renderingDesc.depthStencilAttachment.clearStencil = 0;
+                return frameContext.context->beginRendering(renderingDesc);
+            }
+
+            bool beginToneMappingRendering(FrameContext& frameContext) {
+                rhi::RenderingDesc renderingDesc{};
+                renderingDesc.extent = frameContext.extent;
+                renderingDesc.colorAttachment.view = frameContext.backBufferView;
+                renderingDesc.colorAttachment.loadOp = rhi::LoadOp::Clear;
+                renderingDesc.colorAttachment.storeOp = rhi::StoreOp::Store;
+                renderingDesc.colorAttachment.clearColor = frameContext.clearColor;
+                return frameContext.context->beginRendering(renderingDesc);
+            }
+
+            void setViewportAndScissor(FrameContext& frameContext) {
+                rhi::Viewport viewport{};
+                viewport.width = static_cast<float>(frameContext.extent.width);
+                viewport.height = static_cast<float>(frameContext.extent.height);
+                frameContext.context->setViewport(viewport);
+
+                rhi::ScissorRect scissor{};
+                scissor.width = frameContext.extent.width;
+                scissor.height = frameContext.extent.height;
+                frameContext.context->setScissorRect(scissor);
+            }
+
+            rhi::RenderDevice* m_Device = nullptr;
             Scope<ClearPass> m_ClearPass;
             Scope<ForwardPass> m_ForwardPass;
-            std::array<RenderPass*, 2> m_Passes{};
+            Scope<ToneMappingPass> m_ToneMappingPass;
+            std::array<RenderPass*, 2> m_ScenePasses{};
+            std::array<RenderPass*, 1> m_PostPasses{};
+            Scope<rhi::Texture> m_SceneColor;
+            Scope<rhi::TextureView> m_SceneColorView;
             rhi::Extent2D m_Extent{};
         };
     } // namespace

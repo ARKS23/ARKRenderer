@@ -4,7 +4,7 @@
 
 ## 1. 当前状态
 
-ARKRenderer 当前代码实现已完成 Phase 0.26：`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 也已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF。
+ARKRenderer 当前代码实现已完成 Phase 0.27：`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer。
 
 当前默认渲染主线：
 
@@ -23,7 +23,7 @@ Vulkan Dynamic Rendering
             -> TextureResource RGBA8/sRGB upload + GPU mipmap generation
             -> TextureCache path + colorSpace + fallback + sampler key reuse
             -> MaterialResource texture references + factors + render state + texCoord selectors
-        -> beginRendering(color + depth)
+        -> beginRendering(RGBA16Float scene color + depth)
         -> ClearPass
         -> ForwardPass
             -> RenderView camera uniform + camera position
@@ -38,6 +38,13 @@ Vulkan Dynamic Rendering
             -> alphaMode / doubleSided pipeline variant key
             -> doubleSided culling: None for double-sided, Back for single-sided
             -> indexed textured mesh draw(s) in RenderQueue order
+        -> endRendering()
+        -> scene color RenderTarget -> ShaderResource
+        -> beginRendering(swapchain backbuffer)
+        -> ToneMappingPass
+            -> fullscreen triangle
+            -> sample HDR scene color
+            -> fixed exposure + Reinhard tone mapping + linear-to-sRGB
         -> endRendering()
         -> Present
 ```
@@ -117,6 +124,22 @@ tests/shader_assets_smoke.cpp
 docs/codex_handoff.md
 ```
 
+Phase 0.27 已完成的主要改动：
+
+```text
+docs/phase/phase27.md
+src/renderer/FrameContext.h
+src/renderer/FrameRenderer.cpp
+src/renderer/passes/ForwardPass.cpp
+src/renderer/passes/ToneMappingPass.h/.cpp
+shaders/tonemap.vert.hlsl
+shaders/tonemap.frag.hlsl
+CMakeLists.txt
+tests/forward_pass_pipeline_smoke.cpp
+tests/shader_assets_smoke.cpp
+docs/codex_handoff.md
+```
+
 当前支持范围：
 
 - 读取 textureInfo 上的 `KHR_texture_transform`。
@@ -146,24 +169,28 @@ docs/codex_handoff.md
   - Schlick Fresnel
   - Lambert diffuse
   - metallic workflow F0
-- 当前仍是 direct-light-only；尚未支持 HDR、tone mapping、IBL、shadow 或多光源。
+- `FrameContext` 提供当前 render scope 的 `colorFormat` / `depthFormat` 和 post pass 采样用的 `sceneColorView`。
+- `ForwardPass` pipeline key 优先使用 `FrameContext::colorFormat` / `FrameContext::depthFormat`，不再强依赖 swapchain color format。
+- `FrameRenderer` 创建 `RGBA16Float` scene color，usage 为 `RenderTarget | ShaderResource`。
+- `FrameRenderer` 当前是两段 dynamic rendering：Forward scene pass 写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer。
+- `ToneMappingPass` 使用 per-frame descriptor set 采样 scene color，fullscreen triangle 输出固定 exposure + Reinhard tone mapping + linear-to-sRGB。
+- 当前仍是 direct-light-only；尚未支持 IBL、shadow、多光源、bloom 或 auto exposure。
 
 ## 2. 最近提交与工作区
 
-最近提交（本次 Phase 0.26 提交前）：
+最近提交（本次 Phase 0.27 提交前）：
 
 ```text
+af0d530 完成 Phase26 direct lighting BRDF
 4aaeba4 完成 Phase25 scene light camera
 aefbdd5 完成 Phase24 doubleSided culling
 bea5c01 完成 Phase23 RenderQueue alpha 分桶
 2d4b4f4 完成 Phase22 texture transform 渲染闭环
 47b7af2 完成 Phase22 texture transform 数据流基础
 98aeea9 更新 Codex handoff 至 Phase21
-40b5082 pahse22文档
-a458a5c 完成 Phase21 TEXCOORD1 采样闭环
 ```
 
-本次 Phase 0.26 提交推送后，预期工作区状态：
+本次 Phase 0.27 提交推送后，预期工作区状态：
 
 ```text
 ## main...origin/main
@@ -395,9 +422,33 @@ git log --oneline -n 5
 - `LightingUniform` binding 13、descriptor layout、pipeline layout、RHI/Vulkan 均未修改。
 - `shader_assets_smoke` 已扩展 source smoke，覆盖 BRDF helper 和关键变量，并继续验证 mesh SPIR-V 能加载。
 
+### Phase 0.27
+
+- 新增 `docs/phase/phase27.md`，明确本阶段只做 HDR scene color / tone mapping 最小闭环，不做 IBL、bloom、auto exposure、shadow、多光源或 RenderGraph。
+- `FrameContext` 新增：
+  - `sceneColorView`
+  - `colorFormat`
+  - `depthFormat`
+- `ForwardPass` pipeline format 已从 swapchain 解耦，优先使用 `FrameContext::colorFormat` / `FrameContext::depthFormat`，并保留 swapchain fallback。
+- `DefaultFrameRenderer` 新增 `RGBA16Float` scene color texture/view，usage 为 `RenderTarget | ShaderResource`。
+- `FrameRenderer` 从单 render scope 改为两段：
+  - scene pass：`ClearPass` + `ForwardPass` 写 HDR scene color + swapchain depth。
+  - post pass：`ToneMappingPass` 采样 scene color 后写 swapchain backbuffer。
+- `ToneMappingPass` 新增完整 C++ 实现：
+  - descriptor layout：binding 0 sampled image，binding 1 sampler
+  - per-frame descriptor set，避免多帧并行时改写同一 descriptor set
+  - clamp-to-edge linear sampler
+  - fullscreen triangle draw
+  - pipeline 按当前 backbuffer color format 创建
+- 新增 `shaders/tonemap.vert.hlsl`，使用 `SV_VertexID` 生成 fullscreen triangle。
+- 新增 `shaders/tonemap.frag.hlsl`，采样 HDR scene color，执行固定 exposure + Reinhard tone mapping + linear-to-sRGB。
+- CMake 已编译 `tonemap.vert.spv` / `tonemap.frag.spv`。
+- `shader_assets_smoke` 已覆盖 tonemap SPIR-V 和关键源码 token。
+- `ark_forward_pass_pipeline_smoke` 已覆盖 `FrameContext::colorFormat = RGBA16Float` 时 ForwardPass pipeline 使用 HDR color format。
+
 ## 4. 关键代码阅读顺序
 
-建议按以下顺序审核当前 Phase 0.26 闭环：
+建议按以下顺序审核当前 Phase 0.27 闭环：
 
 1. `docs/phase/phase21.md`
    - 回看 `TEXCOORD_1` / per-slot UV selection 的前置范围和限制。
@@ -411,30 +462,38 @@ git log --oneline -n 5
    - 确认 scene lighting / camera position 的范围、非目标、测试策略和仍不做 BRDF/HDR/IBL 的限制。
 6. `docs/phase/phase26.md`
    - 确认 direct lighting BRDF 升级范围、非目标、测试策略和仍不做 HDR/IBL 的限制。
-7. `src/renderer/RenderScene.h/.cpp`
+7. `docs/phase/phase27.md`
+   - 确认 HDR scene color / tone mapping 范围、两段 FrameRenderer 调度、测试策略和仍不做 IBL/bloom/auto exposure 的限制。
+8. `src/renderer/FrameContext.h`
+   - 看 `sceneColorView`、`colorFormat`、`depthFormat` 的 pass 间共享语义。
+9. `src/renderer/FrameRenderer.cpp`
+   - 看 `RGBA16Float` scene color 创建、scene pass / tone mapping pass 两段 dynamic rendering、barrier 和 viewport/scissor。
+10. `src/renderer/passes/ToneMappingPass.h/.cpp`
+   - 看 per-frame descriptor set、scene color sampled image/sampler binding、fullscreen triangle draw 和 pipeline format。
+11. `shaders/tonemap.vert.hlsl` / `shaders/tonemap.frag.hlsl`
+   - 看 `SV_VertexID` fullscreen triangle、HDR scene color sampling、fixed exposure、tone mapping 和 linear-to-sRGB。
+12. `src/renderer/RenderScene.h/.cpp`
    - 看 `DirectionalLight`、`SceneLighting`、`RenderScene::lighting()` 和 `RenderScene::setLighting()`。
-8. `src/renderer/RenderView.h`
+13. `src/renderer/RenderView.h`
    - 看 camera position、`setDefaultPerspective()`、显式 `setMatrices()` 和旧 `setMatrices()` 兼容路径。
-9. `src/asset/MeshData.h/.cpp`
+14. `src/asset/MeshData.h/.cpp`
    - 看 `MeshVertex::uv1`、tangent 字段、`TextureTransformData`、`MaterialTextureSlotData` 和 `generateTangents()`。
-10. `src/asset/GltfLoader.cpp`
+15. `src/asset/GltfLoader.cpp`
    - 看 sampler、alpha render state、`TEXCOORD_1`、`KHR_texture_transform`、显式/生成 tangent、scene/node instance 的读取路径。
-11. `src/renderer/ModelResource.cpp`
+16. `src/renderer/ModelResource.cpp`
    - 看 asset sampler 到 RHI sampler 的转换、texture cache 获取和 fallback texture。
-12. `src/renderer/material/MaterialResource.h/.cpp`
+17. `src/renderer/material/MaterialResource.h/.cpp`
    - 看 material factors、render state、texture references、per-slot texCoord set、per-slot transform set 和 descriptor 写入。
-13. `src/renderer/RenderQueue.cpp`
+18. `src/renderer/RenderQueue.cpp`
    - 看 scene/model draw item 展开、Opaque / Mask / Blend 分桶和 bucket 合并顺序。
-14. `src/renderer/passes/ForwardPass.cpp`
-   - 看 descriptor layout、pipeline variant key、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position 读取、per-slot transform 写入和 draw loop。
-15. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
+19. `src/renderer/passes/ForwardPass.cpp`
+   - 看 descriptor layout、pipeline variant key、FrameContext attachment format 解耦、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position 读取、per-slot transform 写入和 draw loop。
+20. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
    - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend 和 Cook-Torrance direct BRDF 路径。
-16. `src/renderer/FrameRenderer.cpp`
-   - 确认 `prepare()` 仍在 `beginRendering()` 前，upload/mip generation/deferred release 不进入 dynamic rendering scope。
-17. `src/rhi/vulkan/VulkanCommandContext.cpp` / `VulkanPipelineState.cpp` / `VulkanSampler.cpp`
+21. `src/rhi/vulkan/VulkanCommandContext.cpp` / `VulkanPipelineState.cpp` / `VulkanSampler.cpp`
     - 看 upload/mip generation scope 检查、blend/cull/depth state、sampler address/filter 映射。
-18. `tests/forward_pass_pipeline_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp`
-    - 看当前 smoke tests 对 ForwardPass cull state、lighting uniform、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF shader source 的约束。
+22. `tests/forward_pass_pipeline_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp`
+    - 看当前 smoke tests 对 ForwardPass HDR attachment format、cull state、lighting uniform、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF shader source 和 tone mapping shader source 的约束。
 
 ## 5. 必须继续遵守的架构边界
 
@@ -453,6 +512,7 @@ docs/phase/phase23.md
 docs/phase/phase24.md
 docs/phase/phase25.md
 docs/phase/phase26.md
+docs/phase/phase27.md
 ```
 
 硬性边界：
@@ -473,6 +533,10 @@ docs/phase/phase26.md
 - local texture cache 可由 `ModelResource` 管理；external texture cache 必须由外部拥有者管理。
 - `MaterialResource` 保存 material 语义和 texture 引用，并负责 descriptor 写入。
 - `ForwardPass` 负责 pipeline、descriptor、per-frame/per-draw binding、doubleSided culling 和 draw，不负责 asset loading、cache 或 resource lifetime。
+- `ForwardPass` 的 pipeline attachment format 应来自当前 render scope 的 `FrameContext::colorFormat` / `depthFormat`，不要重新绑定到 swapchain format。
+- `FrameRenderer` 当前拥有 frame-level HDR scene color，不放入 `RenderScene`、`ForwardPass` 或 `ToneMappingPass`。
+- `ToneMappingPass` 只负责采样 scene color 并写 backbuffer，不拥有 scene color 生命周期。
+- tone mapping 仍是固定 exposure 的最小 pass，不代表完整 post-process stack。
 - upload / mip generation / deferred release 命令必须记录在 dynamic rendering scope 外。
 - 当前继续使用 Vulkan Dynamic Rendering，不引入传统 `VkRenderPass` / `VkFramebuffer`。
 - 日志输出使用英文。
@@ -487,8 +551,8 @@ P0 / 下一阶段优先：
 - tangent generation 仍基于 `uv0`；如果 normal texture 使用 `texCoord=1`，严格 tangent basis 仍是后续改进项。
 - `KHR_texture_transform` 已支持 textureInfo 上的 offset / scale / rotation / texCoord override，但不支持 animation、`TEXCOORD_2+` 或 per-UV-set tangent basis。
 - `doubleSided=true` 当前只关闭背面剔除，不做 two-sided lighting，也不基于 `gl_FrontFacing` 翻转 normal。
-- 当前 direct lighting 已使用 Cook-Torrance BRDF，但仍是 direct-light-only，没有 IBL、HDR、tone mapping、shadow 或多光源。
-- 当前 BRDF 输出仍直接进入 LDR backbuffer；材质观感要等 HDR/tone mapping 后继续校准。
+- 当前 direct lighting 已使用 Cook-Torrance BRDF，并通过 `RGBA16Float` scene color + ToneMappingPass 输出，但仍没有 IBL、shadow 或多光源。
+- tone mapping 当前是固定 exposure + Reinhard，不支持 auto exposure、ACES 参数化、bloom 或 color grading。
 - 当前只支持一个 directional light 和 ambient color；不支持 point / spot / area light、shadow、glTF camera 或 `KHR_lights_punctual`。
 - `Renderer` 内部默认 scene 仍是 sandbox 过渡方案；真正 renderer 级资源/场景加载入口尚未设计。
 - `assets/models/DamagedHelmet/` 可作为真实 glTF 2.0 验证对象，但不应作为默认路径或提交依赖。
@@ -513,15 +577,18 @@ P2：
 - RenderDoc capture / screenshot / pixel smoke。
 - ResourceManager handle 系统。
 - RenderGraph 第一版 pass/resource 声明。
-- 完整 PBR、IBL、tone mapping。
+- 完整 PBR、IBL、bloom、auto exposure。
 
 ## 7. 最近验证记录
 
-Phase 0.26 收尾在 Windows/MSVC vcpkg debug preset 下完成验证：
+Phase 0.27 收尾在 Windows/MSVC vcpkg debug preset 下完成验证：
 
 ```powershell
 cmake --build --preset msvc-vcpkg-debug --target ark_shader_assets_smoke
+cmake --build --preset msvc-vcpkg-debug --target ark_forward_pass_pipeline_smoke
 build/msvc-vcpkg/Debug/ark_shader_assets_smoke.exe
+build/msvc-vcpkg/Debug/ark_forward_pass_pipeline_smoke.exe
+cmake --build --preset msvc-vcpkg-debug --target ark_sandbox -- /t:Rebuild /m:1
 cmake --build --preset msvc-vcpkg-debug
 ctest --preset msvc-vcpkg-debug
 build/msvc-vcpkg/Debug/ark_sandbox.exe
@@ -531,24 +598,27 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 结果：
 
 ```text
-targeted build passed
+targeted shader assets build passed
+targeted forward pass pipeline build passed
 ark_shader_assets_smoke passed
+ark_forward_pass_pipeline_smoke passed
+single-process ark_sandbox rebuild passed
 full build passed
 CTest: 9/9 passed
 default sandbox smoke passed
 DamagedHelmet sandbox smoke passed
 ```
 
-本轮 sandbox smoke 使用隐藏窗口启动 3 秒后自动停止，用于确认默认场景和 DamagedHelmet 路径不会启动即退出。
+本轮 sandbox smoke 使用隐藏窗口启动 3 秒后自动停止，用于确认默认场景和 DamagedHelmet 路径不会启动即退出。期间曾遇到一次并行 MSBuild 写 PDB/tlog 锁和一次脏 `ToneMappingPass.obj` 链接问题；通过顺序构建和单进程 Rebuild 清理中间产物后，完整 build、CTest 和 runtime smoke 均通过。
 
 ## 8. 推荐下一步
 
-Phase 0.26 后建议继续保持小步闭环，不要直接进入完整 RenderGraph / bindless。
+Phase 0.27 后建议继续保持小步闭环，不要直接进入完整 RenderGraph / bindless。
 
 优先顺序：
 
-1. HDR framebuffer 与 tone mapping。
-2. IBL / environment map / BRDF LUT。
+1. IBL / environment map / BRDF LUT。
+2. bloom 或 exposure 参数化。
 3. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
 4. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
 5. pipeline / shader / descriptor layout 的 deferred destruction。
@@ -556,10 +626,10 @@ Phase 0.26 后建议继续保持小步闭环，不要直接进入完整 RenderGr
 ## 9. 下一次 Codex 启动提示
 
 ```text
-请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.26：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 也已完成，Opaque / Mask draw items 会稳定排在 Blend draw items 前；ForwardPass 已按 glTF doubleSided 精确设置 raster culling；RenderScene / RenderView 已提供可配置 scene lighting 和 camera position；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF。
+请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.27：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 也已完成，Opaque / Mask draw items 会稳定排在 Blend draw items 前；ForwardPass 已按 glTF doubleSided 精确设置 raster culling；RenderScene / RenderView 已提供可配置 scene lighting 和 camera position；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass，ForwardPass 先写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer。
 
 重点理解当前默认渲染路径：
-Vulkan Dynamic Rendering + Renderer + RenderScene scene lighting + RenderView camera matrix/camera position + RenderQueue alpha buckets + FrameRenderer + ClearPass + ForwardPass doubleSided culling + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment。
+Vulkan Dynamic Rendering + Renderer + RenderScene scene lighting + RenderView camera matrix/camera position + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + ForwardPass doubleSided culling + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + fixed exposure/Reinhard/linear-to-sRGB + swapchain backbuffer。
 
 然后阅读：
 docs/design/framework.md
@@ -574,9 +644,10 @@ docs/phase/phase23.md
 docs/phase/phase24.md
 docs/phase/phase25.md
 docs/phase/phase26.md
+docs/phase/phase27.md
 
-不要重复 Phase 0.5 ~ 0.26 已完成工作。
-不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，也不要重复 Phase 0.26 已完成的 direct lighting BRDF。下一步建议从 HDR framebuffer / tone mapping 等小步继续。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整 IBL，除非用户明确改变目标。
+不要重复 Phase 0.5 ~ 0.27 已完成工作。
+不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，也不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环。下一步建议从 IBL / environment map / BRDF LUT、bloom/exposure 参数化或 renderer 资源/场景加载入口等小步继续。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
 
 如果实现方向与既有设计文档冲突，先说明并更新设计文档，再修改代码。新增代码保持现有风格：左大括号不换行，namespace 内缩进，日志输出用英文，必要注释用简洁中文。不确定的地方写 TODO 或记录到文档，不要假装完成。
 

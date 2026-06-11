@@ -31,8 +31,11 @@ namespace ark {
         rhi::SwapChain* swapChain = nullptr;
         rhi::FrameResource* frameResource = nullptr;
         rhi::TextureView* backBufferView = nullptr;
+        rhi::TextureView* sceneColorView = nullptr;
 
         rhi::Extent2D extent{};
+        rhi::Format colorFormat = rhi::Format::Unknown;
+        rhi::Format depthFormat = rhi::Format::Unknown;
         rhi::ClearColor clearColor{};
     };
 } // namespace ark

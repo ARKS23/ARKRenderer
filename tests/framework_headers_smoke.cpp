@@ -122,6 +122,10 @@ int main() {
     const ark::rhi::TextureUsage textureUsage =
         ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::DepthStencil;
     const bool textureHasDepthUsage = ark::rhi::hasTextureUsage(textureUsage, ark::rhi::TextureUsage::DepthStencil);
+    const ark::rhi::TextureUsage sceneColorUsage =
+        ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::ShaderResource;
+    const bool textureHasShaderResourceUsage =
+        ark::rhi::hasTextureUsage(sceneColorUsage, ark::rhi::TextureUsage::ShaderResource);
     ark::rhi::TextureDesc depthTextureDesc{};
     depthTextureDesc.extent = swapChainDesc.extent;
     depthTextureDesc.format = ark::rhi::Format::D32Float;
@@ -277,6 +281,13 @@ int main() {
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
 
     ark::FrameContext frameContext{};
+    frameContext.sceneColorView = sampledImageDescriptor.view;
+    frameContext.colorFormat = ark::rhi::Format::RGBA16Float;
+    frameContext.depthFormat = ark::rhi::Format::D32Float;
+    if (!textureHasShaderResourceUsage || frameContext.colorFormat != ark::rhi::Format::RGBA16Float ||
+        frameContext.depthFormat != ark::rhi::Format::D32Float) {
+        return EXIT_FAILURE;
+    }
     ark::MeshResource meshResource{};
     ark::ModelResource modelResource{};
     ark::RenderGraph renderGraph;
@@ -306,6 +317,8 @@ int main() {
     (void)bufferHasVertexUsage;
     (void)textureUsage;
     (void)textureHasDepthUsage;
+    (void)sceneColorUsage;
+    (void)textureHasShaderResourceUsage;
     (void)depthTextureDesc;
     (void)depthBarrier;
     (void)shaderDesc;

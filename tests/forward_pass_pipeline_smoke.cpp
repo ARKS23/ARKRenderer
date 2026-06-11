@@ -446,7 +446,9 @@ namespace {
                              ark::rhi::GraphicsPipelineDesc& pipelineDesc,
                              FakeDeviceContext& context,
                              const ark::SceneLighting* lighting = nullptr,
-                             const ark::RenderView* customView = nullptr) {
+                             const ark::RenderView* customView = nullptr,
+                             ark::rhi::Format colorFormat = ark::rhi::Format::Unknown,
+                             ark::rhi::Format depthFormat = ark::rhi::Format::Unknown) {
         FakeRenderDevice device{};
         FakeSwapChain swapChain{};
         ark::TextureCache textureCache{};
@@ -487,6 +489,8 @@ namespace {
         frameContext.swapChain = &swapChain;
         frameContext.frameResource = &context.frame;
         frameContext.extent = swapChain.getDesc().extent;
+        frameContext.colorFormat = colorFormat;
+        frameContext.depthFormat = depthFormat;
 
         if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
             std::cerr << "ForwardPass pipeline smoke failed to execute\n";
@@ -499,6 +503,29 @@ namespace {
         }
 
         pipelineDesc = device.pipelineDescs.front();
+        return true;
+    }
+
+    bool validateForwardPassUsesFrameContextFormats() {
+        FakeDeviceContext context{};
+        ark::rhi::GraphicsPipelineDesc pipelineDesc{};
+        if (!capturePipelineDesc(ark::asset::AlphaMode::Opaque,
+                                 false,
+                                 pipelineDesc,
+                                 context,
+                                 nullptr,
+                                 nullptr,
+                                 ark::rhi::Format::RGBA16Float,
+                                 ark::rhi::Format::D32Float)) {
+            return false;
+        }
+
+        if (pipelineDesc.colorFormat != ark::rhi::Format::RGBA16Float ||
+            pipelineDesc.depthFormat != ark::rhi::Format::D32Float) {
+            std::cerr << "ForwardPass pipeline did not use FrameContext attachment formats\n";
+            return false;
+        }
+
         return true;
     }
 
@@ -634,6 +661,7 @@ namespace {
 int main() {
     return validateSceneLightingAndRenderView() &&
                    validateForwardPassLightingUniform() &&
+                   validateForwardPassUsesFrameContextFormats() &&
                    validateDoubleSidedCullModes()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
