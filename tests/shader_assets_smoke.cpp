@@ -180,6 +180,66 @@ namespace {
 
         return true;
     }
+
+    bool validateEquirectToCubeVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("equirect_to_cube.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find equirect-to-cube vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read equirect-to-cube vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SV_VertexID") ||
+            !containsText(shaderSource, "[[vk::location(0)]] float2 uv") ||
+            !containsText(shaderSource, "positions[3]")) {
+            std::cerr << "Equirect-to-cube vertex shader does not expose expected fullscreen triangle path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateEquirectToCubeFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("equirect_to_cube.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find equirect-to-cube fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read equirect-to-cube fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct EquirectToCubeUniform") ||
+            !containsText(shaderSource, "[[vk::binding(0, 0)]]") ||
+            !containsText(shaderSource, "g_Conversion.faceIndex") ||
+            !containsText(shaderSource, "[[vk::binding(1, 0)]]") ||
+            !containsText(shaderSource, "Texture2D<float4> g_SourceEnvironment") ||
+            !containsText(shaderSource, "[[vk::binding(2, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_SourceSampler") ||
+            !containsText(shaderSource, "directionToEquirectUv") ||
+            !containsText(shaderSource, "faceUvToDirection") ||
+            !containsText(shaderSource, "Face order: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z") ||
+            !containsText(shaderSource, "Sample")) {
+            std::cerr << "Equirect-to-cube fragment shader does not expose expected conversion path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "pow") || containsText(shaderSource, "linearToOutput") ||
+            containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "Equirect-to-cube fragment shader should output linear HDR without tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -193,12 +253,16 @@ int main() {
     const bool meshFragmentShaderValid = validateCompiledShader("mesh.frag.spv");
     const bool toneMappingVertexShaderValid = validateCompiledShader("tonemap.vert.spv");
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
+    const bool equirectToCubeVertexShaderValid = validateCompiledShader("equirect_to_cube.vert.spv");
+    const bool equirectToCubeFragmentShaderValid = validateCompiledShader("equirect_to_cube.frag.spv");
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
                    meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
+                   equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
-                   validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource()
+                   validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
+                   validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource()
                ? 0
                : 1;
 }

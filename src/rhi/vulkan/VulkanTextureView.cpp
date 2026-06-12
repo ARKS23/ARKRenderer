@@ -51,6 +51,10 @@ namespace ark::rhi::vulkan {
                 throw std::runtime_error("VulkanTextureView array range exceeds texture array layers");
             }
 
+            if (desc.type == TextureViewType::Texture2D && desc.arrayLayerCount != 1) {
+                throw std::runtime_error("VulkanTextureView 2D views require exactly one array layer");
+            }
+
             if (desc.type == TextureViewType::Cube) {
                 if (textureDesc.type != TextureType::Cube) {
                     throw std::runtime_error("VulkanTextureView cube views require a cube texture");

@@ -16,6 +16,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
@@ -141,7 +142,7 @@ int main() {
     cubeTextureDesc.format = ark::rhi::Format::RGBA16Float;
     cubeTextureDesc.mipLevels = 1;
     cubeTextureDesc.arrayLayers = 6;
-    cubeTextureDesc.usage = ark::rhi::TextureUsage::ShaderResource;
+    cubeTextureDesc.usage = ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::ShaderResource;
     cubeTextureDesc.type = ark::rhi::TextureType::Cube;
     ark::rhi::TextureViewDesc cubeTextureViewDesc{};
     cubeTextureViewDesc.format = cubeTextureDesc.format;
@@ -305,6 +306,12 @@ int main() {
     environmentCubeResourceDesc.debugName = "SmokeEnvironmentCube";
     environmentCubeResourceDesc.faceExtent = cubeTextureDesc.extent;
     environmentCubeResourceDesc.format = cubeTextureDesc.format;
+    ark::EnvironmentCubeConverter environmentCubeConverter{};
+    ark::EnvironmentCubeConversionDesc environmentCubeConversionDesc{};
+    environmentCubeConversionDesc.source = &environmentResource;
+    environmentCubeConversionDesc.target = &environmentCubeResource;
+    environmentCubeConversionDesc.debugName = "SmokeEnvironmentCubeConversion";
+    ark::rhi::TextureView* smokeFaceView = environmentCubeResource.faceRenderTargetView(0);
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -405,6 +412,9 @@ int main() {
     (void)environmentResourceDesc;
     (void)environmentCubeResource;
     (void)environmentCubeResourceDesc;
+    (void)environmentCubeConverter;
+    (void)environmentCubeConversionDesc;
+    (void)smokeFaceView;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;

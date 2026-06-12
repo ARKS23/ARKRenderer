@@ -7,6 +7,7 @@
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
+#include <array>
 #include <string>
 
 namespace ark::rhi {
@@ -26,6 +27,8 @@ namespace ark {
 
     class EnvironmentCubeResource final {
     public:
+        static constexpr u32 FaceCount = 6;
+
         EnvironmentCubeResource() = default;
 
         bool create(rhi::RenderDevice& device, const EnvironmentCubeResourceDesc& desc);
@@ -33,7 +36,17 @@ namespace ark {
         void resetImmediate();
 
         bool isValid() const {
-            return m_Texture && m_TextureView && m_Sampler;
+            if (!m_Texture || !m_TextureView || !m_Sampler) {
+                return false;
+            }
+
+            for (const Scope<rhi::TextureView>& faceView : m_FaceViews) {
+                if (!faceView) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         rhi::Texture* texture() const {
@@ -42,6 +55,10 @@ namespace ark {
 
         rhi::TextureView* textureView() const {
             return m_TextureView.get();
+        }
+
+        rhi::TextureView* faceRenderTargetView(u32 faceIndex) const {
+            return faceIndex < FaceCount ? m_FaceViews[faceIndex].get() : nullptr;
         }
 
         rhi::Sampler* sampler() const {
@@ -63,6 +80,7 @@ namespace ark {
     private:
         Scope<rhi::Texture> m_Texture;
         Scope<rhi::TextureView> m_TextureView;
+        std::array<Scope<rhi::TextureView>, FaceCount> m_FaceViews;
         Scope<rhi::Sampler> m_Sampler;
         rhi::Extent2D m_FaceExtent{};
         rhi::Format m_Format = rhi::Format::Unknown;

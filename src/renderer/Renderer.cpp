@@ -5,6 +5,8 @@
 #include "core/FileSystem.h"
 #include "core/Log.h"
 #include "core/Memory.h"
+#include "renderer/EnvironmentCubeConverter.h"
+#include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
@@ -22,6 +24,7 @@
 namespace ark {
     namespace {
         constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
+        constexpr rhi::Extent2D DefaultEnvironmentCubeFaceExtent{512, 512};
 
         // 第一版只提供默认 swapchain 配置，后续可以把 vsync、format 等暴露到 RendererDesc。
         rhi::SwapChainDesc makeDefaultSwapChainDesc(rhi::Extent2D extent) {
@@ -98,6 +101,7 @@ namespace ark {
                 m_FrameRenderer = createFrameRenderer();
                 m_FrameRenderer->setup(m_Backend->device());
                 m_FrameRenderer->resize(m_Extent);
+                m_EnvironmentCubeConverter.setup(m_Backend->device());
 
                 createDefaultScene();
                 createDefaultEnvironment();
@@ -111,6 +115,8 @@ namespace ark {
 
                 m_FrameRenderer.reset();
                 m_DefaultScene.clear();
+                m_EnvironmentCubeConverter.resetImmediate();
+                m_DefaultEnvironmentCube.resetImmediate();
                 m_DefaultEnvironment.resetImmediate();
                 m_DefaultModel.reset();
                 m_Backend.reset();
@@ -149,6 +155,7 @@ namespace ark {
                 // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue，pass 只消费 queue。
 
                 RenderScene& renderScene = scene.empty() && !m_DefaultScene.empty() ? m_DefaultScene : scene;
+                prepareDefaultEnvironmentCube(context, renderScene);
                 // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue。
                 m_RenderQueue.build(renderScene);
 
@@ -269,11 +276,55 @@ namespace ark {
                     return false;
                 }
 
+                EnvironmentCubeResourceDesc cubeDesc{};
+                cubeDesc.debugName = "DefaultSandboxEnvironmentCube";
+                cubeDesc.faceExtent = DefaultEnvironmentCubeFaceExtent;
+                cubeDesc.format = rhi::Format::RGBA16Float;
+                cubeDesc.mipLevels = 1;
+                if (!m_DefaultEnvironmentCube.create(m_Backend->device(), cubeDesc)) {
+                    ARK_WARN("Renderer failed to create default sandbox environment cubemap conversion target");
+                    m_DefaultEnvironmentCube.resetImmediate();
+                }
+
                 SceneEnvironment environment{};
                 environment.environment = &m_DefaultEnvironment;
                 environment.intensity = 1.0f;
                 m_DefaultScene.setEnvironment(environment);
                 return true;
+            }
+
+            void prepareDefaultEnvironmentCube(rhi::DeviceContext& context, RenderScene& renderScene) {
+                if (m_DefaultEnvironmentCubeConversionAttempted || m_DefaultEnvironmentCubeConverted) {
+                    return;
+                }
+
+                const SceneEnvironment& environment = renderScene.environment();
+                if (environment.environment != &m_DefaultEnvironment) {
+                    return;
+                }
+
+                m_DefaultEnvironmentCubeConversionAttempted = true;
+                if (!m_DefaultEnvironmentCube.isValid()) {
+                    return;
+                }
+
+                if (!m_DefaultEnvironment.upload(context)) {
+                    ARK_WARN("Renderer failed to upload default sandbox environment before cubemap conversion");
+                    return;
+                }
+
+                EnvironmentCubeConversionDesc conversionDesc{};
+                conversionDesc.source = &m_DefaultEnvironment;
+                conversionDesc.target = &m_DefaultEnvironmentCube;
+                conversionDesc.debugName = "DefaultSandboxEnvironmentCubeConversion";
+                if (!m_EnvironmentCubeConverter.convert(context, conversionDesc)) {
+                    ARK_WARN("Renderer failed to convert default sandbox environment to cubemap; keeping "
+                             "equirectangular ForwardPass path");
+                    return;
+                }
+
+                m_DefaultEnvironmentCubeConverted = true;
+                ARK_INFO("Converted default sandbox environment to cubemap");
             }
 
             void handleSwapChainStatus(rhi::SwapChainStatus status) {
@@ -301,12 +352,16 @@ namespace ark {
             Scope<rhi::RenderBackend> m_Backend;
             ModelResource m_DefaultModel;
             EnvironmentResource m_DefaultEnvironment;
+            EnvironmentCubeResource m_DefaultEnvironmentCube;
+            EnvironmentCubeConverter m_EnvironmentCubeConverter;
             RenderScene m_DefaultScene;
             RenderQueue m_RenderQueue;
             Path m_DefaultModelPath;
             Path m_DefaultEnvironmentPath;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
+            bool m_DefaultEnvironmentCubeConversionAttempted = false;
+            bool m_DefaultEnvironmentCubeConverted = false;
             bool m_RenderingPaused = false;
         };
     } // namespace

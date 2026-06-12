@@ -328,7 +328,7 @@ namespace {
             return false;
         }
 
-        if (device.textureDescs.size() != 1 || device.textureViewDescs.size() != 1 ||
+        if (device.textureDescs.size() != 1 || device.textureViewDescs.size() != 7 ||
             device.samplerDescs.size() != 1) {
             std::cerr << "EnvironmentCubeResource did not create expected RHI objects\n";
             return false;
@@ -341,7 +341,8 @@ namespace {
             textureDesc.format != ark::rhi::Format::RGBA16Float ||
             textureDesc.mipLevels != 3 ||
             textureDesc.arrayLayers != 6 ||
-            textureDesc.usage != ark::rhi::TextureUsage::ShaderResource) {
+            !ark::rhi::hasTextureUsage(textureDesc.usage, ark::rhi::TextureUsage::RenderTarget) ||
+            !ark::rhi::hasTextureUsage(textureDesc.usage, ark::rhi::TextureUsage::ShaderResource)) {
             std::cerr << "EnvironmentCubeResource texture desc is invalid\n";
             return false;
         }
@@ -353,6 +354,30 @@ namespace {
             viewDesc.baseArrayLayer != 0 ||
             viewDesc.arrayLayerCount != 6) {
             std::cerr << "EnvironmentCubeResource texture view desc is invalid\n";
+            return false;
+        }
+
+        for (ark::u32 faceIndex = 0; faceIndex < ark::EnvironmentCubeResource::FaceCount; ++faceIndex) {
+            ark::rhi::TextureView* faceView = cube.faceRenderTargetView(faceIndex);
+            if (!faceView) {
+                std::cerr << "EnvironmentCubeResource face render target view is missing\n";
+                return false;
+            }
+
+            const ark::rhi::TextureViewDesc& faceViewDesc = device.textureViewDescs[faceIndex + 1];
+            if (faceViewDesc.type != ark::rhi::TextureViewType::Texture2D ||
+                faceViewDesc.format != ark::rhi::Format::RGBA16Float ||
+                faceViewDesc.baseMipLevel != 0 ||
+                faceViewDesc.mipLevelCount != 1 ||
+                faceViewDesc.baseArrayLayer != faceIndex ||
+                faceViewDesc.arrayLayerCount != 1) {
+                std::cerr << "EnvironmentCubeResource face texture view desc is invalid\n";
+                return false;
+            }
+        }
+
+        if (cube.faceRenderTargetView(ark::EnvironmentCubeResource::FaceCount) != nullptr) {
+            std::cerr << "EnvironmentCubeResource accepted out-of-range face view access\n";
             return false;
         }
 
@@ -369,7 +394,7 @@ namespace {
         }
 
         if (!cube.releaseDeferred(context) ||
-            context.deferredTextureViews != 1 ||
+            context.deferredTextureViews != 7 ||
             context.deferredSamplers != 1 ||
             context.deferredTextures != 1 ||
             context.deferredBuffers != 0 ||

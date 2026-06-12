@@ -6,8 +6,6 @@
 
 namespace ark {
     namespace {
-        constexpr u32 CubemapLayerCount = 6;
-
         bool isSupportedEnvironmentCubeFormat(rhi::Format format) {
             return format == rhi::Format::RGBA16Float || format == rhi::Format::RGBA32Float;
         }
@@ -70,8 +68,8 @@ namespace ark {
         textureDesc.extent = m_FaceExtent;
         textureDesc.format = m_Format;
         textureDesc.mipLevels = m_MipLevels;
-        textureDesc.arrayLayers = CubemapLayerCount;
-        textureDesc.usage = rhi::TextureUsage::ShaderResource;
+        textureDesc.arrayLayers = FaceCount;
+        textureDesc.usage = rhi::TextureUsage::RenderTarget | rhi::TextureUsage::ShaderResource;
         textureDesc.type = rhi::TextureType::Cube;
         m_Texture = device.createTexture(textureDesc);
         if (!m_Texture) {
@@ -83,13 +81,29 @@ namespace ark {
         rhi::TextureViewDesc textureViewDesc{};
         textureViewDesc.format = textureDesc.format;
         textureViewDesc.mipLevelCount = m_MipLevels;
-        textureViewDesc.arrayLayerCount = CubemapLayerCount;
+        textureViewDesc.arrayLayerCount = FaceCount;
         textureViewDesc.type = rhi::TextureViewType::Cube;
         m_TextureView = device.createTextureView(*m_Texture, textureViewDesc);
         if (!m_TextureView) {
             ARK_ERROR("EnvironmentCubeResource failed to create texture view: {}", debugName);
             resetImmediate();
             return false;
+        }
+
+        for (u32 faceIndex = 0; faceIndex < FaceCount; ++faceIndex) {
+            rhi::TextureViewDesc faceViewDesc{};
+            faceViewDesc.format = textureDesc.format;
+            faceViewDesc.baseMipLevel = 0;
+            faceViewDesc.mipLevelCount = 1;
+            faceViewDesc.baseArrayLayer = faceIndex;
+            faceViewDesc.arrayLayerCount = 1;
+            faceViewDesc.type = rhi::TextureViewType::Texture2D;
+            m_FaceViews[faceIndex] = device.createTextureView(*m_Texture, faceViewDesc);
+            if (!m_FaceViews[faceIndex]) {
+                ARK_ERROR("EnvironmentCubeResource failed to create face texture view {}: {}", faceIndex, debugName);
+                resetImmediate();
+                return false;
+            }
         }
 
         rhi::SamplerDesc samplerDesc =
@@ -108,6 +122,13 @@ namespace ark {
     }
 
     bool EnvironmentCubeResource::releaseDeferred(rhi::DeviceContext& context) {
+        for (Scope<rhi::TextureView>& faceView : m_FaceViews) {
+            if (faceView && !context.deferReleaseTextureView(faceView)) {
+                ARK_ERROR("EnvironmentCubeResource failed to defer face texture view");
+                return false;
+            }
+        }
+
         if (m_TextureView && !context.deferReleaseTextureView(m_TextureView)) {
             ARK_ERROR("EnvironmentCubeResource failed to defer texture view");
             return false;
@@ -130,6 +151,9 @@ namespace ark {
     }
 
     void EnvironmentCubeResource::resetImmediate() {
+        for (Scope<rhi::TextureView>& faceView : m_FaceViews) {
+            faceView.reset();
+        }
         m_TextureView.reset();
         m_Sampler.reset();
         m_Texture.reset();
