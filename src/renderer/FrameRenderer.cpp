@@ -6,6 +6,7 @@
 #include "renderer/RenderPass.h"
 #include "renderer/passes/ClearPass.h"
 #include "renderer/passes/ForwardPass.h"
+#include "renderer/passes/SkyboxPass.h"
 #include "renderer/passes/ToneMappingPass.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/RenderDevice.h"
@@ -24,8 +25,8 @@ namespace ark {
         public:
             DefaultFrameRenderer()
                 : m_ClearPass(makeScope<ClearPass>()), m_ForwardPass(makeScope<ForwardPass>()),
-                  m_ToneMappingPass(makeScope<ToneMappingPass>()),
-                  m_ScenePasses{m_ClearPass.get(), m_ForwardPass.get()},
+                  m_SkyboxPass(makeScope<SkyboxPass>()), m_ToneMappingPass(makeScope<ToneMappingPass>()),
+                  m_ScenePasses{m_ClearPass.get(), m_SkyboxPass.get(), m_ForwardPass.get()},
                   m_PostPasses{m_ToneMappingPass.get()} {
             }
 
@@ -229,8 +230,9 @@ namespace ark {
             rhi::RenderDevice* m_Device = nullptr;
             Scope<ClearPass> m_ClearPass;
             Scope<ForwardPass> m_ForwardPass;
+            Scope<SkyboxPass> m_SkyboxPass;
             Scope<ToneMappingPass> m_ToneMappingPass;
-            std::array<RenderPass*, 2> m_ScenePasses{};
+            std::array<RenderPass*, 3> m_ScenePasses{};
             std::array<RenderPass*, 1> m_PostPasses{};
             Scope<rhi::Texture> m_SceneColor;
             Scope<rhi::TextureView> m_SceneColorView;

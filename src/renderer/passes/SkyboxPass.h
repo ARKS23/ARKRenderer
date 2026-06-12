@@ -1,10 +1,51 @@
 #pragma once
 
+#include "core/Memory.h"
+#include "core/Types.h"
 #include "renderer/RenderPass.h"
+#include "rhi/RHICommon.h"
+
+#include <array>
 
 namespace ark {
-    class SkyboxPass : public RenderPass {
+    namespace rhi {
+        class Buffer;
+        class DescriptorSet;
+        class DescriptorSetLayout;
+        class PipelineLayout;
+        class PipelineState;
+        class RenderDevice;
+        class Sampler;
+        class Shader;
+        class TextureView;
+    } // namespace rhi
+
+    class SkyboxPass final : public RenderPass {
     public:
+        ~SkyboxPass() override;
+
+        void setup(rhi::RenderDevice& device) override;
         bool execute(FrameContext& frameContext) override;
+
+    private:
+        static constexpr u32 FramesInFlight = 2;
+
+        bool createDescriptorResources();
+        bool createShaderResources();
+        bool createPipelineResources();
+        rhi::PipelineState* getOrCreatePipeline(FrameContext& frameContext);
+
+        rhi::RenderDevice* m_Device = nullptr;
+        Scope<rhi::DescriptorSetLayout> m_DescriptorSetLayout;
+        std::array<Scope<rhi::DescriptorSet>, FramesInFlight> m_DescriptorSets;
+        std::array<Scope<rhi::Buffer>, FramesInFlight> m_UniformBuffers;
+        std::array<rhi::TextureView*, FramesInFlight> m_BoundCubeViews{};
+        std::array<rhi::Sampler*, FramesInFlight> m_BoundSamplers{};
+        Scope<rhi::Shader> m_VertexShader;
+        Scope<rhi::Shader> m_FragmentShader;
+        Scope<rhi::PipelineLayout> m_PipelineLayout;
+        Scope<rhi::PipelineState> m_Pipeline;
+        rhi::Format m_PipelineColorFormat = rhi::Format::Unknown;
+        rhi::Format m_PipelineDepthFormat = rhi::Format::Unknown;
     };
 } // namespace ark

@@ -240,6 +240,62 @@ namespace {
 
         return true;
     }
+
+    bool validateSkyboxVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("skybox.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find skybox vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read skybox vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SV_VertexID") ||
+            !containsText(shaderSource, "[[vk::location(0)]] float2 uv") ||
+            !containsText(shaderSource, "positions[3]")) {
+            std::cerr << "Skybox vertex shader does not expose expected fullscreen triangle path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateSkyboxFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("skybox.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find skybox fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read skybox fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct SkyboxUniform") ||
+            !containsText(shaderSource, "inverseProjection") ||
+            !containsText(shaderSource, "inverseViewRotation") ||
+            !containsText(shaderSource, "TextureCube<float4> g_SkyboxCube") ||
+            !containsText(shaderSource, "SamplerState g_SkyboxSampler") ||
+            !containsText(shaderSource, "reconstructWorldDirection") ||
+            !containsText(shaderSource, "Sample")) {
+            std::cerr << "Skybox fragment shader does not expose expected cubemap sampling path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "pow") || containsText(shaderSource, "linearToOutput") ||
+            containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "Skybox fragment shader should output linear HDR without tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -255,14 +311,18 @@ int main() {
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
     const bool equirectToCubeVertexShaderValid = validateCompiledShader("equirect_to_cube.vert.spv");
     const bool equirectToCubeFragmentShaderValid = validateCompiledShader("equirect_to_cube.frag.spv");
+    const bool skyboxVertexShaderValid = validateCompiledShader("skybox.vert.spv");
+    const bool skyboxFragmentShaderValid = validateCompiledShader("skybox.frag.spv");
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
                    meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
+                   skyboxVertexShaderValid && skyboxFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
-                   validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource()
+                   validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource() &&
+                   validateSkyboxVertexShaderSource() && validateSkyboxFragmentShaderSource()
                ? 0
                : 1;
 }

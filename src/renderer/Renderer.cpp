@@ -18,12 +18,15 @@
 #include "rhi/TextureView.h"
 
 #include <array>
+#include <cstring>
 #include <glm/mat4x4.hpp>
 #include <stdexcept>
+#include <vector>
 
 namespace ark {
     namespace {
         constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
+        constexpr const char* DefaultSandboxEnvironmentAssetPath = "assets/HDR/2k.hdr";
         constexpr rhi::Extent2D DefaultEnvironmentCubeFaceExtent{512, 512};
 
         // 第一版只提供默认 swapchain 配置，后续可以把 vsync、format 等暴露到 RendererDesc。
@@ -62,20 +65,63 @@ namespace ark {
         }
 
         Path findSandboxEnvironmentFile(const Path& overridePath) {
-            if (overridePath.empty()) {
-                return {};
-            }
+            const Path requestedPath =
+                overridePath.empty() ? Path{DefaultSandboxEnvironmentAssetPath} : overridePath;
 
-            if (overridePath.is_absolute()) {
-                return fileExists(overridePath) ? overridePath : Path{};
+            if (requestedPath.is_absolute()) {
+                return fileExists(requestedPath) ? requestedPath : Path{};
             }
 
             const std::array<Path, 3> overrideCandidates{
-                overridePath,
-                Path{"../"} / overridePath,
-                Path{"../../"} / overridePath,
+                requestedPath,
+                Path{"../"} / requestedPath,
+                Path{"../../"} / requestedPath,
             };
             return findFirstExistingPath(overrideCandidates);
+        }
+
+        asset::ImageData makeProceduralSandboxEnvironmentImage() {
+            constexpr u32 Width = 64;
+            constexpr u32 Height = 32;
+            constexpr u32 BytesPerPixel = 16;
+
+            std::vector<float> pixels(Width * Height * 4);
+            for (u32 y = 0; y < Height; ++y) {
+                const float v = Height > 1 ? static_cast<float>(y) / static_cast<float>(Height - 1) : 0.0f;
+                const float sky = 1.0f - v;
+                const float horizon = 1.0f - (v > 0.5f ? (v - 0.5f) * 2.0f : (0.5f - v) * 2.0f);
+                for (u32 x = 0; x < Width; ++x) {
+                    const float u = Width > 1 ? static_cast<float>(x) / static_cast<float>(Width - 1) : 0.0f;
+                    float r = 0.04f + sky * 0.12f + horizon * 0.35f;
+                    float g = 0.08f + sky * 0.20f + horizon * 0.30f;
+                    float b = 0.18f + sky * 0.55f + horizon * 0.18f;
+
+                    const float sunU = u - 0.12f;
+                    const float sunV = v - 0.42f;
+                    const float sunDistanceSquared = sunU * sunU + sunV * sunV;
+                    if (sunDistanceSquared < 0.0025f) {
+                        r += 6.0f;
+                        g += 4.0f;
+                        b += 1.4f;
+                    }
+
+                    const usize pixelOffset = (static_cast<usize>(y) * Width + x) * 4;
+                    pixels[pixelOffset + 0] = r;
+                    pixels[pixelOffset + 1] = g;
+                    pixels[pixelOffset + 2] = b;
+                    pixels[pixelOffset + 3] = 1.0f;
+                }
+            }
+
+            asset::ImageData image{};
+            image.width = Width;
+            image.height = Height;
+            image.format = asset::ImageFormat::Rgba32Float;
+            image.bytesPerPixel = BytesPerPixel;
+            image.pixels.resize(pixels.size() * sizeof(float));
+            std::memcpy(image.pixels.data(), pixels.data(), image.pixels.size());
+            image.debugName = "ProceduralSandboxEnvironment";
+            return image;
         }
 
         class DefaultRenderer final : public Renderer {
@@ -171,6 +217,7 @@ namespace ark {
                 frameContext.backBufferView = backBufferView;
                 frameContext.extent = m_Extent;
                 frameContext.clearColor = m_ClearColor;
+                frameContext.environmentCube = resolveFrameEnvironmentCube(renderScene);
 
                 if (!m_FrameRenderer->render(frameContext)) {
                     context.end();
@@ -252,21 +299,20 @@ namespace ark {
             }
 
             bool createDefaultEnvironment() {
-                if (m_DefaultEnvironmentPath.empty()) {
-                    return true;
-                }
-
                 const Path environmentPath = findSandboxEnvironmentFile(m_DefaultEnvironmentPath);
-                if (environmentPath.empty()) {
+                asset::ImageData environmentImage{};
+                if (!environmentPath.empty()) {
+                    ARK_INFO("Using sandbox environment: {}", environmentPath.string());
+                    environmentImage = asset::loadImageHdrRgba32F(environmentPath);
+                } else if (!m_DefaultEnvironmentPath.empty()) {
                     ARK_WARN("Requested sandbox environment was not found: {}", m_DefaultEnvironmentPath.string());
-                    return false;
+                } else {
+                    ARK_INFO("Default sandbox environment was not found: {}", DefaultSandboxEnvironmentAssetPath);
                 }
 
-                ARK_INFO("Using sandbox environment: {}", environmentPath.string());
-                asset::ImageData environmentImage = asset::loadImageHdrRgba32F(environmentPath);
                 if (environmentImage.empty()) {
-                    ARK_WARN("Sandbox environment image is empty: {}", environmentPath.string());
-                    return false;
+                    ARK_INFO("Using procedural sandbox environment");
+                    environmentImage = makeProceduralSandboxEnvironmentImage();
                 }
 
                 EnvironmentResourceDesc environmentDesc{};
@@ -325,6 +371,17 @@ namespace ark {
 
                 m_DefaultEnvironmentCubeConverted = true;
                 ARK_INFO("Converted default sandbox environment to cubemap");
+            }
+
+            EnvironmentCubeResource* resolveFrameEnvironmentCube(RenderScene& renderScene) {
+                const SceneEnvironment& environment = renderScene.environment();
+                if (m_DefaultEnvironmentCubeConverted &&
+                    environment.environment == &m_DefaultEnvironment &&
+                    m_DefaultEnvironmentCube.isValid()) {
+                    return &m_DefaultEnvironmentCube;
+                }
+
+                return nullptr;
             }
 
             void handleSwapChainStatus(rhi::SwapChainStatus status) {
