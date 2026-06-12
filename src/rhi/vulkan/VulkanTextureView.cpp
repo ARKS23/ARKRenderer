@@ -6,6 +6,8 @@
 
 namespace ark::rhi::vulkan {
     namespace {
+        constexpr u32 CubemapLayerCount = 6;
+
         VkImageAspectFlags toAspectMask(Format format) {
             switch (format) {
             case Format::D24UnormS8UInt:
@@ -14,6 +16,49 @@ namespace ark::rhi::vulkan {
                 return VK_IMAGE_ASPECT_DEPTH_BIT;
             default:
                 return VK_IMAGE_ASPECT_COLOR_BIT;
+            }
+        }
+
+        VkImageViewType toVkImageViewType(TextureViewType type) {
+            switch (type) {
+            case TextureViewType::Texture2D:
+                return VK_IMAGE_VIEW_TYPE_2D;
+            case TextureViewType::Cube:
+                return VK_IMAGE_VIEW_TYPE_CUBE;
+            }
+
+            return VK_IMAGE_VIEW_TYPE_2D;
+        }
+
+        void validateTextureViewDesc(const VulkanTexture& texture, const TextureViewDesc& desc) {
+            const TextureDesc& textureDesc = texture.getDesc();
+
+            if (desc.mipLevelCount == 0) {
+                throw std::runtime_error("VulkanTextureView requires at least one mip level");
+            }
+
+            if (desc.arrayLayerCount == 0) {
+                throw std::runtime_error("VulkanTextureView requires at least one array layer");
+            }
+
+            if (desc.baseMipLevel >= textureDesc.mipLevels ||
+                desc.mipLevelCount > textureDesc.mipLevels - desc.baseMipLevel) {
+                throw std::runtime_error("VulkanTextureView mip range exceeds texture mip levels");
+            }
+
+            if (desc.baseArrayLayer >= textureDesc.arrayLayers ||
+                desc.arrayLayerCount > textureDesc.arrayLayers - desc.baseArrayLayer) {
+                throw std::runtime_error("VulkanTextureView array range exceeds texture array layers");
+            }
+
+            if (desc.type == TextureViewType::Cube) {
+                if (textureDesc.type != TextureType::Cube) {
+                    throw std::runtime_error("VulkanTextureView cube views require a cube texture");
+                }
+
+                if (desc.arrayLayerCount != CubemapLayerCount) {
+                    throw std::runtime_error("VulkanTextureView cube views require exactly 6 array layers");
+                }
             }
         }
     } // namespace
@@ -29,6 +74,8 @@ namespace ark::rhi::vulkan {
             throw std::runtime_error("VulkanTextureView requires valid device and image");
         }
 
+        validateTextureViewDesc(texture, m_Desc);
+
         const Format viewFormat = m_Desc.format == Format::Unknown ? texture.getDesc().format : m_Desc.format;
         const VkFormat vkFormat = toVkFormat(viewFormat);
         if (vkFormat == VK_FORMAT_UNDEFINED) {
@@ -38,7 +85,7 @@ namespace ark::rhi::vulkan {
         VkImageViewCreateInfo viewCreateInfo{};
         viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewCreateInfo.image = texture.getHandle();
-        viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewCreateInfo.viewType = toVkImageViewType(m_Desc.type);
         viewCreateInfo.format = vkFormat;
         viewCreateInfo.subresourceRange.aspectMask = toAspectMask(viewFormat);
         viewCreateInfo.subresourceRange.baseMipLevel = m_Desc.baseMipLevel;

@@ -4,6 +4,8 @@
 
 namespace ark::rhi::vulkan {
     namespace {
+        constexpr u32 CubemapLayerCount = 6;
+
         VkImageUsageFlags toVkImageUsage(TextureUsage usage) {
             VkImageUsageFlags flags = 0;
 
@@ -28,6 +30,37 @@ namespace ark::rhi::vulkan {
 
             return flags;
         }
+
+        VkImageCreateFlags toVkImageCreateFlags(TextureType type) {
+            switch (type) {
+            case TextureType::Texture2D:
+                return 0;
+            case TextureType::Cube:
+                return VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+            }
+
+            return 0;
+        }
+
+        void validateTextureDesc(const TextureDesc& desc) {
+            if (desc.mipLevels == 0) {
+                throw std::runtime_error("VulkanTexture requires at least one mip level");
+            }
+
+            if (desc.arrayLayers == 0) {
+                throw std::runtime_error("VulkanTexture requires at least one array layer");
+            }
+
+            if (desc.type == TextureType::Cube) {
+                if (desc.extent.width != desc.extent.height) {
+                    throw std::runtime_error("VulkanTexture cube textures require square faces");
+                }
+
+                if (desc.arrayLayers != CubemapLayerCount) {
+                    throw std::runtime_error("VulkanTexture cube textures require exactly 6 array layers");
+                }
+            }
+        }
     } // namespace
 
     VulkanTexture::VulkanTexture(VmaAllocator allocator, const TextureDesc& desc)
@@ -39,6 +72,8 @@ namespace ark::rhi::vulkan {
         if (!isValidExtent(m_Desc.extent)) {
             throw std::runtime_error("VulkanTexture requires a valid extent");
         }
+
+        validateTextureDesc(m_Desc);
 
         const VkFormat format = toVkFormat(m_Desc.format);
         if (format == VK_FORMAT_UNDEFINED) {
@@ -52,6 +87,7 @@ namespace ark::rhi::vulkan {
 
         VkImageCreateInfo imageCreateInfo{};
         imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageCreateInfo.flags = toVkImageCreateFlags(m_Desc.type);
         imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
         imageCreateInfo.format = format;
         imageCreateInfo.extent = VkExtent3D{m_Desc.extent.width, m_Desc.extent.height, 1};

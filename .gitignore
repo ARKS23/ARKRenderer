@@ -6,3 +6,5 @@ out/
 CMakeUserPresets.json
 vcpkg_installed/
 assets/models/DamagedHelmet/
+assets/HDR/*.hdr
+!assets/HDR/debug_*.hdr

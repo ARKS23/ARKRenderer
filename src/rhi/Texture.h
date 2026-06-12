@@ -26,6 +26,11 @@ namespace ark::rhi {
         return static_cast<u32>(value & flag) != 0;
     }
 
+    enum class TextureType {
+        Texture2D,
+        Cube,
+    };
+
     constexpr u32 calculateMipLevelCount(Extent2D extent) {
         if (!isValidExtent(extent)) {
             return 0;
@@ -47,6 +52,7 @@ namespace ark::rhi {
         u32 mipLevels = 1;
         u32 arrayLayers = 1;
         TextureUsage usage = TextureUsage::None;
+        TextureType type = TextureType::Texture2D;
     };
 
     class Texture {

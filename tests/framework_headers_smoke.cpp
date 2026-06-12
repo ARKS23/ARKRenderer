@@ -16,6 +16,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
 #include "renderer/ModelResource.h"
@@ -135,6 +136,17 @@ int main() {
     depthTextureDesc.extent = swapChainDesc.extent;
     depthTextureDesc.format = ark::rhi::Format::D32Float;
     depthTextureDesc.usage = ark::rhi::TextureUsage::DepthStencil;
+    ark::rhi::TextureDesc cubeTextureDesc{};
+    cubeTextureDesc.extent = ark::rhi::Extent2D{64, 64};
+    cubeTextureDesc.format = ark::rhi::Format::RGBA16Float;
+    cubeTextureDesc.mipLevels = 1;
+    cubeTextureDesc.arrayLayers = 6;
+    cubeTextureDesc.usage = ark::rhi::TextureUsage::ShaderResource;
+    cubeTextureDesc.type = ark::rhi::TextureType::Cube;
+    ark::rhi::TextureViewDesc cubeTextureViewDesc{};
+    cubeTextureViewDesc.format = cubeTextureDesc.format;
+    cubeTextureViewDesc.arrayLayerCount = 6;
+    cubeTextureViewDesc.type = ark::rhi::TextureViewType::Cube;
 
     ark::rhi::ResourceBarrier depthBarrier{};
     depthBarrier.before = ark::rhi::ResourceState::Undefined;
@@ -288,6 +300,11 @@ int main() {
     ark::EnvironmentResource environmentResource{};
     ark::EnvironmentResourceDesc environmentResourceDesc{};
     environmentResourceDesc.debugName = "SmokeEnvironment";
+    ark::EnvironmentCubeResource environmentCubeResource{};
+    ark::EnvironmentCubeResourceDesc environmentCubeResourceDesc{};
+    environmentCubeResourceDesc.debugName = "SmokeEnvironmentCube";
+    environmentCubeResourceDesc.faceExtent = cubeTextureDesc.extent;
+    environmentCubeResourceDesc.format = cubeTextureDesc.format;
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -354,6 +371,8 @@ int main() {
     (void)sceneColorUsage;
     (void)textureHasShaderResourceUsage;
     (void)depthTextureDesc;
+    (void)cubeTextureDesc;
+    (void)cubeTextureViewDesc;
     (void)depthBarrier;
     (void)shaderDesc;
     (void)descriptorBindingDesc;
@@ -384,6 +403,8 @@ int main() {
     (void)textureResourceDesc;
     (void)environmentResource;
     (void)environmentResourceDesc;
+    (void)environmentCubeResource;
+    (void)environmentCubeResourceDesc;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
