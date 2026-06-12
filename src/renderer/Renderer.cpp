@@ -8,6 +8,7 @@
 #include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
+#include "renderer/EnvironmentIrradianceGenerator.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
 #include "renderer/ModelResource.h"
@@ -28,6 +29,8 @@ namespace ark {
         constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
         constexpr const char* DefaultSandboxEnvironmentAssetPath = "assets/HDR/2k.hdr";
         constexpr rhi::Extent2D DefaultEnvironmentCubeFaceExtent{512, 512};
+        constexpr rhi::Extent2D DefaultIrradianceCubeFaceExtent{32, 32};
+        constexpr float DefaultIrradianceSampleDelta = 0.1f;
 
         // 第一版只提供默认 swapchain 配置，后续可以把 vsync、format 等暴露到 RendererDesc。
         rhi::SwapChainDesc makeDefaultSwapChainDesc(rhi::Extent2D extent) {
@@ -148,6 +151,7 @@ namespace ark {
                 m_FrameRenderer->setup(m_Backend->device());
                 m_FrameRenderer->resize(m_Extent);
                 m_EnvironmentCubeConverter.setup(m_Backend->device());
+                m_EnvironmentIrradianceGenerator.setup(m_Backend->device());
 
                 createDefaultScene();
                 createDefaultEnvironment();
@@ -161,7 +165,9 @@ namespace ark {
 
                 m_FrameRenderer.reset();
                 m_DefaultScene.clear();
+                m_EnvironmentIrradianceGenerator.resetImmediate();
                 m_EnvironmentCubeConverter.resetImmediate();
+                m_DefaultIrradianceCube.resetImmediate();
                 m_DefaultEnvironmentCube.resetImmediate();
                 m_DefaultEnvironment.resetImmediate();
                 m_DefaultModel.reset();
@@ -202,6 +208,7 @@ namespace ark {
 
                 RenderScene& renderScene = scene.empty() && !m_DefaultScene.empty() ? m_DefaultScene : scene;
                 prepareDefaultEnvironmentCube(context, renderScene);
+                prepareDefaultIrradianceCube(context, renderScene);
                 // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue。
                 m_RenderQueue.build(renderScene);
 
@@ -332,6 +339,16 @@ namespace ark {
                     m_DefaultEnvironmentCube.resetImmediate();
                 }
 
+                EnvironmentCubeResourceDesc irradianceDesc{};
+                irradianceDesc.debugName = "DefaultSandboxIrradianceCube";
+                irradianceDesc.faceExtent = DefaultIrradianceCubeFaceExtent;
+                irradianceDesc.format = rhi::Format::RGBA16Float;
+                irradianceDesc.mipLevels = 1;
+                if (!m_DefaultIrradianceCube.create(m_Backend->device(), irradianceDesc)) {
+                    ARK_WARN("Renderer failed to create default sandbox irradiance cubemap target");
+                    m_DefaultIrradianceCube.resetImmediate();
+                }
+
                 SceneEnvironment environment{};
                 environment.environment = &m_DefaultEnvironment;
                 environment.intensity = 1.0f;
@@ -373,6 +390,40 @@ namespace ark {
                 ARK_INFO("Converted default sandbox environment to cubemap");
             }
 
+            void prepareDefaultIrradianceCube(rhi::DeviceContext& context, RenderScene& renderScene) {
+                if (m_DefaultIrradianceCubeGenerationAttempted || m_DefaultIrradianceCubeGenerated) {
+                    return;
+                }
+
+                const SceneEnvironment& environment = renderScene.environment();
+                if (environment.environment != &m_DefaultEnvironment) {
+                    return;
+                }
+
+                if (!m_DefaultEnvironmentCubeConverted) {
+                    return;
+                }
+
+                m_DefaultIrradianceCubeGenerationAttempted = true;
+                if (!m_DefaultEnvironmentCube.isValid() || !m_DefaultIrradianceCube.isValid()) {
+                    return;
+                }
+
+                EnvironmentIrradianceGenerationDesc generationDesc{};
+                generationDesc.source = &m_DefaultEnvironmentCube;
+                generationDesc.target = &m_DefaultIrradianceCube;
+                generationDesc.sampleDelta = DefaultIrradianceSampleDelta;
+                generationDesc.debugName = "DefaultSandboxIrradianceGeneration";
+                if (!m_EnvironmentIrradianceGenerator.generate(context, generationDesc)) {
+                    ARK_WARN("Renderer failed to generate default sandbox irradiance cubemap; keeping "
+                             "equirectangular ForwardPass path");
+                    return;
+                }
+
+                m_DefaultIrradianceCubeGenerated = true;
+                ARK_INFO("Generated default sandbox irradiance cubemap");
+            }
+
             EnvironmentCubeResource* resolveFrameEnvironmentCube(RenderScene& renderScene) {
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultEnvironmentCubeConverted &&
@@ -410,7 +461,9 @@ namespace ark {
             ModelResource m_DefaultModel;
             EnvironmentResource m_DefaultEnvironment;
             EnvironmentCubeResource m_DefaultEnvironmentCube;
+            EnvironmentCubeResource m_DefaultIrradianceCube;
             EnvironmentCubeConverter m_EnvironmentCubeConverter;
+            EnvironmentIrradianceGenerator m_EnvironmentIrradianceGenerator;
             RenderScene m_DefaultScene;
             RenderQueue m_RenderQueue;
             Path m_DefaultModelPath;
@@ -419,6 +472,8 @@ namespace ark {
             rhi::ClearColor m_ClearColor{};
             bool m_DefaultEnvironmentCubeConversionAttempted = false;
             bool m_DefaultEnvironmentCubeConverted = false;
+            bool m_DefaultIrradianceCubeGenerationAttempted = false;
+            bool m_DefaultIrradianceCubeGenerated = false;
             bool m_RenderingPaused = false;
         };
     } // namespace

@@ -19,6 +19,7 @@
 #include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
+#include "renderer/EnvironmentIrradianceGenerator.h"
 #include "renderer/MeshResource.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderGraph.h"
@@ -311,6 +312,11 @@ int main() {
     environmentCubeConversionDesc.source = &environmentResource;
     environmentCubeConversionDesc.target = &environmentCubeResource;
     environmentCubeConversionDesc.debugName = "SmokeEnvironmentCubeConversion";
+    ark::EnvironmentIrradianceGenerator environmentIrradianceGenerator{};
+    ark::EnvironmentIrradianceGenerationDesc environmentIrradianceGenerationDesc{};
+    environmentIrradianceGenerationDesc.source = &environmentCubeResource;
+    environmentIrradianceGenerationDesc.target = &environmentCubeResource;
+    environmentIrradianceGenerationDesc.debugName = "SmokeEnvironmentIrradianceGeneration";
     ark::rhi::TextureView* smokeFaceView = environmentCubeResource.faceRenderTargetView(0);
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
@@ -416,6 +422,8 @@ int main() {
     (void)environmentCubeResourceDesc;
     (void)environmentCubeConverter;
     (void)environmentCubeConversionDesc;
+    (void)environmentIrradianceGenerator;
+    (void)environmentIrradianceGenerationDesc;
     (void)smokeFaceView;
     (void)scopedTimer;
     (void)sharedTimer;

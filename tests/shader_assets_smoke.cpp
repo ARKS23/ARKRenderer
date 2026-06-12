@@ -296,6 +296,64 @@ namespace {
 
         return true;
     }
+
+    bool validateIrradianceVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("irradiance_convolve.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find irradiance vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read irradiance vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SV_VertexID") ||
+            !containsText(shaderSource, "[[vk::location(0)]] float2 uv") ||
+            !containsText(shaderSource, "positions[3]")) {
+            std::cerr << "Irradiance vertex shader does not expose expected fullscreen triangle path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateIrradianceFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("irradiance_convolve.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find irradiance fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read irradiance fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct IrradianceUniform") ||
+            !containsText(shaderSource, "sampleDelta") ||
+            !containsText(shaderSource, "TextureCube<float4> g_SourceEnvironmentCube") ||
+            !containsText(shaderSource, "SamplerState g_SourceSampler") ||
+            !containsText(shaderSource, "faceUvToDirection") ||
+            !containsText(shaderSource, "buildBasis") ||
+            !containsText(shaderSource, "cos") ||
+            !containsText(shaderSource, "sin") ||
+            !containsText(shaderSource, "PI") ||
+            !containsText(shaderSource, "Sample")) {
+            std::cerr << "Irradiance fragment shader does not expose expected convolution path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "linearToOutput") || containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "Irradiance fragment shader should output linear HDR without tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -311,6 +369,8 @@ int main() {
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
     const bool equirectToCubeVertexShaderValid = validateCompiledShader("equirect_to_cube.vert.spv");
     const bool equirectToCubeFragmentShaderValid = validateCompiledShader("equirect_to_cube.frag.spv");
+    const bool irradianceVertexShaderValid = validateCompiledShader("irradiance_convolve.vert.spv");
+    const bool irradianceFragmentShaderValid = validateCompiledShader("irradiance_convolve.frag.spv");
     const bool skyboxVertexShaderValid = validateCompiledShader("skybox.vert.spv");
     const bool skyboxFragmentShaderValid = validateCompiledShader("skybox.frag.spv");
 
@@ -318,10 +378,12 @@ int main() {
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
                    meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
+                   irradianceVertexShaderValid && irradianceFragmentShaderValid &&
                    skyboxVertexShaderValid && skyboxFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
                    validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource() &&
+                   validateIrradianceVertexShaderSource() && validateIrradianceFragmentShaderSource() &&
                    validateSkyboxVertexShaderSource() && validateSkyboxFragmentShaderSource()
                ? 0
                : 1;
