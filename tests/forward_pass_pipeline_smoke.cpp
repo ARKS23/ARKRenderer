@@ -1,5 +1,7 @@
 #include "asset/MeshData.h"
+#include "asset/TextureLoader.h"
 #include "core/Memory.h"
+#include "renderer/EnvironmentResource.h"
 #include "renderer/FrameContext.h"
 #include "renderer/MeshResource.h"
 #include "renderer/RenderQueue.h"
@@ -27,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -35,9 +38,10 @@ namespace {
         glm::vec4 lightColor;
         glm::vec4 ambientColor;
         glm::vec4 cameraPosition;
+        glm::vec4 environment;
     };
 
-    static_assert(sizeof(CapturedLightingUniform) == 64);
+    static_assert(sizeof(CapturedLightingUniform) == 80);
 
     bool near(float a, float b, float epsilon = 0.0001f) {
         return std::fabs(a - b) <= epsilon;
@@ -46,6 +50,54 @@ namespace {
     bool nearVec3(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f) {
         return near(a.x, b.x, epsilon) && near(a.y, b.y, epsilon) && near(a.z, b.z, epsilon);
     }
+
+    bool containsBinding(const std::vector<ark::rhi::DescriptorBindingDesc>& bindings,
+                         ark::u32 binding,
+                         ark::rhi::DescriptorType type,
+                         ark::rhi::ShaderStageFlags stages) {
+        for (const ark::rhi::DescriptorBindingDesc& desc : bindings) {
+            if (desc.binding == binding && desc.type == type && desc.count == 1 && desc.stages == stages) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    ark::asset::ImageData makeHdrEnvironmentImage() {
+        constexpr ark::u32 Width = 2;
+        constexpr ark::u32 Height = 1;
+        constexpr ark::u32 BytesPerPixel = 16;
+        const float pixels[Width * Height * 4]{
+            0.25f, 0.5f, 1.0f, 1.0f,
+            1.0f, 0.5f, 0.25f, 1.0f,
+        };
+
+        ark::asset::ImageData image{};
+        image.width = Width;
+        image.height = Height;
+        image.format = ark::asset::ImageFormat::Rgba32Float;
+        image.bytesPerPixel = BytesPerPixel;
+        image.pixels.resize(sizeof(pixels));
+        std::memcpy(image.pixels.data(), pixels, sizeof(pixels));
+        image.debugName = "ForwardPassEnvironment";
+        return image;
+    }
+
+    struct ForwardPassCapture {
+        ark::rhi::GraphicsPipelineDesc pipelineDesc{};
+        std::vector<ark::rhi::DescriptorBindingDesc> descriptorBindings;
+        CapturedLightingUniform lightingUniform{};
+        int lightingUniformUpdates = 0;
+        int pipelineBinds = 0;
+        int descriptorBinds = 0;
+        int indexedDraws = 0;
+        ark::usize textureUploadCount = 0;
+        bool environmentImageBound = false;
+        bool environmentSamplerBound = false;
+        ark::rhi::TextureDesc environmentTextureDesc{};
+        ark::rhi::SamplerDesc environmentSamplerDesc{};
+    };
 
     class FakeBuffer final : public ark::rhi::Buffer {
     public:
@@ -163,14 +215,29 @@ namespace {
 
     class FakeDescriptorSet final : public ark::rhi::DescriptorSet {
     public:
-        void updateUniformBuffer(ark::u32, const ark::rhi::BufferDescriptor&) override {
+        void updateUniformBuffer(ark::u32 binding, const ark::rhi::BufferDescriptor&) override {
+            uniformBindings.push_back(binding);
         }
 
-        void updateSampledImage(ark::u32, const ark::rhi::SampledImageDescriptor&) override {
+        void updateSampledImage(ark::u32 binding, const ark::rhi::SampledImageDescriptor& image) override {
+            sampledImageBindings.push_back(binding);
+            if (binding == 14) {
+                environmentImageView = image.view;
+            }
         }
 
-        void updateSampler(ark::u32, const ark::rhi::SamplerDescriptor&) override {
+        void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor& sampler) override {
+            samplerBindings.push_back(binding);
+            if (binding == 15) {
+                environmentSampler = sampler.sampler;
+            }
         }
+
+        std::vector<ark::u32> uniformBindings;
+        std::vector<ark::u32> sampledImageBindings;
+        std::vector<ark::u32> samplerBindings;
+        ark::rhi::TextureView* environmentImageView = nullptr;
+        ark::rhi::Sampler* environmentSampler = nullptr;
     };
 
     class FakeFence final : public ark::rhi::Fence {
@@ -221,11 +288,14 @@ namespace {
 
         ark::Scope<ark::rhi::DescriptorSetLayout>
         createDescriptorSetLayout(const ark::rhi::DescriptorSetLayoutDesc& desc) override {
+            descriptorSetLayoutDescs.push_back(desc);
             return ark::makeScope<FakeDescriptorSetLayout>(desc);
         }
 
         ark::Scope<ark::rhi::DescriptorSet> createDescriptorSet(const ark::rhi::DescriptorSetLayout&) override {
-            return ark::makeScope<FakeDescriptorSet>();
+            auto descriptorSet = ark::makeScope<FakeDescriptorSet>();
+            descriptorSets.push_back(descriptorSet.get());
+            return descriptorSet;
         }
 
         ark::Scope<ark::rhi::Fence> createFence() override {
@@ -233,6 +303,8 @@ namespace {
         }
 
         std::vector<ark::rhi::GraphicsPipelineDesc> pipelineDescs;
+        std::vector<ark::rhi::DescriptorSetLayoutDesc> descriptorSetLayoutDescs;
+        std::vector<FakeDescriptorSet*> descriptorSets;
 
     private:
         ark::rhi::RenderDeviceCaps m_Caps{};
@@ -290,7 +362,8 @@ namespace {
             return true;
         }
 
-        bool uploadTextureData(const ark::rhi::TextureUploadDesc&) override {
+        bool uploadTextureData(const ark::rhi::TextureUploadDesc& desc) override {
+            textureUploads.push_back(desc);
             return true;
         }
 
@@ -343,6 +416,7 @@ namespace {
 
         ark::rhi::FrameResource frame{};
         CapturedLightingUniform lastLightingUniform{};
+        std::vector<ark::rhi::TextureUploadDesc> textureUploads;
         int lightingUniformUpdates = 0;
         int pipelineBinds = 0;
         int descriptorBinds = 0;
@@ -441,19 +515,21 @@ namespace {
         return materialResource.create(material, textures);
     }
 
-    bool capturePipelineDesc(ark::asset::AlphaMode alphaMode,
-                             bool doubleSided,
-                             ark::rhi::GraphicsPipelineDesc& pipelineDesc,
-                             FakeDeviceContext& context,
-                             const ark::SceneLighting* lighting = nullptr,
-                             const ark::RenderView* customView = nullptr,
-                             ark::rhi::Format colorFormat = ark::rhi::Format::Unknown,
-                             ark::rhi::Format depthFormat = ark::rhi::Format::Unknown) {
+    bool captureForwardPass(ark::asset::AlphaMode alphaMode,
+                            bool doubleSided,
+                            ForwardPassCapture& capture,
+                            const ark::SceneLighting* lighting = nullptr,
+                            const ark::RenderView* customView = nullptr,
+                            ark::rhi::Format colorFormat = ark::rhi::Format::Unknown,
+                            ark::rhi::Format depthFormat = ark::rhi::Format::Unknown,
+                            float environmentIntensity = 0.0f) {
         FakeRenderDevice device{};
+        FakeDeviceContext context{};
         FakeSwapChain swapChain{};
         ark::TextureCache textureCache{};
         ark::MeshResource mesh{};
         ark::MaterialResource material{};
+        ark::EnvironmentResource environmentResource{};
 
         if (!mesh.create(device, makeTriangle()) ||
             !createMaterial(device, textureCache, material, alphaMode, doubleSided)) {
@@ -461,9 +537,24 @@ namespace {
             return false;
         }
 
+        if (environmentIntensity > 0.0f) {
+            ark::EnvironmentResourceDesc environmentDesc{};
+            environmentDesc.debugName = "ForwardPassCaptureEnvironment";
+            if (!environmentResource.create(device, makeHdrEnvironmentImage(), environmentDesc)) {
+                std::cerr << "Failed to create ForwardPass environment resource\n";
+                return false;
+            }
+        }
+
         ark::RenderScene scene{};
         if (lighting) {
             scene.setLighting(*lighting);
+        }
+        if (environmentIntensity > 0.0f) {
+            ark::SceneEnvironment environment{};
+            environment.environment = &environmentResource;
+            environment.intensity = environmentIntensity;
+            scene.setEnvironment(environment);
         }
         scene.addObject(mesh, material, glm::mat4{1.0f}, "ForwardPipelineDraw");
         ark::RenderQueue queue{};
@@ -502,26 +593,45 @@ namespace {
             return false;
         }
 
-        pipelineDesc = device.pipelineDescs.front();
+        capture.pipelineDesc = device.pipelineDescs.front();
+        if (!device.descriptorSetLayoutDescs.empty()) {
+            capture.descriptorBindings = device.descriptorSetLayoutDescs.front().bindings;
+        }
+        capture.lightingUniform = context.lastLightingUniform;
+        capture.lightingUniformUpdates = context.lightingUniformUpdates;
+        capture.pipelineBinds = context.pipelineBinds;
+        capture.descriptorBinds = context.descriptorBinds;
+        capture.indexedDraws = context.indexedDraws;
+        capture.textureUploadCount = context.textureUploads.size();
+        if (!device.descriptorSets.empty()) {
+            ark::rhi::TextureView* environmentImageView = device.descriptorSets.front()->environmentImageView;
+            ark::rhi::Sampler* environmentSampler = device.descriptorSets.front()->environmentSampler;
+            capture.environmentImageBound = environmentImageView != nullptr;
+            capture.environmentSamplerBound = environmentSampler != nullptr;
+            if (environmentImageView && environmentImageView->getTexture()) {
+                capture.environmentTextureDesc = environmentImageView->getTexture()->getDesc();
+            }
+            if (environmentSampler) {
+                capture.environmentSamplerDesc = environmentSampler->getDesc();
+            }
+        }
         return true;
     }
 
     bool validateForwardPassUsesFrameContextFormats() {
-        FakeDeviceContext context{};
-        ark::rhi::GraphicsPipelineDesc pipelineDesc{};
-        if (!capturePipelineDesc(ark::asset::AlphaMode::Opaque,
-                                 false,
-                                 pipelineDesc,
-                                 context,
-                                 nullptr,
-                                 nullptr,
-                                 ark::rhi::Format::RGBA16Float,
-                                 ark::rhi::Format::D32Float)) {
+        ForwardPassCapture capture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque,
+                                false,
+                                capture,
+                                nullptr,
+                                nullptr,
+                                ark::rhi::Format::RGBA16Float,
+                                ark::rhi::Format::D32Float)) {
             return false;
         }
 
-        if (pipelineDesc.colorFormat != ark::rhi::Format::RGBA16Float ||
-            pipelineDesc.depthFormat != ark::rhi::Format::D32Float) {
+        if (capture.pipelineDesc.colorFormat != ark::rhi::Format::RGBA16Float ||
+            capture.pipelineDesc.depthFormat != ark::rhi::Format::D32Float) {
             std::cerr << "ForwardPass pipeline did not use FrameContext attachment formats\n";
             return false;
         }
@@ -579,23 +689,21 @@ namespace {
         const glm::vec3 cameraPosition{1.5f, 2.5f, -6.0f};
         view.setMatrices(glm::mat4{1.0f}, glm::mat4{1.0f}, cameraPosition);
 
-        FakeDeviceContext context{};
-        ark::rhi::GraphicsPipelineDesc pipelineDesc{};
-        if (!capturePipelineDesc(ark::asset::AlphaMode::Opaque,
-                                 false,
-                                 pipelineDesc,
-                                 context,
-                                 &customLighting,
-                                 &view)) {
+        ForwardPassCapture capture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque,
+                                false,
+                                capture,
+                                &customLighting,
+                                &view)) {
             return false;
         }
 
-        if (context.lightingUniformUpdates != 1) {
+        if (capture.lightingUniformUpdates != 1) {
             std::cerr << "ForwardPass did not update lighting uniform exactly once\n";
             return false;
         }
 
-        const CapturedLightingUniform& uniform = context.lastLightingUniform;
+        const CapturedLightingUniform& uniform = capture.lightingUniform;
         if (!nearVec3(glm::vec3{uniform.lightDirection}, glm::vec3{0.0f, -1.0f, 0.0f}) ||
             !near(uniform.lightDirection.w, 0.0f) ||
             !nearVec3(glm::vec3{uniform.lightColor}, customLighting.mainLight.color) ||
@@ -603,7 +711,9 @@ namespace {
             !nearVec3(glm::vec3{uniform.ambientColor}, customLighting.ambientColor) ||
             !near(uniform.ambientColor.w, 1.0f) ||
             !nearVec3(glm::vec3{uniform.cameraPosition}, cameraPosition) ||
-            !near(uniform.cameraPosition.w, 1.0f)) {
+            !near(uniform.cameraPosition.w, 1.0f) ||
+            !near(uniform.environment.x, 0.0f) ||
+            !near(uniform.environment.y, 0.0f)) {
             std::cerr << "ForwardPass lighting uniform did not use scene lighting and view camera position\n";
             return false;
         }
@@ -611,13 +721,93 @@ namespace {
         return true;
     }
 
-    bool validateDoubleSidedCullModes() {
-        FakeDeviceContext singleSidedContext{};
-        ark::rhi::GraphicsPipelineDesc singleSidedDesc{};
-        if (!capturePipelineDesc(ark::asset::AlphaMode::Opaque, false, singleSidedDesc, singleSidedContext)) {
+    bool validateForwardPassEnvironmentDescriptors() {
+        ForwardPassCapture capture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque, false, capture)) {
             return false;
         }
 
+        if (!containsBinding(capture.descriptorBindings,
+                             14,
+                             ark::rhi::DescriptorType::SampledImage,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             15,
+                             ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment)) {
+            std::cerr << "ForwardPass descriptor layout does not expose environment bindings\n";
+            return false;
+        }
+
+        if (!capture.environmentImageBound || !capture.environmentSamplerBound || capture.textureUploadCount == 0) {
+            std::cerr << "ForwardPass did not bind or upload fallback environment descriptors\n";
+            return false;
+        }
+
+        if (capture.environmentTextureDesc.format != ark::rhi::Format::RGBA32Float ||
+            capture.environmentTextureDesc.extent.width != 1 ||
+            capture.environmentTextureDesc.extent.height != 1) {
+            std::cerr << "ForwardPass fallback environment texture is invalid\n";
+            return false;
+        }
+
+        if (!near(capture.lightingUniform.environment.x, 0.0f) ||
+            !near(capture.lightingUniform.environment.y, 0.0f)) {
+            std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateForwardPassSceneEnvironmentUniform() {
+        constexpr float EnvironmentIntensity = 1.75f;
+
+        ForwardPassCapture capture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque,
+                                false,
+                                capture,
+                                nullptr,
+                                nullptr,
+                                ark::rhi::Format::Unknown,
+                                ark::rhi::Format::Unknown,
+                                EnvironmentIntensity)) {
+            return false;
+        }
+
+        if (!near(capture.lightingUniform.environment.x, EnvironmentIntensity) ||
+            !near(capture.lightingUniform.environment.y, 1.0f)) {
+            std::cerr << "ForwardPass did not write scene environment intensity/enabled flag\n";
+            return false;
+        }
+
+        if (!capture.environmentImageBound || !capture.environmentSamplerBound) {
+            std::cerr << "ForwardPass did not bind scene environment descriptors\n";
+            return false;
+        }
+
+        if (capture.environmentTextureDesc.format != ark::rhi::Format::RGBA32Float ||
+            capture.environmentTextureDesc.extent.width != 2 ||
+            capture.environmentTextureDesc.extent.height != 1) {
+            std::cerr << "ForwardPass scene environment texture binding is invalid\n";
+            return false;
+        }
+
+        if (capture.textureUploadCount < 2) {
+            std::cerr << "ForwardPass should upload fallback and scene environment textures\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateDoubleSidedCullModes() {
+        ForwardPassCapture singleSidedCapture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque, false, singleSidedCapture)) {
+            return false;
+        }
+
+        const ark::rhi::GraphicsPipelineDesc& singleSidedDesc = singleSidedCapture.pipelineDesc;
         if (singleSidedDesc.rasterState.cullMode != ark::rhi::CullMode::Back ||
             singleSidedDesc.rasterState.frontFace != ark::rhi::FrontFace::CounterClockwise ||
             !singleSidedDesc.depthStencilState.enableDepthWrite ||
@@ -626,12 +816,12 @@ namespace {
             return false;
         }
 
-        FakeDeviceContext doubleSidedContext{};
-        ark::rhi::GraphicsPipelineDesc doubleSidedDesc{};
-        if (!capturePipelineDesc(ark::asset::AlphaMode::Mask, true, doubleSidedDesc, doubleSidedContext)) {
+        ForwardPassCapture doubleSidedCapture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Mask, true, doubleSidedCapture)) {
             return false;
         }
 
+        const ark::rhi::GraphicsPipelineDesc& doubleSidedDesc = doubleSidedCapture.pipelineDesc;
         if (doubleSidedDesc.rasterState.cullMode != ark::rhi::CullMode::None ||
             doubleSidedDesc.rasterState.frontFace != ark::rhi::FrontFace::CounterClockwise ||
             !doubleSidedDesc.depthStencilState.enableDepthWrite ||
@@ -640,12 +830,12 @@ namespace {
             return false;
         }
 
-        FakeDeviceContext blendContext{};
-        ark::rhi::GraphicsPipelineDesc blendDesc{};
-        if (!capturePipelineDesc(ark::asset::AlphaMode::Blend, false, blendDesc, blendContext)) {
+        ForwardPassCapture blendCapture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Blend, false, blendCapture)) {
             return false;
         }
 
+        const ark::rhi::GraphicsPipelineDesc& blendDesc = blendCapture.pipelineDesc;
         if (blendDesc.rasterState.cullMode != ark::rhi::CullMode::Back ||
             blendDesc.rasterState.frontFace != ark::rhi::FrontFace::CounterClockwise ||
             blendDesc.depthStencilState.enableDepthWrite ||
@@ -661,6 +851,8 @@ namespace {
 int main() {
     return validateSceneLightingAndRenderView() &&
                    validateForwardPassLightingUniform() &&
+                   validateForwardPassEnvironmentDescriptors() &&
+                   validateForwardPassSceneEnvironmentUniform() &&
                    validateForwardPassUsesFrameContextFormats() &&
                    validateDoubleSidedCullModes()
                ? EXIT_SUCCESS

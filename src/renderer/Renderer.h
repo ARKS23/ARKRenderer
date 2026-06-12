@@ -13,6 +13,7 @@ namespace ark {
         rhi::NativeWindowHandle nativeWindow;
         rhi::Extent2D extent{1280, 720};
         Path defaultModelPath;
+        Path defaultEnvironmentPath;
         bool enableValidation = false;
     };
 

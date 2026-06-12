@@ -1,9 +1,11 @@
 #include "renderer/Renderer.h"
 
 #include "asset/GltfLoader.h"
+#include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
 #include "core/Log.h"
 #include "core/Memory.h"
+#include "renderer/EnvironmentResource.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
 #include "renderer/ModelResource.h"
@@ -56,10 +58,29 @@ namespace ark {
             return findFirstExistingPath(candidates);
         }
 
+        Path findSandboxEnvironmentFile(const Path& overridePath) {
+            if (overridePath.empty()) {
+                return {};
+            }
+
+            if (overridePath.is_absolute()) {
+                return fileExists(overridePath) ? overridePath : Path{};
+            }
+
+            const std::array<Path, 3> overrideCandidates{
+                overridePath,
+                Path{"../"} / overridePath,
+                Path{"../../"} / overridePath,
+            };
+            return findFirstExistingPath(overrideCandidates);
+        }
+
         class DefaultRenderer final : public Renderer {
         public:
             explicit DefaultRenderer(const RendererDesc& desc)
-                : m_DefaultModelPath(desc.defaultModelPath), m_Extent(desc.extent) {
+                : m_DefaultModelPath(desc.defaultModelPath),
+                  m_DefaultEnvironmentPath(desc.defaultEnvironmentPath),
+                  m_Extent(desc.extent) {
                 // Renderer 只组装公共 RHI 描述，具体后端对象由内部工厂创建。
                 rhi::RenderBackendDesc backendDesc{};
                 backendDesc.device.desc.backend = rhi::RenderBackendType::Vulkan;
@@ -79,6 +100,7 @@ namespace ark {
                 m_FrameRenderer->resize(m_Extent);
 
                 createDefaultScene();
+                createDefaultEnvironment();
                 ARK_INFO("Renderer initialized");
             }
 
@@ -89,6 +111,7 @@ namespace ark {
 
                 m_FrameRenderer.reset();
                 m_DefaultScene.clear();
+                m_DefaultEnvironment.resetImmediate();
                 m_DefaultModel.reset();
                 m_Backend.reset();
                 ARK_INFO("Renderer shutdown");
@@ -221,6 +244,38 @@ namespace ark {
                 return true;
             }
 
+            bool createDefaultEnvironment() {
+                if (m_DefaultEnvironmentPath.empty()) {
+                    return true;
+                }
+
+                const Path environmentPath = findSandboxEnvironmentFile(m_DefaultEnvironmentPath);
+                if (environmentPath.empty()) {
+                    ARK_WARN("Requested sandbox environment was not found: {}", m_DefaultEnvironmentPath.string());
+                    return false;
+                }
+
+                ARK_INFO("Using sandbox environment: {}", environmentPath.string());
+                asset::ImageData environmentImage = asset::loadImageHdrRgba32F(environmentPath);
+                if (environmentImage.empty()) {
+                    ARK_WARN("Sandbox environment image is empty: {}", environmentPath.string());
+                    return false;
+                }
+
+                EnvironmentResourceDesc environmentDesc{};
+                environmentDesc.debugName = "DefaultSandboxEnvironment";
+                if (!m_DefaultEnvironment.create(m_Backend->device(), environmentImage, environmentDesc)) {
+                    ARK_ERROR("Renderer failed to create default sandbox environment");
+                    return false;
+                }
+
+                SceneEnvironment environment{};
+                environment.environment = &m_DefaultEnvironment;
+                environment.intensity = 1.0f;
+                m_DefaultScene.setEnvironment(environment);
+                return true;
+            }
+
             void handleSwapChainStatus(rhi::SwapChainStatus status) {
                 // Swapchain 状态集中在这里处理，避免 render 主流程被错误分支打散。
                 switch (status) {
@@ -245,9 +300,11 @@ namespace ark {
             Scope<FrameRenderer> m_FrameRenderer;
             Scope<rhi::RenderBackend> m_Backend;
             ModelResource m_DefaultModel;
+            EnvironmentResource m_DefaultEnvironment;
             RenderScene m_DefaultScene;
             RenderQueue m_RenderQueue;
             Path m_DefaultModelPath;
+            Path m_DefaultEnvironmentPath;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
             bool m_RenderingPaused = false;

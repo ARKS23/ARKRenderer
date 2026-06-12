@@ -88,6 +88,10 @@
 #include <cstdlib>
 
 int main() {
+    ark::ApplicationDesc applicationDesc{};
+    applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
+    applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
+
     ark::rhi::NativeWindowHandle nativeWindow{};
 
     ark::rhi::RenderDeviceDesc renderDeviceDesc{};
@@ -292,6 +296,7 @@ int main() {
     rendererDesc.nativeWindow = nativeWindow;
     rendererDesc.extent = swapChainDesc.extent;
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
+    rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
 
     ark::FrameContext frameContext{};
     frameContext.sceneColorView = sampledImageDescriptor.view;
@@ -333,6 +338,7 @@ int main() {
     timer.reset();
 
     (void)renderDeviceCreateInfo;
+    (void)applicationDesc;
     (void)swapChainCreateInfo;
     (void)renderBackendDesc;
     (void)swapChainStatus;

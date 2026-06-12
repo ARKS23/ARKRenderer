@@ -61,6 +61,10 @@ namespace {
             !containsText(shaderSource, "buildWorldNormal") ||
             !containsText(shaderSource, "evaluateDirectLighting") ||
             !containsText(shaderSource, "[[vk::binding(13, 0)]]") ||
+            !containsText(shaderSource, "[[vk::binding(14, 0)]]") ||
+            !containsText(shaderSource, "Texture2D<float4> g_EnvironmentTexture") ||
+            !containsText(shaderSource, "[[vk::binding(15, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_EnvironmentSampler") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
             !containsText(shaderSource, "discard") ||
@@ -85,7 +89,11 @@ namespace {
             !containsText(shaderSource, "nDotV") ||
             !containsText(shaderSource, "vDotH") ||
             !containsText(shaderSource, "f0") ||
-            !containsText(shaderSource, "specularDenominator")) {
+            !containsText(shaderSource, "specularDenominator") ||
+            !containsText(shaderSource, "directionToEquirectUv") ||
+            !containsText(shaderSource, "sampleEnvironment") ||
+            !containsText(shaderSource, "evaluateAmbientLighting") ||
+            !containsText(shaderSource, "g_Lighting.environment")) {
             std::cerr << "Mesh fragment shader does not expose expected BRDF, alpha and UV selection path\n";
             return false;
         }

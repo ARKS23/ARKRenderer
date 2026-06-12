@@ -37,6 +37,12 @@ Texture2D<float4> g_EmissiveTexture;
 [[vk::binding(12, 0)]]
 SamplerState g_EmissiveSampler;
 
+[[vk::binding(14, 0)]]
+Texture2D<float4> g_EnvironmentTexture;
+
+[[vk::binding(15, 0)]]
+SamplerState g_EnvironmentSampler;
+
 struct MaterialUniform {
     float4 baseColorFactor;
     float4 emissiveFactor;
@@ -76,6 +82,7 @@ struct LightingUniform {
     float4 lightColor;
     float4 ambientColor;
     float4 cameraPosition;
+    float4 environment;
 };
 
 [[vk::binding(13, 0)]]
@@ -181,6 +188,26 @@ float3 fresnelSchlick(float cosTheta, float3 f0) {
     return f0 + (1.0f - f0) * pow(1.0f - saturate(cosTheta), 5.0f);
 }
 
+float2 directionToEquirectUv(float3 direction) {
+    const float3 d = normalize(direction);
+    const float u = atan2(d.z, d.x) * (1.0f / (2.0f * PI)) + 0.5f;
+    const float v = acos(clamp(d.y, -1.0f, 1.0f)) * (1.0f / PI);
+    return float2(u, v);
+}
+
+float3 sampleEnvironment(float3 direction) {
+    return g_EnvironmentTexture.Sample(g_EnvironmentSampler, directionToEquirectUv(direction)).rgb;
+}
+
+float3 evaluateAmbientLighting(float3 normal, float3 albedo) {
+    if (g_Lighting.environment.y > 0.5f) {
+        const float3 environmentRadiance = sampleEnvironment(normal) * g_Lighting.environment.x;
+        return environmentRadiance * albedo;
+    }
+
+    return g_Lighting.ambientColor.rgb * albedo;
+}
+
 float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 n = normalize(inputs.worldNormal);
     const float3 l = normalize(-g_Lighting.lightDirection.xyz);
@@ -207,7 +234,7 @@ float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 diffuse = kd * albedo / PI;
 
     // Phase 0.26 升级为 Cook-Torrance direct BRDF，但仍不声明完整 HDR/IBL PBR 链路。
-    const float3 ambient = g_Lighting.ambientColor.rgb * albedo;
+    const float3 ambient = evaluateAmbientLighting(n, albedo);
     const float3 direct = g_Lighting.lightColor.rgb * nDotL * (diffuse + specular);
     return (ambient + direct) * inputs.occlusion + inputs.emissive;
 }

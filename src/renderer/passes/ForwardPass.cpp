@@ -2,6 +2,7 @@
 
 #include "asset/MeshData.h"
 #include "asset/ShaderLoader.h"
+#include "asset/TextureLoader.h"
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
 #include "renderer/RenderQueue.h"
@@ -13,9 +14,12 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 
+#include <array>
 #include <cstddef>
+#include <cstring>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ark {
     namespace {
@@ -65,9 +69,10 @@ namespace ark {
             glm::vec4 lightColor;
             glm::vec4 ambientColor;
             glm::vec4 cameraPosition;
+            glm::vec4 environment;
         };
 
-        static_assert(sizeof(LightingUniform) == 64);
+        static_assert(sizeof(LightingUniform) == 80);
 
         void addFragmentTextureBindingPair(rhi::DescriptorSetLayoutDesc& desc, u32 imageBinding, u32 samplerBinding) {
             desc.bindings.push_back(rhi::DescriptorBindingDesc{
@@ -106,9 +111,14 @@ namespace ark {
             return glm::normalize(direction);
         }
 
+        bool isSceneEnvironmentReady(const SceneEnvironment& environment) {
+            return environment.isEnabled() && environment.environment && environment.environment->isReady();
+        }
+
         LightingUniform makeLightingUniform(const FrameContext& frameContext) {
             const SceneLighting defaultLighting{};
             const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
+            const SceneEnvironment* environment = frameContext.scene ? &frameContext.scene->environment() : nullptr;
 
             LightingUniform uniform{};
             uniform.lightDirection = glm::vec4{normalizeLightDirection(lighting.mainLight.direction), 0.0f};
@@ -120,7 +130,28 @@ namespace ark {
                 uniform.cameraPosition = glm::vec4{frameContext.view->cameraPosition(), 1.0f};
             }
 
+            if (environment && isSceneEnvironmentReady(*environment)) {
+                uniform.environment = glm::vec4{environment->intensity, 1.0f, 0.0f, 0.0f};
+            }
+
             return uniform;
+        }
+
+        asset::ImageData makeFallbackEnvironmentImage() {
+            constexpr u32 Width = 1;
+            constexpr u32 Height = 1;
+            constexpr u32 BytesPerPixel = 16;
+            const std::array<float, 4> pixel{0.0f, 0.0f, 0.0f, 1.0f};
+
+            asset::ImageData image{};
+            image.width = Width;
+            image.height = Height;
+            image.format = asset::ImageFormat::Rgba32Float;
+            image.bytesPerPixel = BytesPerPixel;
+            image.pixels.resize(pixel.size() * sizeof(float));
+            std::memcpy(image.pixels.data(), pixel.data(), image.pixels.size());
+            image.debugName = "ForwardFallbackEnvironment";
+            return image;
         }
 
         glm::vec4 makeOffsetScale(const MaterialTextureTransform& transform) {
@@ -237,6 +268,10 @@ namespace ark {
             return false;
         }
 
+        if (!uploadEnvironmentResources(frameContext)) {
+            return false;
+        }
+
         if (!frameContext.queue || frameContext.queue->empty()) {
             return true;
         }
@@ -252,7 +287,7 @@ namespace ark {
                 return false;
             }
 
-            if (!updateDrawDescriptorSet(frameSlot, drawIndex, *item.material)) {
+            if (!updateDrawDescriptorSet(frameContext, frameSlot, drawIndex, *item.material)) {
                 return false;
             }
 
@@ -348,6 +383,7 @@ namespace ark {
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 14, 15);
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -399,6 +435,45 @@ namespace ark {
         }
 
         return m_VertexShader && m_FragmentShader;
+    }
+
+    bool ForwardPass::ensureFallbackEnvironment() {
+        if (!m_Device) {
+            ARK_ERROR("ForwardPass requires RenderDevice for fallback environment");
+            return false;
+        }
+
+        if (m_FallbackEnvironment.textureView() && m_FallbackEnvironment.sampler()) {
+            return true;
+        }
+
+        EnvironmentResourceDesc desc{};
+        desc.debugName = "ForwardFallbackEnvironment";
+        return m_FallbackEnvironment.create(*m_Device, makeFallbackEnvironmentImage(), desc);
+    }
+
+    bool ForwardPass::uploadEnvironmentResources(FrameContext& frameContext) {
+        if (!frameContext.context) {
+            ARK_ERROR("ForwardPass requires DeviceContext for environment upload");
+            return false;
+        }
+
+        if (!ensureFallbackEnvironment() || !m_FallbackEnvironment.upload(*frameContext.context)) {
+            return false;
+        }
+
+        const SceneEnvironment* sceneEnvironment =
+            frameContext.scene ? &frameContext.scene->environment() : nullptr;
+        if (!sceneEnvironment || !sceneEnvironment->isEnabled()) {
+            return true;
+        }
+
+        if (!sceneEnvironment->environment) {
+            ARK_ERROR("ForwardPass scene environment is enabled without a resource");
+            return false;
+        }
+
+        return sceneEnvironment->environment->upload(*frameContext.context);
     }
 
     bool ForwardPass::createPipelineResources() {
@@ -595,7 +670,10 @@ namespace ark {
                                                   &materialUniform, sizeof(materialUniform));
     }
 
-    bool ForwardPass::updateDrawDescriptorSet(u32 frameSlot, usize drawIndex, MaterialResource& material) {
+    bool ForwardPass::updateDrawDescriptorSet(FrameContext& frameContext,
+                                              u32 frameSlot,
+                                              usize drawIndex,
+                                              MaterialResource& material) {
         if (frameSlot >= m_DrawDescriptors.size() || drawIndex >= m_DrawDescriptors[frameSlot].size() ||
             !m_CameraBuffers[frameSlot] || !m_LightingBuffers[frameSlot] ||
             !m_DrawDescriptors[frameSlot][drawIndex].objectBuffer ||
@@ -631,7 +709,31 @@ namespace ark {
         lightingDescriptor.buffer = m_LightingBuffers[frameSlot].get();
         lightingDescriptor.range = sizeof(LightingUniform);
         descriptors.descriptorSet->updateUniformBuffer(13, lightingDescriptor);
+
+        EnvironmentResource* environment = resolveEnvironmentResource(frameContext);
+        if (!environment || !environment->textureView() || !environment->sampler()) {
+            ARK_ERROR("ForwardPass requires a ready environment texture for descriptor update");
+            return false;
+        }
+
+        rhi::SampledImageDescriptor environmentImageDescriptor{};
+        environmentImageDescriptor.view = environment->textureView();
+        descriptors.descriptorSet->updateSampledImage(14, environmentImageDescriptor);
+
+        rhi::SamplerDescriptor environmentSamplerDescriptor{};
+        environmentSamplerDescriptor.sampler = environment->sampler();
+        descriptors.descriptorSet->updateSampler(15, environmentSamplerDescriptor);
         return true;
+    }
+
+    EnvironmentResource* ForwardPass::resolveEnvironmentResource(FrameContext& frameContext) {
+        const SceneEnvironment* sceneEnvironment =
+            frameContext.scene ? &frameContext.scene->environment() : nullptr;
+        if (sceneEnvironment && isSceneEnvironmentReady(*sceneEnvironment)) {
+            return sceneEnvironment->environment;
+        }
+
+        return &m_FallbackEnvironment;
     }
 
     bool ForwardPass::drawMeshItem(FrameContext& frameContext,

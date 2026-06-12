@@ -1,12 +1,12 @@
 # Codex Handoff Summary
 
-更新时间：2026-06-11
+更新时间：2026-06-12
 
 ## 1. 当前状态
 
-ARKRenderer 当前代码实现已完成 Phase 0.29。`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer；Phase 0.29 新增了 HDR environment texture 前置链路。
+ARKRenderer 当前代码实现已完成 Phase 0.30。`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer；Phase 0.29 新增了 HDR environment texture 前置链路；Phase 0.30 已把 environment resource 接入 ForwardPass 与 mesh shader 的最小 ambient lighting 路径。
 
-Phase 0.28 已把 `ToneMappingPass` 从 hardcoded exposure 改为 `RenderView` 持有 `ark::ToneMappingSettings` -> per-frame uniform buffer -> `tonemap.frag.hlsl` constant buffer 的数据流，并新增 fake RHI `ark_tone_mapping_pass_smoke` 覆盖 uniform 数据流、descriptor layout、per-frame resources、pipeline state 和 fullscreen triangle draw。Phase 0.29 已新增 `loadImageHdrRgba32F()`、`rhi::Format::RGBA32Float`、Vulkan `RGBA32Float` upload、`EnvironmentResource` 和 `RenderScene` environment API。Windows/MSVC/vcpkg/DXC debug preset 下 full build、CTest 11/11、default sandbox smoke 和 DamagedHelmet smoke 均已通过。
+Phase 0.28 已把 `ToneMappingPass` 从 hardcoded exposure 改为 `RenderView` 持有 `ark::ToneMappingSettings` -> per-frame uniform buffer -> `tonemap.frag.hlsl` constant buffer 的数据流，并新增 fake RHI `ark_tone_mapping_pass_smoke` 覆盖 uniform 数据流、descriptor layout、per-frame resources、pipeline state 和 fullscreen triangle draw。Phase 0.29 已新增 `loadImageHdrRgba32F()`、`rhi::Format::RGBA32Float`、Vulkan `RGBA32Float` upload、`EnvironmentResource` 和 `RenderScene` environment API。Phase 0.30 已新增 ForwardPass environment bindings 14/15、fallback environment、lighting uniform environment intensity/enabled、mesh shader equirectangular sampling 和 sandbox environment path override。Windows/MSVC/vcpkg/DXC debug preset 下 full build、CTest 11/11、default sandbox smoke 和 DamagedHelmet smoke 均已通过。
 
 当前默认渲染主线：
 
@@ -15,7 +15,7 @@ Vulkan Dynamic Rendering
     -> Renderer
         -> RenderScene / 默认 sandbox scene
             -> SceneLighting main directional light + ambient
-            -> SceneEnvironment slot (resource pointer + intensity, not consumed by ForwardPass yet)
+            -> SceneEnvironment slot (resource pointer + intensity)
         -> RenderQueue
             -> Opaque bucket
             -> Mask bucket
@@ -34,10 +34,13 @@ Vulkan Dynamic Rendering
             -> per-draw material uniform
                factors + alpha state + per-slot texCoord selectors + per-slot texture transforms
             -> lighting uniform from RenderScene lighting + RenderView camera position
+               environment intensity/enabled from RenderScene environment
             -> baseColor / normal / metallicRoughness / occlusion / emissive sampled images + samplers
+            -> environment sampled image/sampler with fallback binding
             -> per-slot selectUv() + transformUv() before sampling
             -> Cook-Torrance direct BRDF
                GGX distribution + Smith geometry + Schlick Fresnel
+            -> equirectangular environment ambient when enabled
             -> alphaMode / doubleSided pipeline variant key
             -> doubleSided culling: None for double-sided, Back for single-sided
             -> indexed textured mesh draw(s) in RenderQueue order
@@ -178,6 +181,21 @@ tests/framework_headers_smoke.cpp
 docs/codex_handoff.md
 ```
 
+Phase 0.30 已完成的主要改动：
+
+```text
+docs/phase/phase30.md
+apps/sandbox/main.cpp
+shaders/mesh.frag.hlsl
+src/app/Application.h/.cpp
+src/renderer/Renderer.h/.cpp
+src/renderer/passes/ForwardPass.h/.cpp
+tests/forward_pass_pipeline_smoke.cpp
+tests/framework_headers_smoke.cpp
+tests/shader_assets_smoke.cpp
+docs/codex_handoff.md
+```
+
 当前支持范围：
 
 - 读取 textureInfo 上的 `KHR_texture_transform`。
@@ -225,7 +243,13 @@ docs/codex_handoff.md
 - `EnvironmentResource` 默认 sampler 为 `U=Repeat`、`V/W=ClampToEdge`，适配 equirectangular environment map。
 - `RenderScene` 持有 `SceneEnvironment`：`EnvironmentResource*` 与 `intensity`，但不拥有 GPU resource。
 - `RenderScene::clear()` 保留 lighting/environment policy；显式清空 environment 使用 `clearEnvironment()`。
-- 当前仍是 direct-light-only；尚未支持 environment shader sampling、IBL、shadow、多光源、skybox、bloom 或 auto exposure。
+- `ForwardPass` descriptor layout 已新增 binding 14/15：environment sampled image / sampler。
+- `ForwardPass` 持有 1x1 RGBA32F fallback environment，保证 environment disabled 时 descriptor 仍完整。
+- `LightingUniform` 已新增 environment vector：`x = intensity`，`y = enabled`，`z/w` reserved。
+- `mesh.frag.hlsl` 已新增 equirectangular direction -> UV、environment sampling 和 `evaluateAmbientLighting()`。
+- environment enabled 时，mesh shader 用 sampled HDR environment * intensity * albedo 作为 ambient contribution；disabled 时保持旧 `ambientColor * albedo`。
+- `ApplicationDesc` / `RendererDesc` 已支持 `defaultEnvironmentPath`，`ark_sandbox.exe [model] [environment.hdr]` 可选加载本地 HDR environment。
+- 当前仍不是完整 IBL；尚未支持 cubemap、irradiance、prefiltered specular、BRDF LUT、specular IBL、shadow、多光源、skybox、bloom 或 auto exposure。
 
 ## 2. 最近提交与工作区
 
@@ -548,9 +572,25 @@ git log --oneline -n 5
 - `RenderScene` 新增 `SceneEnvironment`、`environment()`、`setEnvironment()` 和 `clearEnvironment()`；scene 只保存 resource pointer 与 intensity，不拥有 GPU resource。
 - `framework_headers_smoke`、`texture_loader_smoke`、`render_scene_queue_smoke` 和新增 `ark_environment_resource_smoke` 已覆盖 public API、loader 边界、resource desc/upload desc、sampler policy、deferred release 和 scene environment policy。
 
+### Phase 0.30（0.30.0 ~ 0.30.6 已完成并验证）
+
+- 新增 `docs/phase/phase30.md`，明确本阶段只做最小 environment lighting，不做完整 IBL、cubemap、irradiance、prefilter、BRDF LUT、skybox、bloom 或 auto exposure。
+- `ForwardPass` descriptor layout 新增 binding 14/15，用于 environment sampled image / sampler。
+- `ForwardPass` 持有 1x1 RGBA32F fallback environment，保证 scene 没有 environment 时 descriptor 仍完整。
+- `LightingUniform` 扩展 `environment` 字段，`x = intensity`，`y = enabled`。
+- `ForwardPass::prepare()` 会上传 fallback environment，并在 scene environment 启用时上传 scene environment。
+- `mesh.frag.hlsl` 新增 equirectangular direction -> UV、environment sampling 和 `evaluateAmbientLighting()`。
+- environment enabled 时用 sampled HDR environment * intensity * albedo 替换旧常量 ambient；disabled 时保持 `ambientColor * albedo`。
+- `ApplicationDesc` / `RendererDesc` 新增 `defaultEnvironmentPath`。
+- `apps/sandbox/main.cpp` 支持 `ark_sandbox.exe [optional_model_path] [optional_environment_hdr_path]`。
+- Renderer 默认 scene 可选加载本地 HDR environment 并设置 `SceneEnvironment`。
+- `forward_pass_pipeline_smoke` 覆盖 environment descriptor layout、fallback binding、scene environment binding、lighting uniform 和 upload 行为。
+- `shader_assets_smoke` 覆盖 mesh shader environment binding / sampling token。
+- `framework_headers_smoke` 覆盖 `ApplicationDesc` / `RendererDesc` environment path public API。
+
 ## 4. 关键代码阅读顺序
 
-建议按以下顺序审核当前 Phase 0.29 完整闭环：
+建议按以下顺序审核当前 Phase 0.30 完整闭环：
 
 1. `docs/phase/phase21.md`
    - 回看 `TEXCOORD_1` / per-slot UV selection 的前置范围和限制。
@@ -570,43 +610,47 @@ git log --oneline -n 5
    - 确认 tone mapping settings / color pipeline 收口范围、0.28.0 ~ 0.28.6 已完成项和验证记录。
 9. `docs/phase/phase29.md`
    - 确认 HDR environment texture 前置链路范围、0.29.0 ~ 0.29.6 已完成项、非目标和验证记录。
-10. `src/asset/TextureLoader.h/.cpp`
+10. `docs/phase/phase30.md`
+   - 确认最小 environment lighting 范围、descriptor binding、fallback environment、sandbox path 和仍非完整 IBL 的限制。
+11. `src/asset/TextureLoader.h/.cpp`
    - 看 `loadImageRgba8()` 对 HDR 的拒绝语义，以及 `loadImageHdrRgba32F()` 的 float RGBA32F 输出路径。
-11. `src/rhi/RHICommon.h` / `src/rhi/vulkan/VulkanCommon.cpp`
+12. `src/rhi/RHICommon.h` / `src/rhi/vulkan/VulkanCommon.cpp`
    - 看 `RGBA32Float` format 枚举、format name 和 Vulkan format mapping。
-12. `src/rhi/vulkan/VulkanCommandContext.cpp`
+13. `src/rhi/vulkan/VulkanCommandContext.cpp`
    - 看 RGBA8 / RGBA32Float upload 的 bytes-per-pixel 约束，以及 HDR mip generation 仍未支持的边界。
-13. `src/renderer/EnvironmentResource.h/.cpp`
+14. `src/renderer/EnvironmentResource.h/.cpp`
    - 看 HDR environment texture resource 的创建、upload、sampler policy、deferred release 和 reset 行为。
-14. `src/renderer/FrameContext.h`
+15. `src/renderer/FrameContext.h`
    - 看 `sceneColorView`、`colorFormat`、`depthFormat` 的 pass 间共享语义。
-15. `src/renderer/FrameRenderer.cpp`
+16. `src/renderer/FrameRenderer.cpp`
    - 看 `RGBA16Float` scene color 创建、scene pass / tone mapping pass 两段 dynamic rendering、barrier 和 viewport/scissor。
-16. `src/renderer/RenderView.h`
+17. `src/renderer/RenderView.h`
    - 看 camera position、`setDefaultPerspective()`、显式 `setMatrices()`、旧 `setMatrices()` 兼容路径和 `ToneMappingSettings`。
-17. `src/renderer/passes/ToneMappingPass.h/.cpp`
+18. `src/renderer/passes/ToneMappingPass.h/.cpp`
    - 看 per-frame descriptor set、scene color sampled image/sampler binding、per-frame tone mapping uniform buffer、fullscreen triangle draw 和 pipeline format。
-18. `shaders/tonemap.vert.hlsl` / `shaders/tonemap.frag.hlsl`
+19. `shaders/tonemap.vert.hlsl` / `shaders/tonemap.frag.hlsl`
    - 看 `SV_VertexID` fullscreen triangle、HDR scene color sampling、uniform exposure、Reinhard tone mapping 和 output gamma encoding。
-19. `src/renderer/RenderScene.h/.cpp`
+20. `src/renderer/RenderScene.h/.cpp`
    - 看 `DirectionalLight`、`SceneLighting`、`SceneEnvironment`、`RenderScene::lighting()`、`RenderScene::setLighting()` 和 environment API。
-20. `src/asset/MeshData.h/.cpp`
+21. `src/app/Application.h/.cpp` / `src/renderer/Renderer.h/.cpp` / `apps/sandbox/main.cpp`
+   - 看 `defaultEnvironmentPath` 传递、sandbox 第二参数和默认 scene 可选 HDR environment 加载路径。
+22. `src/asset/MeshData.h/.cpp`
    - 看 `MeshVertex::uv1`、tangent 字段、`TextureTransformData`、`MaterialTextureSlotData` 和 `generateTangents()`。
-21. `src/asset/GltfLoader.cpp`
+23. `src/asset/GltfLoader.cpp`
    - 看 sampler、alpha render state、`TEXCOORD_1`、`KHR_texture_transform`、显式/生成 tangent、scene/node instance 的读取路径。
-22. `src/renderer/ModelResource.cpp`
+24. `src/renderer/ModelResource.cpp`
    - 看 asset sampler 到 RHI sampler 的转换、texture cache 获取和 fallback texture。
-23. `src/renderer/material/MaterialResource.h/.cpp`
+25. `src/renderer/material/MaterialResource.h/.cpp`
    - 看 material factors、render state、texture references、per-slot texCoord set、per-slot transform set 和 descriptor 写入。
-24. `src/renderer/RenderQueue.cpp`
+26. `src/renderer/RenderQueue.cpp`
    - 看 scene/model draw item 展开、Opaque / Mask / Blend 分桶和 bucket 合并顺序。
-25. `src/renderer/passes/ForwardPass.cpp`
-   - 看 descriptor layout、pipeline variant key、FrameContext attachment format 解耦、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position 读取、per-slot transform 写入和 draw loop。
-26. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
-   - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend 和 Cook-Torrance direct BRDF 路径。
-27. `src/rhi/vulkan/VulkanPipelineState.cpp` / `src/rhi/vulkan/VulkanSampler.cpp`
+27. `src/renderer/passes/ForwardPass.cpp`
+   - 看 descriptor layout、binding 14/15、fallback environment、environment upload、pipeline variant key、FrameContext attachment format 解耦、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position / environment 读取、per-slot transform 写入和 draw loop。
+28. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
+   - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend、Cook-Torrance direct BRDF 和 equirectangular environment ambient 路径。
+29. `src/rhi/vulkan/VulkanPipelineState.cpp` / `src/rhi/vulkan/VulkanSampler.cpp`
     - 看 blend/cull/depth state 和 sampler address/filter 映射。
-28. `tests/environment_resource_smoke.cpp` / `tests/texture_loader_smoke.cpp` / `tests/forward_pass_pipeline_smoke.cpp` / `tests/tone_mapping_pass_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp` / `tests/framework_headers_smoke.cpp`
+30. `tests/environment_resource_smoke.cpp` / `tests/texture_loader_smoke.cpp` / `tests/forward_pass_pipeline_smoke.cpp` / `tests/tone_mapping_pass_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp` / `tests/framework_headers_smoke.cpp`
     - 看当前 smoke tests 对 HDR loader、EnvironmentResource、SceneEnvironment、ForwardPass HDR attachment format、cull state、lighting uniform、ToneMappingPass uniform 数据流、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF shader source、tone mapping shader source 和 public API 的约束。
 
 ## 5. 必须继续遵守的架构边界
@@ -629,6 +673,7 @@ docs/phase/phase26.md
 docs/phase/phase27.md
 docs/phase/phase28.md
 docs/phase/phase29.md
+docs/phase/phase30.md
 ```
 
 硬性边界：
@@ -647,7 +692,8 @@ docs/phase/phase29.md
 - camera position 属于 `RenderView` 语义；`ForwardPass` 只读取并写入 uniform。
 - tone mapping settings 属于 `RenderView` 语义；`ToneMappingPass` 只通过 `FrameContext::view` 读取并写入自己的 uniform。
 - direct lighting BRDF 当前只落在 `shaders/mesh.frag.hlsl`；不为 shader 公式升级改 RHI/Vulkan 或 descriptor layout。
-- environment lighting 尚未接入 `ForwardPass` / `mesh.frag.hlsl`，不要假定当前画面会因 `SceneEnvironment` 改变。
+- environment ambient lighting 已接入 `ForwardPass` / `mesh.frag.hlsl`，但只作为 equirectangular ambient contribution，不代表完整 IBL。
+- `ForwardPass` 负责 environment descriptor 完整性和 fallback environment；`RenderScene` 仍不拥有 GPU resource。
 - `RenderQueue` 是 draw list，不拥有底层 GPU 资源；当前只做 Opaque / Mask / Blend alpha bucket ordering，不做完整 transparent sorting。
 - `ModelResource` 是 renderer 层 GPU resource owner，通过 RHI 创建资源。
 - `EnvironmentResource` 是 renderer 层 GPU resource owner，不复用 material `TextureResource` 的 sRGB/linear policy，也暂不进入 `TextureCache`。
@@ -674,7 +720,7 @@ P0 / 下一阶段优先：
 - tangent generation 仍基于 `uv0`；如果 normal texture 使用 `texCoord=1`，严格 tangent basis 仍是后续改进项。
 - `KHR_texture_transform` 已支持 textureInfo 上的 offset / scale / rotation / texCoord override，但不支持 animation、`TEXCOORD_2+` 或 per-UV-set tangent basis。
 - `doubleSided=true` 当前只关闭背面剔除，不做 two-sided lighting，也不基于 `gl_FrontFacing` 翻转 normal。
-- 当前 direct lighting 已使用 Cook-Torrance BRDF，并通过 `RGBA16Float` scene color + ToneMappingPass 输出；HDR environment texture resource 前置已完成，但仍没有 shader 侧 environment sampling、完整 IBL、shadow 或多光源。
+- 当前 direct lighting 已使用 Cook-Torrance BRDF，并通过 `RGBA16Float` scene color + ToneMappingPass 输出；HDR environment ambient 已接入，但仍没有 cubemap IBL、specular IBL、shadow 或多光源。
 - tone mapping 当前只有手动 `exposure` / `outputGamma` + Reinhard，不支持 auto exposure、ACES 参数化、bloom 或 color grading。
 - 当前只支持一个 directional light 和 ambient color；不支持 point / spot / area light、shadow、glTF camera 或 `KHR_lights_punctual`。
 - `Renderer` 内部默认 scene 仍是 sandbox 过渡方案；真正 renderer 级资源/场景加载入口尚未设计。
@@ -700,7 +746,7 @@ P2：
 - RenderDoc capture / screenshot / pixel smoke。
 - ResourceManager handle 系统。
 - RenderGraph 第一版 pass/resource 声明。
-- 完整 PBR、IBL、bloom、auto exposure。
+- 完整 cubemap IBL、bloom、auto exposure。
 
 ## 7. 最近验证记录
 
@@ -786,28 +832,59 @@ DamagedHelmet sandbox smoke passed
 
 本轮 sandbox smoke 使用隐藏窗口启动 3 秒后自动停止，用于确认默认场景和 DamagedHelmet 路径不会启动即退出。`texture_loader_smoke` 和 `environment_resource_smoke` 中出现的 error log 是测试刻意触发非法输入路径，用于验证拒绝行为，进程退出码为 0。
 
+Phase 0.30 收尾在 Windows/MSVC/vcpkg/DXC debug preset 下完成验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_forward_pass_pipeline_smoke ark_shader_assets_smoke ark_framework_headers_smoke ark_render_scene_queue_smoke
+build/msvc-vcpkg/Debug/ark_forward_pass_pipeline_smoke.exe
+build/msvc-vcpkg/Debug/ark_shader_assets_smoke.exe
+build/msvc-vcpkg/Debug/ark_framework_headers_smoke.exe
+build/msvc-vcpkg/Debug/ark_render_scene_queue_smoke.exe
+cmake --build --preset msvc-vcpkg-debug
+ctest --preset msvc-vcpkg-debug
+build/msvc-vcpkg/Debug/ark_sandbox.exe
+build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf
+```
+
+结果：
+
+```text
+targeted smoke build passed
+ark_forward_pass_pipeline_smoke passed
+ark_shader_assets_smoke passed
+ark_framework_headers_smoke passed
+ark_render_scene_queue_smoke passed
+full build passed
+CTest: 11/11 passed
+default sandbox smoke passed
+DamagedHelmet sandbox smoke passed
+```
+
+本轮 sandbox smoke 使用隐藏窗口启动 3 秒后自动停止，用于确认默认场景和 DamagedHelmet 路径不会启动即退出。
+
 ## 8. 推荐下一步
 
-Phase 0.29 已收尾，建议下一阶段从最小 environment lighting 接入开始，不要直接进入完整 RenderGraph / bindless。
+Phase 0.30 已完成最小 environment ambient lighting，建议下一阶段继续 IBL 前置，不要直接进入完整 RenderGraph / bindless。
 
 优先顺序：
 
-1. 最小 environment lighting 接入：`ForwardPass` descriptor layout 增加 environment texture/sampler/intensity，mesh shader 先用 equirectangular HDR 替换或调制 ambient。
-2. Cubemap resource / equirectangular -> cubemap conversion。
-3. Diffuse irradiance map、prefiltered specular environment map 和 BRDF LUT。
-4. Skybox / environment background pass。
-5. bloom、auto exposure、ACES/filmic 或 exposure UI/config 可作为后续独立阶段。
-6. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
-7. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
-8. pipeline / shader / descriptor layout 的 deferred destruction。
+1. Cubemap resource / texture view 语义。
+2. Equirectangular -> cubemap conversion pass。
+3. Diffuse irradiance map。
+4. Prefiltered specular environment map 与 BRDF LUT。
+5. Skybox / environment background pass。
+6. bloom、auto exposure、ACES/filmic 或 exposure UI/config 可作为后续独立阶段。
+7. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
+8. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
+9. pipeline / shader / descriptor layout 的 deferred destruction。
 
 ## 9. 下一次 Codex 启动提示
 
 ```text
-请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.29：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 也已完成，Opaque / Mask draw items 会稳定排在 Blend draw items 前；ForwardPass 已按 glTF doubleSided 精确设置 raster culling；RenderScene / RenderView 已提供可配置 scene lighting 和 camera position；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass，ForwardPass 先写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer；ToneMappingPass 已从 hardcoded exposure 改为 RenderView 持有 ToneMappingSettings -> per-frame ToneMappingUniformBuffer -> tonemap.frag.hlsl binding 2 constant buffer；Phase 0.29 已新增 HDR loader、RGBA32Float upload、EnvironmentResource 和 RenderScene environment API。当前仍没有 environment shader sampling、cubemap、irradiance、prefilter、BRDF LUT、skybox、bloom 或 auto exposure。
+请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.30：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 也已完成，Opaque / Mask draw items 会稳定排在 Blend draw items 前；ForwardPass 已按 glTF doubleSided 精确设置 raster culling；RenderScene / RenderView 已提供可配置 scene lighting 和 camera position；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass，ForwardPass 先写 HDR scene color，ToneMappingPass 再写 swapchain backbuffer；ToneMappingPass 已从 hardcoded exposure 改为 RenderView 持有 ToneMappingSettings -> per-frame ToneMappingUniformBuffer -> tonemap.frag.hlsl binding 2 constant buffer；Phase 0.29 已新增 HDR loader、RGBA32Float upload、EnvironmentResource 和 RenderScene environment API；Phase 0.30 已把 environment resource 接入 ForwardPass binding 14/15、LightingUniform environment intensity/enabled、fallback environment 和 mesh.frag.hlsl equirectangular ambient sampling。当前仍没有 cubemap、irradiance、prefilter、BRDF LUT、specular IBL、skybox、bloom 或 auto exposure。
 
 重点理解当前默认渲染路径：
-Vulkan Dynamic Rendering + Renderer + RenderScene scene lighting + SceneEnvironment slot + RenderView camera matrix/camera position + ToneMappingSettings + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + ForwardPass doubleSided culling + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + EnvironmentResource + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + exposure/Reinhard/output gamma encoding + swapchain backbuffer。
+Vulkan Dynamic Rendering + Renderer + RenderScene scene lighting + SceneEnvironment slot + RenderView camera matrix/camera position + ToneMappingSettings + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + ForwardPass doubleSided culling + ForwardPass fallback environment + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + EnvironmentResource + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + environment texture/sampler descriptors + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + equirectangular environment ambient + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + exposure/Reinhard/output gamma encoding + swapchain backbuffer。
 
 然后阅读：
 docs/design/framework.md
@@ -825,9 +902,10 @@ docs/phase/phase26.md
 docs/phase/phase27.md
 docs/phase/phase28.md
 docs/phase/phase29.md
+docs/phase/phase30.md
 
-不要重复 Phase 0.5 ~ 0.29 已完成工作。
-不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环，不要重复 Phase 0.28 已完成的 tone mapping settings / color pipeline 收口，也不要重复 Phase 0.29 已完成的 HDR loader / RGBA32Float upload / EnvironmentResource / RenderScene environment API。下一步优先考虑最小 environment lighting 接入、cubemap/IBL 前置、bloom/auto exposure 或 renderer 资源/场景加载入口等小步。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
+不要重复 Phase 0.5 ~ 0.30 已完成工作。
+不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环，不要重复 Phase 0.28 已完成的 tone mapping settings / color pipeline 收口，不要重复 Phase 0.29 已完成的 HDR loader / RGBA32Float upload / EnvironmentResource / RenderScene environment API，也不要重复 Phase 0.30 已完成的最小 equirectangular environment ambient 接入。下一步优先考虑 cubemap resource、equirectangular -> cubemap conversion、diffuse irradiance、prefilter/BRDF LUT、bloom/auto exposure 或 renderer 资源/场景加载入口等小步。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
 
 如果实现方向与既有设计文档冲突，先说明并更新设计文档，再修改代码。新增代码保持现有风格：左大括号不换行，namespace 内缩进，日志输出用英文，必要注释用简洁中文。不确定的地方写 TODO 或记录到文档，不要假装完成。
 

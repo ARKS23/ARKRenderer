@@ -10,6 +10,7 @@ namespace ark {
     struct ApplicationDesc {
         WindowDesc window;
         Path defaultModelPath;
+        Path defaultEnvironmentPath;
     };
 
     class Application {
