@@ -9,6 +9,7 @@
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "rhi/DeviceContext.h"
+#include "rhi/ResourceBarrier.h"
 #include "rhi/SwapChain.h"
 
 #include <glm/glm.hpp>
@@ -115,6 +116,11 @@ namespace ark {
             return environment.isEnabled() && environment.environment && environment.environment->isReady();
         }
 
+        bool isIrradianceCubeReady(const EnvironmentCubeResource* irradianceCube) {
+            return irradianceCube && irradianceCube->isValid() &&
+                   irradianceCube->textureView() && irradianceCube->sampler();
+        }
+
         LightingUniform makeLightingUniform(const FrameContext& frameContext) {
             const SceneLighting defaultLighting{};
             const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
@@ -131,7 +137,8 @@ namespace ark {
             }
 
             if (environment && isSceneEnvironmentReady(*environment)) {
-                uniform.environment = glm::vec4{environment->intensity, 1.0f, 0.0f, 0.0f};
+                const float irradianceEnabled = isIrradianceCubeReady(frameContext.irradianceCube) ? 1.0f : 0.0f;
+                uniform.environment = glm::vec4{environment->intensity, 1.0f, irradianceEnabled, 0.0f};
             }
 
             return uniform;
@@ -152,6 +159,27 @@ namespace ark {
             std::memcpy(image.pixels.data(), pixel.data(), image.pixels.size());
             image.debugName = "ForwardFallbackEnvironment";
             return image;
+        }
+
+        bool transitionToShaderResource(FrameContext& frameContext, rhi::Texture* texture) {
+            if (!frameContext.context || !texture) {
+                return false;
+            }
+
+            const rhi::ResourceState before = texture->getState();
+            if (before == rhi::ResourceState::ShaderResource) {
+                return true;
+            }
+
+            const std::array<rhi::ResourceBarrier, 1> barrier{{
+                rhi::ResourceBarrier{
+                    .texture = texture,
+                    .before = before,
+                    .after = rhi::ResourceState::ShaderResource,
+                },
+            }};
+            frameContext.context->pipelineBarrier(barrier);
+            return true;
         }
 
         glm::vec4 makeOffsetScale(const MaterialTextureTransform& transform) {
@@ -384,6 +412,7 @@ namespace ark {
             .stages = rhi::ShaderStageFlags::Fragment,
         });
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 14, 15);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 16, 17);
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -452,13 +481,34 @@ namespace ark {
         return m_FallbackEnvironment.create(*m_Device, makeFallbackEnvironmentImage(), desc);
     }
 
+    bool ForwardPass::ensureFallbackIrradianceCube() {
+        if (!m_Device) {
+            ARK_ERROR("ForwardPass requires RenderDevice for fallback irradiance cubemap");
+            return false;
+        }
+
+        if (m_FallbackIrradianceCube.isValid()) {
+            return true;
+        }
+
+        EnvironmentCubeResourceDesc desc{};
+        desc.debugName = "ForwardFallbackIrradianceCube";
+        desc.faceExtent = rhi::Extent2D{1, 1};
+        desc.format = rhi::Format::RGBA16Float;
+        desc.mipLevels = 1;
+        return m_FallbackIrradianceCube.create(*m_Device, desc);
+    }
+
     bool ForwardPass::uploadEnvironmentResources(FrameContext& frameContext) {
         if (!frameContext.context) {
             ARK_ERROR("ForwardPass requires DeviceContext for environment upload");
             return false;
         }
 
-        if (!ensureFallbackEnvironment() || !m_FallbackEnvironment.upload(*frameContext.context)) {
+        if (!ensureFallbackEnvironment() ||
+            !m_FallbackEnvironment.upload(*frameContext.context) ||
+            !ensureFallbackIrradianceCube() ||
+            !transitionToShaderResource(frameContext, m_FallbackIrradianceCube.texture())) {
             return false;
         }
 
@@ -723,6 +773,20 @@ namespace ark {
         rhi::SamplerDescriptor environmentSamplerDescriptor{};
         environmentSamplerDescriptor.sampler = environment->sampler();
         descriptors.descriptorSet->updateSampler(15, environmentSamplerDescriptor);
+
+        EnvironmentCubeResource* irradiance = resolveIrradianceResource(frameContext);
+        if (!irradiance || !irradiance->textureView() || !irradiance->sampler()) {
+            ARK_ERROR("ForwardPass requires a ready irradiance cubemap for descriptor update");
+            return false;
+        }
+
+        rhi::SampledImageDescriptor irradianceImageDescriptor{};
+        irradianceImageDescriptor.view = irradiance->textureView();
+        descriptors.descriptorSet->updateSampledImage(16, irradianceImageDescriptor);
+
+        rhi::SamplerDescriptor irradianceSamplerDescriptor{};
+        irradianceSamplerDescriptor.sampler = irradiance->sampler();
+        descriptors.descriptorSet->updateSampler(17, irradianceSamplerDescriptor);
         return true;
     }
 
@@ -734,6 +798,14 @@ namespace ark {
         }
 
         return &m_FallbackEnvironment;
+    }
+
+    EnvironmentCubeResource* ForwardPass::resolveIrradianceResource(FrameContext& frameContext) {
+        if (isIrradianceCubeReady(frameContext.irradianceCube)) {
+            return frameContext.irradianceCube;
+        }
+
+        return &m_FallbackIrradianceCube;
     }
 
     bool ForwardPass::drawMeshItem(FrameContext& frameContext,

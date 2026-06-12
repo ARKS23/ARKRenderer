@@ -65,6 +65,10 @@ namespace {
             !containsText(shaderSource, "Texture2D<float4> g_EnvironmentTexture") ||
             !containsText(shaderSource, "[[vk::binding(15, 0)]]") ||
             !containsText(shaderSource, "SamplerState g_EnvironmentSampler") ||
+            !containsText(shaderSource, "[[vk::binding(16, 0)]]") ||
+            !containsText(shaderSource, "TextureCube<float4> g_IrradianceCube") ||
+            !containsText(shaderSource, "[[vk::binding(17, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_IrradianceSampler") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
             !containsText(shaderSource, "discard") ||
@@ -92,8 +96,10 @@ namespace {
             !containsText(shaderSource, "specularDenominator") ||
             !containsText(shaderSource, "directionToEquirectUv") ||
             !containsText(shaderSource, "sampleEnvironment") ||
+            !containsText(shaderSource, "sampleIrradiance") ||
             !containsText(shaderSource, "evaluateAmbientLighting") ||
-            !containsText(shaderSource, "g_Lighting.environment")) {
+            !containsText(shaderSource, "g_Lighting.environment") ||
+            !containsText(shaderSource, "g_Lighting.environment.z")) {
             std::cerr << "Mesh fragment shader does not expose expected BRDF, alpha and UV selection path\n";
             return false;
         }

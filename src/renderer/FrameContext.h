@@ -34,6 +34,7 @@ namespace ark {
         rhi::TextureView* backBufferView = nullptr;
         rhi::TextureView* sceneColorView = nullptr;
         EnvironmentCubeResource* environmentCube = nullptr;
+        EnvironmentCubeResource* irradianceCube = nullptr;
 
         rhi::Extent2D extent{};
         rhi::Format colorFormat = rhi::Format::Unknown;

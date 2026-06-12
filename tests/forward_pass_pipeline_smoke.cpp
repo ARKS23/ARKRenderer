@@ -1,6 +1,7 @@
 #include "asset/MeshData.h"
 #include "asset/TextureLoader.h"
 #include "core/Memory.h"
+#include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/FrameContext.h"
 #include "renderer/MeshResource.h"
@@ -95,8 +96,12 @@ namespace {
         ark::usize textureUploadCount = 0;
         bool environmentImageBound = false;
         bool environmentSamplerBound = false;
+        bool irradianceImageBound = false;
+        bool irradianceSamplerBound = false;
         ark::rhi::TextureDesc environmentTextureDesc{};
         ark::rhi::SamplerDesc environmentSamplerDesc{};
+        ark::rhi::TextureDesc irradianceTextureDesc{};
+        ark::rhi::SamplerDesc irradianceSamplerDesc{};
     };
 
     class FakeBuffer final : public ark::rhi::Buffer {
@@ -224,12 +229,18 @@ namespace {
             if (binding == 14) {
                 environmentImageView = image.view;
             }
+            if (binding == 16) {
+                irradianceImageView = image.view;
+            }
         }
 
         void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor& sampler) override {
             samplerBindings.push_back(binding);
             if (binding == 15) {
                 environmentSampler = sampler.sampler;
+            }
+            if (binding == 17) {
+                irradianceSampler = sampler.sampler;
             }
         }
 
@@ -238,6 +249,8 @@ namespace {
         std::vector<ark::u32> samplerBindings;
         ark::rhi::TextureView* environmentImageView = nullptr;
         ark::rhi::Sampler* environmentSampler = nullptr;
+        ark::rhi::TextureView* irradianceImageView = nullptr;
+        ark::rhi::Sampler* irradianceSampler = nullptr;
     };
 
     class FakeFence final : public ark::rhi::Fence {
@@ -522,7 +535,8 @@ namespace {
                             const ark::RenderView* customView = nullptr,
                             ark::rhi::Format colorFormat = ark::rhi::Format::Unknown,
                             ark::rhi::Format depthFormat = ark::rhi::Format::Unknown,
-                            float environmentIntensity = 0.0f) {
+                            float environmentIntensity = 0.0f,
+                            bool useIrradianceCube = false) {
         FakeRenderDevice device{};
         FakeDeviceContext context{};
         FakeSwapChain swapChain{};
@@ -530,6 +544,7 @@ namespace {
         ark::MeshResource mesh{};
         ark::MaterialResource material{};
         ark::EnvironmentResource environmentResource{};
+        ark::EnvironmentCubeResource irradianceResource{};
 
         if (!mesh.create(device, makeTriangle()) ||
             !createMaterial(device, textureCache, material, alphaMode, doubleSided)) {
@@ -542,6 +557,18 @@ namespace {
             environmentDesc.debugName = "ForwardPassCaptureEnvironment";
             if (!environmentResource.create(device, makeHdrEnvironmentImage(), environmentDesc)) {
                 std::cerr << "Failed to create ForwardPass environment resource\n";
+                return false;
+            }
+        }
+
+        if (useIrradianceCube) {
+            ark::EnvironmentCubeResourceDesc irradianceDesc{};
+            irradianceDesc.debugName = "ForwardPassCaptureIrradiance";
+            irradianceDesc.faceExtent = ark::rhi::Extent2D{4, 4};
+            irradianceDesc.format = ark::rhi::Format::RGBA16Float;
+            irradianceDesc.mipLevels = 1;
+            if (!irradianceResource.create(device, irradianceDesc)) {
+                std::cerr << "Failed to create ForwardPass irradiance resource\n";
                 return false;
             }
         }
@@ -582,6 +609,7 @@ namespace {
         frameContext.extent = swapChain.getDesc().extent;
         frameContext.colorFormat = colorFormat;
         frameContext.depthFormat = depthFormat;
+        frameContext.irradianceCube = useIrradianceCube ? &irradianceResource : nullptr;
 
         if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
             std::cerr << "ForwardPass pipeline smoke failed to execute\n";
@@ -606,13 +634,23 @@ namespace {
         if (!device.descriptorSets.empty()) {
             ark::rhi::TextureView* environmentImageView = device.descriptorSets.front()->environmentImageView;
             ark::rhi::Sampler* environmentSampler = device.descriptorSets.front()->environmentSampler;
+            ark::rhi::TextureView* irradianceImageView = device.descriptorSets.front()->irradianceImageView;
+            ark::rhi::Sampler* irradianceSampler = device.descriptorSets.front()->irradianceSampler;
             capture.environmentImageBound = environmentImageView != nullptr;
             capture.environmentSamplerBound = environmentSampler != nullptr;
+            capture.irradianceImageBound = irradianceImageView != nullptr;
+            capture.irradianceSamplerBound = irradianceSampler != nullptr;
             if (environmentImageView && environmentImageView->getTexture()) {
                 capture.environmentTextureDesc = environmentImageView->getTexture()->getDesc();
             }
             if (environmentSampler) {
                 capture.environmentSamplerDesc = environmentSampler->getDesc();
+            }
+            if (irradianceImageView && irradianceImageView->getTexture()) {
+                capture.irradianceTextureDesc = irradianceImageView->getTexture()->getDesc();
+            }
+            if (irradianceSampler) {
+                capture.irradianceSamplerDesc = irradianceSampler->getDesc();
             }
         }
         return true;
@@ -734,12 +772,22 @@ namespace {
             !containsBinding(capture.descriptorBindings,
                              15,
                              ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             16,
+                             ark::rhi::DescriptorType::SampledImage,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             17,
+                             ark::rhi::DescriptorType::Sampler,
                              ark::rhi::ShaderStageFlags::Fragment)) {
-            std::cerr << "ForwardPass descriptor layout does not expose environment bindings\n";
+            std::cerr << "ForwardPass descriptor layout does not expose environment and irradiance bindings\n";
             return false;
         }
 
-        if (!capture.environmentImageBound || !capture.environmentSamplerBound || capture.textureUploadCount == 0) {
+        if (!capture.environmentImageBound || !capture.environmentSamplerBound ||
+            !capture.irradianceImageBound || !capture.irradianceSamplerBound ||
+            capture.textureUploadCount == 0) {
             std::cerr << "ForwardPass did not bind or upload fallback environment descriptors\n";
             return false;
         }
@@ -751,8 +799,18 @@ namespace {
             return false;
         }
 
+        if (capture.irradianceTextureDesc.type != ark::rhi::TextureType::Cube ||
+            capture.irradianceTextureDesc.format != ark::rhi::Format::RGBA16Float ||
+            capture.irradianceTextureDesc.extent.width != 1 ||
+            capture.irradianceTextureDesc.extent.height != 1 ||
+            capture.irradianceTextureDesc.arrayLayers != 6) {
+            std::cerr << "ForwardPass fallback irradiance cubemap is invalid\n";
+            return false;
+        }
+
         if (!near(capture.lightingUniform.environment.x, 0.0f) ||
-            !near(capture.lightingUniform.environment.y, 0.0f)) {
+            !near(capture.lightingUniform.environment.y, 0.0f) ||
+            !near(capture.lightingUniform.environment.z, 0.0f)) {
             std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
             return false;
         }
@@ -771,17 +829,20 @@ namespace {
                                 nullptr,
                                 ark::rhi::Format::Unknown,
                                 ark::rhi::Format::Unknown,
-                                EnvironmentIntensity)) {
+                                EnvironmentIntensity,
+                                true)) {
             return false;
         }
 
         if (!near(capture.lightingUniform.environment.x, EnvironmentIntensity) ||
-            !near(capture.lightingUniform.environment.y, 1.0f)) {
-            std::cerr << "ForwardPass did not write scene environment intensity/enabled flag\n";
+            !near(capture.lightingUniform.environment.y, 1.0f) ||
+            !near(capture.lightingUniform.environment.z, 1.0f)) {
+            std::cerr << "ForwardPass did not write scene environment intensity/enabled/irradiance flags\n";
             return false;
         }
 
-        if (!capture.environmentImageBound || !capture.environmentSamplerBound) {
+        if (!capture.environmentImageBound || !capture.environmentSamplerBound ||
+            !capture.irradianceImageBound || !capture.irradianceSamplerBound) {
             std::cerr << "ForwardPass did not bind scene environment descriptors\n";
             return false;
         }
@@ -790,6 +851,15 @@ namespace {
             capture.environmentTextureDesc.extent.width != 2 ||
             capture.environmentTextureDesc.extent.height != 1) {
             std::cerr << "ForwardPass scene environment texture binding is invalid\n";
+            return false;
+        }
+
+        if (capture.irradianceTextureDesc.type != ark::rhi::TextureType::Cube ||
+            capture.irradianceTextureDesc.format != ark::rhi::Format::RGBA16Float ||
+            capture.irradianceTextureDesc.extent.width != 4 ||
+            capture.irradianceTextureDesc.extent.height != 4 ||
+            capture.irradianceTextureDesc.arrayLayers != 6) {
+            std::cerr << "ForwardPass scene irradiance cubemap binding is invalid\n";
             return false;
         }
 

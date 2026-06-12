@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Memory.h"
+#include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
 #include "renderer/RenderPass.h"
@@ -37,6 +38,7 @@ namespace ark {
         bool createShaderResources();
         bool createPipelineResources();
         bool ensureFallbackEnvironment();
+        bool ensureFallbackIrradianceCube();
         bool uploadEnvironmentResources(FrameContext& frameContext);
         usize drawItemCount(const FrameContext& frameContext) const;
         bool ensureDrawDescriptorResources(u32 frameSlot, usize drawCount);
@@ -56,6 +58,7 @@ namespace ark {
                                      usize drawIndex,
                                      MaterialResource& material);
         EnvironmentResource* resolveEnvironmentResource(FrameContext& frameContext);
+        EnvironmentCubeResource* resolveIrradianceResource(FrameContext& frameContext);
         bool drawMeshItem(FrameContext& frameContext,
                           u32 frameSlot,
                           usize drawIndex,
@@ -99,5 +102,6 @@ namespace ark {
         Scope<rhi::PipelineLayout> m_PipelineLayout;
         std::map<ForwardPipelineKey, Scope<rhi::PipelineState>> m_Pipelines;
         EnvironmentResource m_FallbackEnvironment;
+        EnvironmentCubeResource m_FallbackIrradianceCube;
     };
 } // namespace ark

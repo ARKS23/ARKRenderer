@@ -43,6 +43,12 @@ Texture2D<float4> g_EnvironmentTexture;
 [[vk::binding(15, 0)]]
 SamplerState g_EnvironmentSampler;
 
+[[vk::binding(16, 0)]]
+TextureCube<float4> g_IrradianceCube;
+
+[[vk::binding(17, 0)]]
+SamplerState g_IrradianceSampler;
+
 struct MaterialUniform {
     float4 baseColorFactor;
     float4 emissiveFactor;
@@ -199,7 +205,16 @@ float3 sampleEnvironment(float3 direction) {
     return g_EnvironmentTexture.Sample(g_EnvironmentSampler, directionToEquirectUv(direction)).rgb;
 }
 
+float3 sampleIrradiance(float3 normal) {
+    return g_IrradianceCube.Sample(g_IrradianceSampler, normalize(normal)).rgb;
+}
+
 float3 evaluateAmbientLighting(float3 normal, float3 albedo) {
+    if (g_Lighting.environment.z > 0.5f) {
+        const float3 irradiance = sampleIrradiance(normal) * g_Lighting.environment.x;
+        return irradiance * albedo;
+    }
+
     if (g_Lighting.environment.y > 0.5f) {
         const float3 environmentRadiance = sampleEnvironment(normal) * g_Lighting.environment.x;
         return environmentRadiance * albedo;

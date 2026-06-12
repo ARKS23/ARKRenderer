@@ -225,6 +225,7 @@ namespace ark {
                 frameContext.extent = m_Extent;
                 frameContext.clearColor = m_ClearColor;
                 frameContext.environmentCube = resolveFrameEnvironmentCube(renderScene);
+                frameContext.irradianceCube = resolveFrameIrradianceCube(renderScene);
 
                 if (!m_FrameRenderer->render(frameContext)) {
                     context.end();
@@ -430,6 +431,17 @@ namespace ark {
                     environment.environment == &m_DefaultEnvironment &&
                     m_DefaultEnvironmentCube.isValid()) {
                     return &m_DefaultEnvironmentCube;
+                }
+
+                return nullptr;
+            }
+
+            EnvironmentCubeResource* resolveFrameIrradianceCube(RenderScene& renderScene) {
+                const SceneEnvironment& environment = renderScene.environment();
+                if (m_DefaultIrradianceCubeGenerated &&
+                    environment.environment == &m_DefaultEnvironment &&
+                    m_DefaultIrradianceCube.isValid()) {
+                    return &m_DefaultIrradianceCube;
                 }
 
                 return nullptr;
