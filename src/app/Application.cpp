@@ -1,6 +1,7 @@
 #include "app/Application.h"
 
 #include "app/GlfwWindow.h"
+#include "app/SandboxCameraController.h"
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "core/ScopeExit.h"
@@ -46,8 +47,10 @@ namespace ark {
 
         RenderScene scene;
         RenderView view;
+        SandboxCameraController cameraController;
         rhi::Extent2D currentExtent = rendererDesc.extent;
-        view.setDefaultPerspective(currentExtent);
+        cameraController.setViewportExtent(currentExtent);
+        cameraController.writeTo(view);
         while (!m_Window->shouldClose()) {
             m_Window->pollEvents();
 
@@ -56,9 +59,11 @@ namespace ark {
             if (windowExtent.width != currentExtent.width || windowExtent.height != currentExtent.height) {
                 currentExtent = windowExtent;
                 m_Renderer->resize(currentExtent.width, currentExtent.height);
-                view.setDefaultPerspective(currentExtent);
+                cameraController.setViewportExtent(currentExtent);
             }
 
+            cameraController.update(m_Window->getInputSnapshot());
+            cameraController.writeTo(view);
             m_Renderer->render(scene, view);
         }
 

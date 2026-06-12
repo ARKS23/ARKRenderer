@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/Input.h"
 #include "rhi/RHICommon.h"
 
 #include <string>
@@ -19,5 +20,6 @@ namespace ark {
 
         virtual rhi::NativeWindowHandle getNativeWindowHandle() const = 0;
         virtual rhi::Extent2D getExtent() const = 0;
+        virtual InputSnapshot getInputSnapshot() const = 0;
     };
 } // namespace ark

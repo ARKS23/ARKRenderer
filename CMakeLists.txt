@@ -209,6 +209,7 @@ if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_mesh_data_smoke tests/mesh_data_smoke.cpp)
     ark_add_smoke_test(ark_model_resource_smoke tests/model_resource_smoke.cpp)
     ark_add_smoke_test(ark_render_scene_queue_smoke tests/render_scene_queue_smoke.cpp)
+    ark_add_smoke_test(ark_sandbox_camera_controller_smoke tests/sandbox_camera_controller_smoke.cpp)
     ark_add_smoke_test(ark_texture_loader_smoke tests/texture_loader_smoke.cpp)
 
     if(ARK_DXC_SUPPORTED)

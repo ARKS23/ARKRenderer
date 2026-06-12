@@ -1,5 +1,7 @@
 #include "app/Application.h"
 #include "app/GlfwWindow.h"
+#include "app/Input.h"
+#include "app/SandboxCameraController.h"
 #include "app/Window.h"
 #include "asset/GltfLoader.h"
 #include "asset/MeshData.h"
@@ -357,6 +359,15 @@ int main() {
     }
     ark::RenderView renderView{};
     renderView.setDefaultPerspective(swapChainDesc.extent);
+    ark::InputSnapshot inputSnapshot{};
+    inputSnapshot.cursorPosition = glm::vec2{1.0f, 2.0f};
+    inputSnapshot.cursorDelta = glm::vec2{0.5f, -0.25f};
+    inputSnapshot.scrollDelta = glm::vec2{0.0f, 1.0f};
+    inputSnapshot.rightMouseDown = true;
+    ark::SandboxCameraController sandboxCameraController{};
+    sandboxCameraController.setViewportExtent(swapChainDesc.extent);
+    sandboxCameraController.update(inputSnapshot);
+    sandboxCameraController.writeTo(renderView);
     ark::ToneMappingSettings toneMappingSettings{};
     toneMappingSettings.exposure = 1.25f;
     toneMappingSettings.outputGamma = 2.2f;
@@ -437,6 +448,8 @@ int main() {
     (void)sceneLighting;
     (void)sceneEnvironment;
     (void)renderView;
+    (void)inputSnapshot;
+    (void)sandboxCameraController;
     (void)renderQueue;
     (void)frameRenderer;
 

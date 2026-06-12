@@ -4,6 +4,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include <glm/vec2.hpp>
+
 #include <stdexcept>
 
 namespace ark {
@@ -34,6 +36,17 @@ namespace ark {
                 glfwTerminate();
             }
         }
+
+        GlfwWindow* getWindowOwner(GLFWwindow* window) {
+            return static_cast<GlfwWindow*>(glfwGetWindowUserPointer(window));
+        }
+
+        void scrollCallback(GLFWwindow* window, double xOffset, double yOffset) {
+            GlfwWindow* owner = getWindowOwner(window);
+            if (owner) {
+                owner->onScroll(xOffset, yOffset);
+            }
+        }
     } // namespace
 
     GlfwWindow::GlfwWindow(const WindowDesc& desc) : m_Extent(desc.extent) {
@@ -48,6 +61,9 @@ namespace ark {
         }
 
         m_Window = window;
+        glfwSetWindowUserPointer(window, this);
+        glfwSetScrollCallback(window, scrollCallback);
+        updateInputSnapshot();
         ARK_INFO("Created GLFW window: {} ({}x{})", desc.title, desc.extent.width, desc.extent.height);
     }
 
@@ -66,6 +82,7 @@ namespace ark {
 
     void GlfwWindow::pollEvents() {
         glfwPollEvents();
+        updateInputSnapshot();
     }
 
     rhi::NativeWindowHandle GlfwWindow::getNativeWindowHandle() const {
@@ -84,5 +101,45 @@ namespace ark {
             .width = width > 0 ? static_cast<u32>(width) : 0,
             .height = height > 0 ? static_cast<u32>(height) : 0,
         };
+    }
+
+    InputSnapshot GlfwWindow::getInputSnapshot() const {
+        return m_Input;
+    }
+
+    void GlfwWindow::updateInputSnapshot() {
+        GLFWwindow* window = static_cast<GLFWwindow*>(m_Window);
+        if (!window) {
+            m_Input = {};
+            return;
+        }
+
+        double cursorX = 0.0;
+        double cursorY = 0.0;
+        glfwGetCursorPos(window, &cursorX, &cursorY);
+        const glm::vec2 cursorPosition{static_cast<float>(cursorX), static_cast<float>(cursorY)};
+
+        m_Input.cursorDelta = m_HasPreviousCursorPosition ? cursorPosition - m_PreviousCursorPosition : glm::vec2{0.0f};
+        m_Input.cursorPosition = cursorPosition;
+        m_Input.scrollDelta = m_PendingScrollDelta;
+        m_PendingScrollDelta = glm::vec2{0.0f};
+
+        m_Input.leftMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        m_Input.rightMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+        m_Input.middleMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+        m_Input.shiftDown =
+            glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+
+        const bool resetDown = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+        m_Input.resetPressed = resetDown && !m_PreviousResetDown;
+        m_PreviousResetDown = resetDown;
+
+        m_PreviousCursorPosition = cursorPosition;
+        m_HasPreviousCursorPosition = true;
+    }
+
+    void GlfwWindow::onScroll(double xOffset, double yOffset) {
+        m_PendingScrollDelta += glm::vec2{static_cast<float>(xOffset), static_cast<float>(yOffset)};
     }
 } // namespace ark
