@@ -42,6 +42,11 @@ namespace ark::rhi::vulkan {
                 return createInfo;
             }
 
+            if (memoryUsage == MemoryUsage::GpuToCpu) {
+                createInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                return createInfo;
+            }
+
             createInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
             return createInfo;
         }
@@ -132,6 +137,55 @@ namespace ark::rhi::vulkan {
 
     const BufferDesc& VulkanBuffer::getDesc() const {
         return m_Desc;
+    }
+
+    bool VulkanBuffer::readData(void* destination, u64 size, u64 offset) const {
+        if (!destination || size == 0) {
+            ARK_ERROR("VulkanBuffer::readData requires non-empty destination");
+            return false;
+        }
+
+        if (m_Allocator == VK_NULL_HANDLE || m_Allocation == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanBuffer::readData requires a valid allocation");
+            return false;
+        }
+
+        if (m_Desc.memoryUsage != MemoryUsage::GpuToCpu) {
+            ARK_ERROR("VulkanBuffer::readData only supports GpuToCpu buffers");
+            return false;
+        }
+
+        if (offset > m_Desc.size || size > m_Desc.size - offset) {
+            ARK_ERROR("VulkanBuffer::readData range is out of bounds");
+            return false;
+        }
+
+        VmaAllocationInfo allocationInfo{};
+        vmaGetAllocationInfo(m_Allocator, m_Allocation, &allocationInfo);
+
+        void* mappedData = allocationInfo.pMappedData;
+        bool mappedForRead = false;
+        if (!mappedData) {
+            if (!ARK_VK_CHECK(vmaMapMemory(m_Allocator, m_Allocation, &mappedData))) {
+                return false;
+            }
+            mappedForRead = true;
+        }
+
+        if (!ARK_VK_CHECK(vmaInvalidateAllocation(m_Allocator, m_Allocation, offset, size))) {
+            if (mappedForRead) {
+                vmaUnmapMemory(m_Allocator, m_Allocation);
+            }
+            return false;
+        }
+
+        std::memcpy(destination, static_cast<const u8*>(mappedData) + offset, static_cast<usize>(size));
+
+        if (mappedForRead) {
+            vmaUnmapMemory(m_Allocator, m_Allocation);
+        }
+
+        return true;
     }
 
     bool VulkanBuffer::updateData(const void* data, u64 size, u64 offset) {

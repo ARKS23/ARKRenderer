@@ -22,6 +22,7 @@ namespace ark {
         u32 mipLevels = 1;
         rhi::SamplerDesc sampler;
         bool hasSamplerOverride = false;
+        bool allowReadback = false;
         std::string debugName;
     };
 

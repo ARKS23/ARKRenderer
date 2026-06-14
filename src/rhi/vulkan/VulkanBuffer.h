@@ -17,6 +17,7 @@ namespace ark::rhi::vulkan {
         VulkanBuffer& operator=(VulkanBuffer&& other) noexcept;
 
         const BufferDesc& getDesc() const override;
+        bool readData(void* destination, u64 size, u64 offset = 0) const override;
 
         bool updateData(const void* data, u64 size, u64 offset);
 

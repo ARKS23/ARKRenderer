@@ -342,7 +342,8 @@ namespace {
             textureDesc.mipLevels != 3 ||
             textureDesc.arrayLayers != 6 ||
             !ark::rhi::hasTextureUsage(textureDesc.usage, ark::rhi::TextureUsage::RenderTarget) ||
-            !ark::rhi::hasTextureUsage(textureDesc.usage, ark::rhi::TextureUsage::ShaderResource)) {
+            !ark::rhi::hasTextureUsage(textureDesc.usage, ark::rhi::TextureUsage::ShaderResource) ||
+            ark::rhi::hasTextureUsage(textureDesc.usage, ark::rhi::TextureUsage::TransferSrc)) {
             std::cerr << "EnvironmentCubeResource texture desc is invalid\n";
             return false;
         }
@@ -404,6 +405,31 @@ namespace {
             return false;
         }
 
+        return true;
+    }
+
+    bool validateEnvironmentCubeReadbackUsage() {
+        FakeRenderDevice device{};
+
+        ark::EnvironmentCubeResourceDesc desc{};
+        desc.debugName = "ReadbackEnvironmentCube";
+        desc.faceExtent = ark::rhi::Extent2D{32, 32};
+        desc.format = ark::rhi::Format::RGBA32Float;
+        desc.allowReadback = true;
+
+        ark::EnvironmentCubeResource cube{};
+        if (!cube.create(device, desc)) {
+            std::cerr << "EnvironmentCubeResource rejected readback usage desc\n";
+            return false;
+        }
+
+        if (device.textureDescs.empty() ||
+            !ark::rhi::hasTextureUsage(device.textureDescs.front().usage, ark::rhi::TextureUsage::TransferSrc)) {
+            std::cerr << "EnvironmentCubeResource readback usage did not enable TransferSrc\n";
+            return false;
+        }
+
+        cube.resetImmediate();
         return true;
     }
 
@@ -473,6 +499,7 @@ namespace {
 
 int main() {
     return validateEnvironmentCubeResourceCreateRelease() &&
+                   validateEnvironmentCubeReadbackUsage() &&
                    validateEnvironmentCubeResourceRejectsInvalidDescAndSupportsSamplerOverride()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

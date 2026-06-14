@@ -30,6 +30,7 @@ namespace ark::rhi {
     enum class MemoryUsage {
         CpuToGpu,
         GpuOnly,
+        GpuToCpu,
     };
 
     struct BufferDesc {
@@ -47,5 +48,8 @@ namespace ark::rhi {
         virtual ~Buffer() = default;
 
         virtual const BufferDesc& getDesc() const = 0;
+        virtual bool readData(void*, u64, u64 = 0) const {
+            return false;
+        }
     };
 } // namespace ark::rhi

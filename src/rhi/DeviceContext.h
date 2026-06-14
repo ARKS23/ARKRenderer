@@ -64,6 +64,17 @@ namespace ark::rhi {
         u32 arrayLayer = 0;             // 目标 array layer，当前只支持 0。
     };
 
+    struct TextureReadbackDesc {
+        Texture* texture = nullptr;           // 源 GPU texture，必须支持 TransferSrc usage。
+        Buffer* destinationBuffer = nullptr;  // CPU 可读 readback buffer，必须支持 TransferDst usage。
+        u64 destinationOffset = 0;            // 目标 buffer 中写入起始偏移，单位为 byte。
+        Extent2D extent{};                    // 本次读回的二维范围。
+        u32 rowPitch = 0;                     // 每行像素在 destinationBuffer 中占用的 byte 数；0 表示紧密排列。
+        u32 bytesPerPixel = 16;               // 单个像素占用的 byte 数，必须与源 texture format 对齐。
+        u32 mipLevel = 0;                     // 源 mip level。
+        u32 arrayLayer = 0;                   // 源 array layer。
+    };
+
     struct BufferUploadDesc {
         Buffer* sourceBuffer = nullptr;      // CPU 可写 staging buffer，必须支持 TransferSrc usage。
         Buffer* destinationBuffer = nullptr; // 目标 GPU buffer，必须支持 TransferDst usage。
@@ -105,6 +116,9 @@ namespace ark::rhi {
         // CPU 可见 buffer 的直接更新路径；调用方需要保证不会覆盖 GPU 仍在读取的 in-flight 数据。
         virtual bool updateBuffer(Buffer& buffer, const void* data, u64 size, u64 offset = 0) = 0;
         virtual bool uploadTextureData(const TextureUploadDesc& desc) = 0;
+        virtual bool copyTextureToBuffer(const TextureReadbackDesc&) {
+            return false;
+        }
         virtual bool generateTextureMips(Texture& texture) = 0;
         virtual bool uploadBufferData(const BufferUploadDesc& desc) = 0;
         virtual bool deferReleaseBuffer(Scope<Buffer>& buffer) = 0;

@@ -70,6 +70,9 @@ namespace ark {
         textureDesc.mipLevels = m_MipLevels;
         textureDesc.arrayLayers = FaceCount;
         textureDesc.usage = rhi::TextureUsage::RenderTarget | rhi::TextureUsage::ShaderResource;
+        if (desc.allowReadback) {
+            textureDesc.usage = textureDesc.usage | rhi::TextureUsage::TransferSrc;
+        }
         textureDesc.type = rhi::TextureType::Cube;
         m_Texture = device.createTexture(textureDesc);
         if (!m_Texture) {

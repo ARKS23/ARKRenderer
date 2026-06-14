@@ -10,6 +10,7 @@
 #include "rhi/vulkan/VulkanTexture.h"
 #include "rhi/vulkan/VulkanTextureView.h"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <utility>
@@ -706,6 +707,130 @@ namespace ark::rhi::vulkan {
             pipelineBarrier(toShaderResource);
         }
 
+        return true;
+    }
+
+    bool VulkanCommandContext::copyTextureToBuffer(const TextureReadbackDesc& desc) {
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        if (!requireActiveCommandBuffer("VulkanCommandContext::copyTextureToBuffer", commandBuffer)) {
+            return false;
+        }
+
+        if (m_IsRendering) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer must be recorded outside rendering scope");
+            return false;
+        }
+
+        VulkanTexture* texture = dynamic_cast<VulkanTexture*>(desc.texture);
+        if (!texture || texture->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer requires VulkanTexture source");
+            return false;
+        }
+
+        VulkanBuffer* destinationBuffer = dynamic_cast<VulkanBuffer*>(desc.destinationBuffer);
+        if (!destinationBuffer || destinationBuffer->getHandle() == VK_NULL_HANDLE) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer requires VulkanBuffer destination");
+            return false;
+        }
+
+        if (!isValidExtent(desc.extent)) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer requires valid extent");
+            return false;
+        }
+
+        const TextureDesc& textureDesc = texture->getDesc();
+        if (desc.mipLevel >= textureDesc.mipLevels || desc.arrayLayer >= textureDesc.arrayLayers) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer subresource is out of range");
+            return false;
+        }
+
+        const u32 expectedBytesPerPixel = textureUploadBytesPerPixel(textureDesc.format);
+        if (expectedBytesPerPixel == 0) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer does not support texture format {}",
+                      formatName(textureDesc.format));
+            return false;
+        }
+
+        if (!hasTextureUsage(textureDesc.usage, TextureUsage::TransferSrc)) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer source texture requires TransferSrc usage");
+            return false;
+        }
+
+        const BufferDesc& destinationDesc = destinationBuffer->getDesc();
+        if (!hasBufferUsage(destinationDesc.usage, BufferUsage::TransferDst)) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer destination buffer requires TransferDst usage");
+            return false;
+        }
+
+        if (destinationDesc.memoryUsage != MemoryUsage::GpuToCpu) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer destination buffer requires GpuToCpu memory");
+            return false;
+        }
+
+        const u32 mipWidth = std::max(1u, textureDesc.extent.width >> desc.mipLevel);
+        const u32 mipHeight = std::max(1u, textureDesc.extent.height >> desc.mipLevel);
+        if (desc.extent.width > mipWidth || desc.extent.height > mipHeight) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer extent exceeds source texture extent");
+            return false;
+        }
+
+        if (desc.bytesPerPixel != expectedBytesPerPixel) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer expected {} bytes per pixel for format {}",
+                      expectedBytesPerPixel,
+                      formatName(textureDesc.format));
+            return false;
+        }
+
+        if (desc.destinationOffset % desc.bytesPerPixel != 0) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer destination offset must align to pixel size");
+            return false;
+        }
+
+        u64 tightlyPackedRowPitch = 0;
+        if (!checkedMultiply(desc.extent.width, desc.bytesPerPixel, tightlyPackedRowPitch)) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer row pitch overflow");
+            return false;
+        }
+
+        const u64 resolvedRowPitch = desc.rowPitch == 0 ? tightlyPackedRowPitch : desc.rowPitch;
+        if (resolvedRowPitch != tightlyPackedRowPitch) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer currently supports tightly packed rows only");
+            return false;
+        }
+
+        u64 readbackByteSize = 0;
+        if (!checkedMultiply(resolvedRowPitch, desc.extent.height, readbackByteSize)) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer readback size overflow");
+            return false;
+        }
+
+        if (desc.destinationOffset > destinationDesc.size ||
+            readbackByteSize > destinationDesc.size - desc.destinationOffset) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer destination range is out of bounds");
+            return false;
+        }
+
+        if (texture->getState() != ResourceState::CopySrc) {
+            ARK_ERROR("VulkanCommandContext::copyTextureToBuffer requires texture in CopySrc state");
+            return false;
+        }
+
+        VkBufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = desc.destinationOffset;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = desc.mipLevel;
+        copyRegion.imageSubresource.baseArrayLayer = desc.arrayLayer;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageExtent = VkExtent3D{desc.extent.width, desc.extent.height, 1};
+
+        vkCmdCopyImageToBuffer(commandBuffer,
+                               texture->getHandle(),
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               destinationBuffer->getHandle(),
+                               1,
+                               &copyRegion);
         return true;
     }
 

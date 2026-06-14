@@ -252,6 +252,15 @@ int main() {
     bufferUploadDesc.sourceOffset = 0;
     bufferUploadDesc.destinationOffset = 0;
     bufferUploadDesc.size = bufferDesc.size;
+    ark::rhi::BufferDesc readbackBufferDesc{};
+    readbackBufferDesc.debugName = "SmokeReadbackBuffer";
+    readbackBufferDesc.size = 256;
+    readbackBufferDesc.usage = ark::rhi::BufferUsage::TransferDst;
+    readbackBufferDesc.memoryUsage = ark::rhi::MemoryUsage::GpuToCpu;
+    ark::rhi::TextureReadbackDesc textureReadbackDesc{};
+    textureReadbackDesc.extent = ark::rhi::Extent2D{4, 4};
+    textureReadbackDesc.rowPitch = textureReadbackDesc.extent.width * 16;
+    textureReadbackDesc.bytesPerPixel = 16;
     ark::Scope<ark::rhi::Buffer> deferredBuffer;
     ark::asset::ImageData imageData{};
     imageData.width = 2;
@@ -312,6 +321,7 @@ int main() {
     environmentCubeResourceDesc.debugName = "SmokeEnvironmentCube";
     environmentCubeResourceDesc.faceExtent = cubeTextureDesc.extent;
     environmentCubeResourceDesc.format = cubeTextureDesc.format;
+    environmentCubeResourceDesc.allowReadback = true;
     ark::EnvironmentCubeConverter environmentCubeConverter{};
     ark::EnvironmentCubeConversionDesc environmentCubeConversionDesc{};
     environmentCubeConversionDesc.source = &environmentResource;
@@ -431,6 +441,8 @@ int main() {
     (void)samplerDesc;
     (void)textureUploadDesc;
     (void)hdrTextureUploadDesc;
+    (void)readbackBufferDesc;
+    (void)textureReadbackDesc;
     (void)imageData;
     (void)hdrImageData;
     (void)modelData;
