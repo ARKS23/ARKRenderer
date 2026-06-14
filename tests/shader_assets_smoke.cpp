@@ -376,6 +376,73 @@ namespace {
 
         return true;
     }
+
+    bool validateSpecularPrefilterVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("specular_prefilter.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find specular prefilter vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read specular prefilter vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SV_VertexID") ||
+            !containsText(shaderSource, "[[vk::location(0)]] float2 uv") ||
+            !containsText(shaderSource, "positions[3]")) {
+            std::cerr << "Specular prefilter vertex shader does not expose expected fullscreen triangle path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateSpecularPrefilterFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("specular_prefilter.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find specular prefilter fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read specular prefilter fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct SpecularPrefilterUniform") ||
+            !containsText(shaderSource, "roughness") ||
+            !containsText(shaderSource, "sampleCount") ||
+            !containsText(shaderSource, "mipLevel") ||
+            !containsText(shaderSource, "TextureCube<float4> g_SourceEnvironmentCube") ||
+            !containsText(shaderSource, "SamplerState g_SourceSampler") ||
+            !containsText(shaderSource, "faceUvToDirection") ||
+            !containsText(shaderSource, "Face order: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z") ||
+            !containsText(shaderSource, "case 0:") ||
+            !containsText(shaderSource, "case 1:") ||
+            !containsText(shaderSource, "case 2:") ||
+            !containsText(shaderSource, "case 3:") ||
+            !containsText(shaderSource, "case 4:") ||
+            !containsText(shaderSource, "return normalize(float3(1.0f, -y, -x))") ||
+            !containsText(shaderSource, "return normalize(float3(-x, -y, -1.0f))") ||
+            !containsText(shaderSource, "Hammersley") ||
+            !containsText(shaderSource, "ImportanceSampleGGX") ||
+            !containsText(shaderSource, "SampleLevel") ||
+            !containsText(shaderSource, "PI")) {
+            std::cerr << "Specular prefilter fragment shader does not expose expected GGX prefilter path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "linearToOutput") || containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "Specular prefilter fragment shader should output linear HDR without tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -393,6 +460,8 @@ int main() {
     const bool equirectToCubeFragmentShaderValid = validateCompiledShader("equirect_to_cube.frag.spv");
     const bool irradianceVertexShaderValid = validateCompiledShader("irradiance_convolve.vert.spv");
     const bool irradianceFragmentShaderValid = validateCompiledShader("irradiance_convolve.frag.spv");
+    const bool specularPrefilterVertexShaderValid = validateCompiledShader("specular_prefilter.vert.spv");
+    const bool specularPrefilterFragmentShaderValid = validateCompiledShader("specular_prefilter.frag.spv");
     const bool skyboxVertexShaderValid = validateCompiledShader("skybox.vert.spv");
     const bool skyboxFragmentShaderValid = validateCompiledShader("skybox.frag.spv");
 
@@ -401,11 +470,14 @@ int main() {
                    meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
                    irradianceVertexShaderValid && irradianceFragmentShaderValid &&
+                   specularPrefilterVertexShaderValid && specularPrefilterFragmentShaderValid &&
                    skyboxVertexShaderValid && skyboxFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
                    validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource() &&
                    validateIrradianceVertexShaderSource() && validateIrradianceFragmentShaderSource() &&
+                   validateSpecularPrefilterVertexShaderSource() &&
+                   validateSpecularPrefilterFragmentShaderSource() &&
                    validateSkyboxVertexShaderSource() && validateSkyboxFragmentShaderSource()
                ? 0
                : 1;

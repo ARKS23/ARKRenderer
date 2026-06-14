@@ -23,6 +23,7 @@
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/EnvironmentIrradianceGenerator.h"
+#include "renderer/EnvironmentSpecularPrefilterGenerator.h"
 #include "renderer/MeshResource.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderGraph.h"
@@ -332,6 +333,12 @@ int main() {
     environmentIrradianceGenerationDesc.source = &environmentCubeResource;
     environmentIrradianceGenerationDesc.target = &environmentCubeResource;
     environmentIrradianceGenerationDesc.debugName = "SmokeEnvironmentIrradianceGeneration";
+    ark::EnvironmentSpecularPrefilterGenerator environmentSpecularPrefilterGenerator{};
+    ark::EnvironmentSpecularPrefilterDesc environmentSpecularPrefilterDesc{};
+    environmentSpecularPrefilterDesc.source = &environmentCubeResource;
+    environmentSpecularPrefilterDesc.target = &environmentCubeResource;
+    environmentSpecularPrefilterDesc.sampleCount = 64;
+    environmentSpecularPrefilterDesc.debugName = "SmokeEnvironmentSpecularPrefilter";
     ark::rhi::TextureView* smokeFaceView = environmentCubeResource.faceRenderTargetView(0);
     ark::rhi::TextureView* smokeFaceMipView = environmentCubeResource.faceMipRenderTargetView(0, 0);
     ark::rhi::Extent2D smokeMipExtent = environmentCubeResource.mipExtent(0);
@@ -461,6 +468,8 @@ int main() {
     (void)environmentCubeConversionDesc;
     (void)environmentIrradianceGenerator;
     (void)environmentIrradianceGenerationDesc;
+    (void)environmentSpecularPrefilterGenerator;
+    (void)environmentSpecularPrefilterDesc;
     (void)smokeFaceView;
     (void)smokeFaceMipView;
     (void)smokeMipExtent;
