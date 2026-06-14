@@ -333,6 +333,8 @@ int main() {
     environmentIrradianceGenerationDesc.target = &environmentCubeResource;
     environmentIrradianceGenerationDesc.debugName = "SmokeEnvironmentIrradianceGeneration";
     ark::rhi::TextureView* smokeFaceView = environmentCubeResource.faceRenderTargetView(0);
+    ark::rhi::TextureView* smokeFaceMipView = environmentCubeResource.faceMipRenderTargetView(0, 0);
+    ark::rhi::Extent2D smokeMipExtent = environmentCubeResource.mipExtent(0);
     const ark::CubemapFaceContract& positiveXFace =
         ark::cubemapFaceContract(ark::CubemapFace::PositiveX);
     const ark::LinearColor positiveXDebugColor =
@@ -460,6 +462,8 @@ int main() {
     (void)environmentIrradianceGenerator;
     (void)environmentIrradianceGenerationDesc;
     (void)smokeFaceView;
+    (void)smokeFaceMipView;
+    (void)smokeMipExtent;
     (void)positiveXFace;
     (void)positiveXDebugColor;
     (void)debugOrientationEnvironment;

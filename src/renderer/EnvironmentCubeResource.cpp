@@ -4,8 +4,14 @@
 #include "rhi/DeviceContext.h"
 #include "rhi/RenderDevice.h"
 
+#include <algorithm>
+
 namespace ark {
     namespace {
+        usize faceMipViewIndex(u32 faceIndex, u32 mipLevel) {
+            return static_cast<usize>(mipLevel) * EnvironmentCubeResource::FaceCount + faceIndex;
+        }
+
         bool isSupportedEnvironmentCubeFormat(rhi::Format format) {
             return format == rhi::Format::RGBA16Float || format == rhi::Format::RGBA32Float;
         }
@@ -53,6 +59,45 @@ namespace ark {
         }
     } // namespace
 
+    bool EnvironmentCubeResource::isValid() const {
+        if (!m_Texture || !m_TextureView || !m_Sampler) {
+            return false;
+        }
+
+        const usize expectedFaceMipViewCount = static_cast<usize>(FaceCount) * m_MipLevels;
+        if (m_FaceMipViews.size() != expectedFaceMipViewCount) {
+            return false;
+        }
+
+        for (const Scope<rhi::TextureView>& faceMipView : m_FaceMipViews) {
+            if (!faceMipView) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    rhi::TextureView* EnvironmentCubeResource::faceMipRenderTargetView(u32 faceIndex, u32 mipLevel) const {
+        if (faceIndex >= FaceCount || mipLevel >= m_MipLevels) {
+            return nullptr;
+        }
+
+        const usize viewIndex = faceMipViewIndex(faceIndex, mipLevel);
+        return viewIndex < m_FaceMipViews.size() ? m_FaceMipViews[viewIndex].get() : nullptr;
+    }
+
+    rhi::Extent2D EnvironmentCubeResource::mipExtent(u32 mipLevel) const {
+        if (mipLevel >= m_MipLevels || !rhi::isValidExtent(m_FaceExtent)) {
+            return {};
+        }
+
+        return rhi::Extent2D{
+            std::max(1u, m_FaceExtent.width >> mipLevel),
+            std::max(1u, m_FaceExtent.height >> mipLevel),
+        };
+    }
+
     bool EnvironmentCubeResource::create(rhi::RenderDevice& device, const EnvironmentCubeResourceDesc& desc) {
         if (!validateEnvironmentCubeDesc(desc)) {
             return false;
@@ -93,19 +138,27 @@ namespace ark {
             return false;
         }
 
-        for (u32 faceIndex = 0; faceIndex < FaceCount; ++faceIndex) {
-            rhi::TextureViewDesc faceViewDesc{};
-            faceViewDesc.format = textureDesc.format;
-            faceViewDesc.baseMipLevel = 0;
-            faceViewDesc.mipLevelCount = 1;
-            faceViewDesc.baseArrayLayer = faceIndex;
-            faceViewDesc.arrayLayerCount = 1;
-            faceViewDesc.type = rhi::TextureViewType::Texture2D;
-            m_FaceViews[faceIndex] = device.createTextureView(*m_Texture, faceViewDesc);
-            if (!m_FaceViews[faceIndex]) {
-                ARK_ERROR("EnvironmentCubeResource failed to create face texture view {}: {}", faceIndex, debugName);
-                resetImmediate();
-                return false;
+        m_FaceMipViews.clear();
+        m_FaceMipViews.resize(static_cast<usize>(FaceCount) * m_MipLevels);
+        for (u32 mipLevel = 0; mipLevel < m_MipLevels; ++mipLevel) {
+            for (u32 faceIndex = 0; faceIndex < FaceCount; ++faceIndex) {
+                rhi::TextureViewDesc faceMipViewDesc{};
+                faceMipViewDesc.format = textureDesc.format;
+                faceMipViewDesc.baseMipLevel = mipLevel;
+                faceMipViewDesc.mipLevelCount = 1;
+                faceMipViewDesc.baseArrayLayer = faceIndex;
+                faceMipViewDesc.arrayLayerCount = 1;
+                faceMipViewDesc.type = rhi::TextureViewType::Texture2D;
+                m_FaceMipViews[faceMipViewIndex(faceIndex, mipLevel)] =
+                    device.createTextureView(*m_Texture, faceMipViewDesc);
+                if (!m_FaceMipViews[faceMipViewIndex(faceIndex, mipLevel)]) {
+                    ARK_ERROR("EnvironmentCubeResource failed to create face mip texture view face={} mip={}: {}",
+                              faceIndex,
+                              mipLevel,
+                              debugName);
+                    resetImmediate();
+                    return false;
+                }
             }
         }
 
@@ -125,12 +178,13 @@ namespace ark {
     }
 
     bool EnvironmentCubeResource::releaseDeferred(rhi::DeviceContext& context) {
-        for (Scope<rhi::TextureView>& faceView : m_FaceViews) {
-            if (faceView && !context.deferReleaseTextureView(faceView)) {
-                ARK_ERROR("EnvironmentCubeResource failed to defer face texture view");
+        for (Scope<rhi::TextureView>& faceMipView : m_FaceMipViews) {
+            if (faceMipView && !context.deferReleaseTextureView(faceMipView)) {
+                ARK_ERROR("EnvironmentCubeResource failed to defer face mip texture view");
                 return false;
             }
         }
+        m_FaceMipViews.clear();
 
         if (m_TextureView && !context.deferReleaseTextureView(m_TextureView)) {
             ARK_ERROR("EnvironmentCubeResource failed to defer texture view");
@@ -154,9 +208,7 @@ namespace ark {
     }
 
     void EnvironmentCubeResource::resetImmediate() {
-        for (Scope<rhi::TextureView>& faceView : m_FaceViews) {
-            faceView.reset();
-        }
+        m_FaceMipViews.clear();
         m_TextureView.reset();
         m_Sampler.reset();
         m_Texture.reset();

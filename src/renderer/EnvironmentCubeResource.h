@@ -7,8 +7,8 @@
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
-#include <array>
 #include <string>
+#include <vector>
 
 namespace ark::rhi {
     class DeviceContext;
@@ -36,19 +36,7 @@ namespace ark {
         bool releaseDeferred(rhi::DeviceContext& context);
         void resetImmediate();
 
-        bool isValid() const {
-            if (!m_Texture || !m_TextureView || !m_Sampler) {
-                return false;
-            }
-
-            for (const Scope<rhi::TextureView>& faceView : m_FaceViews) {
-                if (!faceView) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
+        bool isValid() const;
 
         rhi::Texture* texture() const {
             return m_Texture.get();
@@ -59,8 +47,10 @@ namespace ark {
         }
 
         rhi::TextureView* faceRenderTargetView(u32 faceIndex) const {
-            return faceIndex < FaceCount ? m_FaceViews[faceIndex].get() : nullptr;
+            return faceMipRenderTargetView(faceIndex, 0);
         }
+
+        rhi::TextureView* faceMipRenderTargetView(u32 faceIndex, u32 mipLevel) const;
 
         rhi::Sampler* sampler() const {
             return m_Sampler.get();
@@ -69,6 +59,8 @@ namespace ark {
         rhi::Extent2D faceExtent() const {
             return m_FaceExtent;
         }
+
+        rhi::Extent2D mipExtent(u32 mipLevel) const;
 
         rhi::Format format() const {
             return m_Format;
@@ -81,7 +73,7 @@ namespace ark {
     private:
         Scope<rhi::Texture> m_Texture;
         Scope<rhi::TextureView> m_TextureView;
-        std::array<Scope<rhi::TextureView>, FaceCount> m_FaceViews;
+        std::vector<Scope<rhi::TextureView>> m_FaceMipViews;
         Scope<rhi::Sampler> m_Sampler;
         rhi::Extent2D m_FaceExtent{};
         rhi::Format m_Format = rhi::Format::Unknown;

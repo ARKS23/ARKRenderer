@@ -15,6 +15,7 @@
 #include "rhi/TextureView.h"
 
 #include <cstdlib>
+#include <cstddef>
 #include <iostream>
 #include <span>
 #include <vector>
@@ -328,7 +329,12 @@ namespace {
             return false;
         }
 
-        if (device.textureDescs.size() != 1 || device.textureViewDescs.size() != 7 ||
+        constexpr ark::u32 ExpectedMipLevels = 3;
+        constexpr std::size_t ExpectedFaceMipViewCount =
+            ark::EnvironmentCubeResource::FaceCount * ExpectedMipLevels;
+        constexpr std::size_t ExpectedTextureViewCount = 1 + ExpectedFaceMipViewCount;
+
+        if (device.textureDescs.size() != 1 || device.textureViewDescs.size() != ExpectedTextureViewCount ||
             device.samplerDescs.size() != 1) {
             std::cerr << "EnvironmentCubeResource did not create expected RHI objects\n";
             return false;
@@ -358,27 +364,46 @@ namespace {
             return false;
         }
 
-        for (ark::u32 faceIndex = 0; faceIndex < ark::EnvironmentCubeResource::FaceCount; ++faceIndex) {
-            ark::rhi::TextureView* faceView = cube.faceRenderTargetView(faceIndex);
-            if (!faceView) {
-                std::cerr << "EnvironmentCubeResource face render target view is missing\n";
-                return false;
-            }
+        for (ark::u32 mipLevel = 0; mipLevel < ExpectedMipLevels; ++mipLevel) {
+            for (ark::u32 faceIndex = 0; faceIndex < ark::EnvironmentCubeResource::FaceCount; ++faceIndex) {
+                ark::rhi::TextureView* faceMipView = cube.faceMipRenderTargetView(faceIndex, mipLevel);
+                if (!faceMipView) {
+                    std::cerr << "EnvironmentCubeResource face mip render target view is missing\n";
+                    return false;
+                }
 
-            const ark::rhi::TextureViewDesc& faceViewDesc = device.textureViewDescs[faceIndex + 1];
-            if (faceViewDesc.type != ark::rhi::TextureViewType::Texture2D ||
-                faceViewDesc.format != ark::rhi::Format::RGBA16Float ||
-                faceViewDesc.baseMipLevel != 0 ||
-                faceViewDesc.mipLevelCount != 1 ||
-                faceViewDesc.baseArrayLayer != faceIndex ||
-                faceViewDesc.arrayLayerCount != 1) {
-                std::cerr << "EnvironmentCubeResource face texture view desc is invalid\n";
-                return false;
+                if (mipLevel == 0 && cube.faceRenderTargetView(faceIndex) != faceMipView) {
+                    std::cerr << "EnvironmentCubeResource face render target view is not a mip0 alias\n";
+                    return false;
+                }
+
+                const std::size_t viewDescIndex =
+                    1 + static_cast<std::size_t>(mipLevel) * ark::EnvironmentCubeResource::FaceCount + faceIndex;
+                const ark::rhi::TextureViewDesc& faceMipViewDesc = device.textureViewDescs[viewDescIndex];
+                if (faceMipViewDesc.type != ark::rhi::TextureViewType::Texture2D ||
+                    faceMipViewDesc.format != ark::rhi::Format::RGBA16Float ||
+                    faceMipViewDesc.baseMipLevel != mipLevel ||
+                    faceMipViewDesc.mipLevelCount != 1 ||
+                    faceMipViewDesc.baseArrayLayer != faceIndex ||
+                    faceMipViewDesc.arrayLayerCount != 1) {
+                    std::cerr << "EnvironmentCubeResource face mip texture view desc is invalid\n";
+                    return false;
+                }
             }
         }
 
-        if (cube.faceRenderTargetView(ark::EnvironmentCubeResource::FaceCount) != nullptr) {
+        if (cube.faceRenderTargetView(ark::EnvironmentCubeResource::FaceCount) != nullptr ||
+            cube.faceMipRenderTargetView(0, ExpectedMipLevels) != nullptr ||
+            cube.faceMipRenderTargetView(ark::EnvironmentCubeResource::FaceCount, 0) != nullptr) {
             std::cerr << "EnvironmentCubeResource accepted out-of-range face view access\n";
+            return false;
+        }
+
+        if (cube.mipExtent(0).width != 64 || cube.mipExtent(0).height != 64 ||
+            cube.mipExtent(1).width != 32 || cube.mipExtent(1).height != 32 ||
+            cube.mipExtent(2).width != 16 || cube.mipExtent(2).height != 16 ||
+            cube.mipExtent(ExpectedMipLevels).width != 0 || cube.mipExtent(ExpectedMipLevels).height != 0) {
+            std::cerr << "EnvironmentCubeResource mip extent is invalid\n";
             return false;
         }
 
@@ -395,7 +420,7 @@ namespace {
         }
 
         if (!cube.releaseDeferred(context) ||
-            context.deferredTextureViews != 7 ||
+            context.deferredTextureViews != static_cast<int>(ExpectedTextureViewCount) ||
             context.deferredSamplers != 1 ||
             context.deferredTextures != 1 ||
             context.deferredBuffers != 0 ||
