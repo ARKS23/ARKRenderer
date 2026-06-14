@@ -202,6 +202,7 @@ endfunction()
 
 if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_dependency_smoke tests/dependency_smoke.cpp)
+    ark_add_smoke_test(ark_cubemap_orientation_contract_smoke tests/cubemap_orientation_contract_smoke.cpp)
     ark_add_smoke_test(ark_environment_cube_resource_smoke tests/environment_cube_resource_smoke.cpp)
     ark_add_smoke_test(ark_environment_resource_smoke tests/environment_resource_smoke.cpp)
     ark_add_smoke_test(ark_framework_headers_smoke tests/framework_headers_smoke.cpp)

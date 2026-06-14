@@ -69,6 +69,7 @@ namespace {
             !containsText(shaderSource, "TextureCube<float4> g_IrradianceCube") ||
             !containsText(shaderSource, "[[vk::binding(17, 0)]]") ||
             !containsText(shaderSource, "SamplerState g_IrradianceSampler") ||
+            !containsText(shaderSource, "normalize(normal)") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
             !containsText(shaderSource, "discard") ||
@@ -233,6 +234,13 @@ namespace {
             !containsText(shaderSource, "directionToEquirectUv") ||
             !containsText(shaderSource, "faceUvToDirection") ||
             !containsText(shaderSource, "Face order: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z") ||
+            !containsText(shaderSource, "case 0:") ||
+            !containsText(shaderSource, "case 1:") ||
+            !containsText(shaderSource, "case 2:") ||
+            !containsText(shaderSource, "case 3:") ||
+            !containsText(shaderSource, "case 4:") ||
+            !containsText(shaderSource, "return normalize(float3(1.0f, -y, -x))") ||
+            !containsText(shaderSource, "return normalize(float3(-x, -y, -1.0f))") ||
             !containsText(shaderSource, "Sample")) {
             std::cerr << "Equirect-to-cube fragment shader does not expose expected conversion path\n";
             return false;
@@ -344,6 +352,14 @@ namespace {
             !containsText(shaderSource, "TextureCube<float4> g_SourceEnvironmentCube") ||
             !containsText(shaderSource, "SamplerState g_SourceSampler") ||
             !containsText(shaderSource, "faceUvToDirection") ||
+            !containsText(shaderSource, "Face order: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z") ||
+            !containsText(shaderSource, "case 0:") ||
+            !containsText(shaderSource, "case 1:") ||
+            !containsText(shaderSource, "case 2:") ||
+            !containsText(shaderSource, "case 3:") ||
+            !containsText(shaderSource, "case 4:") ||
+            !containsText(shaderSource, "return normalize(float3(1.0f, -y, -x))") ||
+            !containsText(shaderSource, "return normalize(float3(-x, -y, -1.0f))") ||
             !containsText(shaderSource, "buildBasis") ||
             !containsText(shaderSource, "cos") ||
             !containsText(shaderSource, "sin") ||

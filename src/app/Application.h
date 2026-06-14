@@ -11,6 +11,7 @@ namespace ark {
         WindowDesc window;
         Path defaultModelPath;
         Path defaultEnvironmentPath;
+        bool useDebugOrientationEnvironment = false;
     };
 
     class Application {

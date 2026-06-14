@@ -39,6 +39,7 @@ namespace ark {
         rendererDesc.extent = m_Window->getExtent();
         rendererDesc.defaultModelPath = m_Desc.defaultModelPath;
         rendererDesc.defaultEnvironmentPath = m_Desc.defaultEnvironmentPath;
+        rendererDesc.useDebugOrientationEnvironment = m_Desc.useDebugOrientationEnvironment;
 #ifndef NDEBUG
         rendererDesc.enableValidation = true;
 #endif

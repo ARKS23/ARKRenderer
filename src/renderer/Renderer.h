@@ -14,6 +14,7 @@ namespace ark {
         rhi::Extent2D extent{1280, 720};
         Path defaultModelPath;
         Path defaultEnvironmentPath;
+        bool useDebugOrientationEnvironment = false;
         bool enableValidation = false;
     };
 

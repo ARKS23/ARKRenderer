@@ -15,14 +15,13 @@
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
+#include "renderer/SandboxEnvironment.h"
 #include "rhi/RenderBackend.h"
 #include "rhi/TextureView.h"
 
 #include <array>
-#include <cstring>
 #include <glm/mat4x4.hpp>
 #include <stdexcept>
-#include <vector>
 
 namespace ark {
     namespace {
@@ -83,55 +82,12 @@ namespace ark {
             return findFirstExistingPath(overrideCandidates);
         }
 
-        asset::ImageData makeProceduralSandboxEnvironmentImage() {
-            constexpr u32 Width = 64;
-            constexpr u32 Height = 32;
-            constexpr u32 BytesPerPixel = 16;
-
-            std::vector<float> pixels(Width * Height * 4);
-            for (u32 y = 0; y < Height; ++y) {
-                const float v = Height > 1 ? static_cast<float>(y) / static_cast<float>(Height - 1) : 0.0f;
-                const float sky = 1.0f - v;
-                const float horizon = 1.0f - (v > 0.5f ? (v - 0.5f) * 2.0f : (0.5f - v) * 2.0f);
-                for (u32 x = 0; x < Width; ++x) {
-                    const float u = Width > 1 ? static_cast<float>(x) / static_cast<float>(Width - 1) : 0.0f;
-                    float r = 0.04f + sky * 0.12f + horizon * 0.35f;
-                    float g = 0.08f + sky * 0.20f + horizon * 0.30f;
-                    float b = 0.18f + sky * 0.55f + horizon * 0.18f;
-
-                    const float sunU = u - 0.12f;
-                    const float sunV = v - 0.42f;
-                    const float sunDistanceSquared = sunU * sunU + sunV * sunV;
-                    if (sunDistanceSquared < 0.0025f) {
-                        r += 6.0f;
-                        g += 4.0f;
-                        b += 1.4f;
-                    }
-
-                    const usize pixelOffset = (static_cast<usize>(y) * Width + x) * 4;
-                    pixels[pixelOffset + 0] = r;
-                    pixels[pixelOffset + 1] = g;
-                    pixels[pixelOffset + 2] = b;
-                    pixels[pixelOffset + 3] = 1.0f;
-                }
-            }
-
-            asset::ImageData image{};
-            image.width = Width;
-            image.height = Height;
-            image.format = asset::ImageFormat::Rgba32Float;
-            image.bytesPerPixel = BytesPerPixel;
-            image.pixels.resize(pixels.size() * sizeof(float));
-            std::memcpy(image.pixels.data(), pixels.data(), image.pixels.size());
-            image.debugName = "ProceduralSandboxEnvironment";
-            return image;
-        }
-
         class DefaultRenderer final : public Renderer {
         public:
             explicit DefaultRenderer(const RendererDesc& desc)
                 : m_DefaultModelPath(desc.defaultModelPath),
                   m_DefaultEnvironmentPath(desc.defaultEnvironmentPath),
+                  m_UseDebugOrientationEnvironment(desc.useDebugOrientationEnvironment),
                   m_Extent(desc.extent) {
                 // Renderer 只组装公共 RHI 描述，具体后端对象由内部工厂创建。
                 rhi::RenderBackendDesc backendDesc{};
@@ -309,7 +265,10 @@ namespace ark {
             bool createDefaultEnvironment() {
                 const Path environmentPath = findSandboxEnvironmentFile(m_DefaultEnvironmentPath);
                 asset::ImageData environmentImage{};
-                if (!environmentPath.empty()) {
+                if (m_UseDebugOrientationEnvironment) {
+                    ARK_INFO("Using debug orientation sandbox environment");
+                    environmentImage = makeDebugOrientationEnvironmentImage();
+                } else if (!environmentPath.empty()) {
                     ARK_INFO("Using sandbox environment: {}", environmentPath.string());
                     environmentImage = asset::loadImageHdrRgba32F(environmentPath);
                 } else if (!m_DefaultEnvironmentPath.empty()) {
@@ -480,6 +439,7 @@ namespace ark {
             RenderQueue m_RenderQueue;
             Path m_DefaultModelPath;
             Path m_DefaultEnvironmentPath;
+            bool m_UseDebugOrientationEnvironment = false;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
             bool m_DefaultEnvironmentCubeConversionAttempted = false;

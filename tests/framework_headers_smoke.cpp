@@ -18,6 +18,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/CubemapOrientation.h"
 #include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
@@ -30,6 +31,7 @@
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
+#include "renderer/SandboxEnvironment.h"
 #include "renderer/TextureCache.h"
 #include "renderer/TextureResource.h"
 #include "renderer/material/Material.h"
@@ -96,6 +98,7 @@ int main() {
     ark::ApplicationDesc applicationDesc{};
     applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
     applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
+    applicationDesc.useDebugOrientationEnvironment = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
 
@@ -320,6 +323,12 @@ int main() {
     environmentIrradianceGenerationDesc.target = &environmentCubeResource;
     environmentIrradianceGenerationDesc.debugName = "SmokeEnvironmentIrradianceGeneration";
     ark::rhi::TextureView* smokeFaceView = environmentCubeResource.faceRenderTargetView(0);
+    const ark::CubemapFaceContract& positiveXFace =
+        ark::cubemapFaceContract(ark::CubemapFace::PositiveX);
+    const ark::LinearColor positiveXDebugColor =
+        ark::debugOrientationColorForDirection(positiveXFace.axis);
+    ark::asset::ImageData debugOrientationEnvironment = ark::makeDebugOrientationEnvironmentImage();
+    ark::asset::ImageData proceduralSandboxEnvironment = ark::makeProceduralSandboxEnvironmentImage();
 
     ark::Scope<ark::Timer> scopedTimer = ark::makeScope<ark::Timer>();
     ark::Ref<ark::Timer> sharedTimer = ark::makeRef<ark::Timer>();
@@ -329,6 +338,7 @@ int main() {
     rendererDesc.extent = swapChainDesc.extent;
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
     rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
+    rendererDesc.useDebugOrientationEnvironment = true;
 
     ark::FrameContext frameContext{};
     frameContext.sceneColorView = sampledImageDescriptor.view;
@@ -438,6 +448,10 @@ int main() {
     (void)environmentIrradianceGenerator;
     (void)environmentIrradianceGenerationDesc;
     (void)smokeFaceView;
+    (void)positiveXFace;
+    (void)positiveXDebugColor;
+    (void)debugOrientationEnvironment;
+    (void)proceduralSandboxEnvironment;
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
