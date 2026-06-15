@@ -170,16 +170,19 @@ namespace {
 
     bool validateSandboxLaunchOptions() {
         {
-            constexpr std::array<std::string_view, 4> args{
+            constexpr std::array<std::string_view, 6> args{
                 "--preset",
                 "material-ball",
                 "--quality",
                 "low",
+                "--tone-mapping",
+                "aces",
             };
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{args});
             if (desc.defaultModelPath.filename() != "material_ball_validation_fixture.gltf" ||
                 desc.useDebugOrientationEnvironment ||
+                desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
                 !sameExtent(desc.rendererQuality.environmentBake.brdfLutExtent,
                             ark::rhi::Extent2D{128, 128})) {
                 std::cerr << "Sandbox material-ball low preset application desc is invalid\n";
@@ -224,9 +227,10 @@ namespace {
         }
 
         {
-            constexpr std::array<std::string_view, 3> args{
+            constexpr std::array<std::string_view, 4> args{
                 "--preset",
                 "--quality",
+                "--tone-mapping",
                 "--debug-orientation",
             };
             const ark::SandboxLaunchOptions options =
@@ -234,6 +238,7 @@ namespace {
             const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
             if (!options.missingPresetValue ||
                 !options.missingQualityValue ||
+                !options.missingToneMappingValue ||
                 !desc.defaultModelPath.empty() ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox missing option value fallback behavior is invalid\n";

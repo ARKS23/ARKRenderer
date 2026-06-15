@@ -1,5 +1,31 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.55)
+
+ARKRenderer has completed Phase 0.55: Tone Mapping Operator Presets.
+
+Key changes:
+- Added `ToneMappingOperator` with `Reinhard`, `Linear`, and `ACES`.
+- `ToneMappingSettings` now carries `operatorType`; default remains `Reinhard`.
+- Added `parseToneMappingOperator()` with `reinhard`, `linear`, `aces`, `aces-fitted`, and `filmic` aliases.
+- `ApplicationDesc` now exposes `ToneMappingSettings toneMapping`.
+- `SandboxLaunchOptions` now supports:
+  - `--tone-mapping value`
+  - `--tone-mapping=value`
+- `Application::run()` writes tone mapping settings into the active `RenderView`.
+- `ToneMappingPass` uploads the operator id in the existing 16-byte uniform footprint.
+- `tonemap.frag.hlsl` supports Linear, Reinhard, and ACES fitted approximation.
+- Updated `ark_tone_mapping_pass_smoke`, `ark_shader_assets_smoke`, `ark_framework_headers_smoke`, `ark_post_processing_settings_smoke`, `ark_renderer_preset_smoke`, `README.md`, and `docs/phase/phase55.md`.
+- Default sandbox and existing frame validation golden output remain unchanged.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_tone_mapping_pass_smoke ark_framework_headers_smoke ark_shader_assets_smoke ark_post_processing_settings_smoke ark_renderer_preset_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(tone_mapping_pass|framework_headers|shader_assets|post_processing_settings|renderer_preset|frame_validation)_smoke" --output-on-failure
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, --tone-mapping aces, --tone-mapping=linear, and --preset bloom-validation --bloom --tone-mapping aces
+```
+
 ## Latest Update (2026-06-15, Phase 0.54)
 
 ARKRenderer has completed Phase 0.54: Bloom Visual Validation Fixture.

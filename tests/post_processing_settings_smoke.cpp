@@ -117,9 +117,11 @@ namespace {
     }
 
     bool validateSandboxParsing() {
-        constexpr std::array<std::string_view, 11> arguments{
+        constexpr std::array<std::string_view, 13> arguments{
             "--preset",
             "material-ball",
+            "--tone-mapping",
+            "aces",
             "--bloom",
             "--bloom-intensity",
             "0.12",
@@ -144,6 +146,27 @@ namespace {
             return false;
         }
 
+        if (desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES) {
+            std::cerr << "Sandbox tone mapping CLI option was not parsed into ApplicationDesc\n";
+            return false;
+        }
+
+        constexpr std::array<std::string_view, 1> linearArguments{"--tone-mapping=linear"};
+        const ark::ApplicationDesc linearDesc =
+            ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(linearArguments));
+        if (linearDesc.toneMapping.operatorType != ark::ToneMappingOperator::Linear) {
+            std::cerr << "Sandbox tone mapping equals option was not parsed\n";
+            return false;
+        }
+
+        constexpr std::array<std::string_view, 1> filmicArguments{"--tone-mapping=filmic"};
+        const ark::ApplicationDesc filmicDesc =
+            ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(filmicArguments));
+        if (filmicDesc.toneMapping.operatorType != ark::ToneMappingOperator::ACES) {
+            std::cerr << "Sandbox filmic tone mapping alias should map to ACES\n";
+            return false;
+        }
+
         constexpr std::array<std::string_view, 1> enableOnlyArguments{"--bloom"};
         const ark::ApplicationDesc enableOnlyDesc =
             ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(enableOnlyArguments));
@@ -153,12 +176,13 @@ namespace {
             return false;
         }
 
-        constexpr std::array<std::string_view, 5> missingValueArguments{
+        constexpr std::array<std::string_view, 6> missingValueArguments{
             "--bloom-intensity",
             "--bloom-scatter",
             "--bloom-threshold",
             "--bloom-soft-knee",
             "--bloom-mips",
+            "--tone-mapping",
         };
         const ark::SandboxLaunchOptions missing =
             ark::parseSandboxLaunchOptions(missingValueArguments);
@@ -166,7 +190,8 @@ namespace {
             !missing.missingBloomScatterValue ||
             !missing.missingBloomThresholdValue ||
             !missing.missingBloomSoftKneeValue ||
-            !missing.missingBloomMipCountValue) {
+            !missing.missingBloomMipCountValue ||
+            !missing.missingToneMappingValue) {
             std::cerr << "Sandbox Bloom CLI should report missing option values\n";
             return false;
         }

@@ -131,6 +131,25 @@ namespace ark {
                 continue;
             }
 
+            if (argument == "--tone-mapping") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.toneMapping.operatorType =
+                        parseToneMappingOperator(value, options.toneMapping.operatorType);
+                } else {
+                    options.missingToneMappingValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view toneMappingPrefix = "--tone-mapping=";
+            if (hasPrefix(argument, toneMappingPrefix)) {
+                options.toneMapping.operatorType =
+                    parseToneMappingOperator(argument.substr(toneMappingPrefix.size()),
+                                             options.toneMapping.operatorType);
+                continue;
+            }
+
             if (argument == "--bloom-intensity") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
@@ -262,6 +281,7 @@ namespace ark {
         desc.defaultModelPath = resolved.scene.modelPath;
         desc.defaultEnvironmentPath = resolved.scene.environmentPath;
         desc.rendererQuality = resolved.quality;
+        desc.toneMapping = options.toneMapping;
         desc.postProcessing = sanitizePostProcessingSettings(options.postProcessing);
         desc.useDebugOrientationEnvironment =
             resolved.scene.environmentFallback == SceneEnvironmentFallbackPolicy::DebugOrientation;

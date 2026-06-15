@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset/MeshData.h"
+#include "core/Types.h"
 #include "renderer/PostProcessingSettings.h"
 #include "rhi/RHICommon.h"
 
@@ -9,12 +10,24 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <string_view>
 
 namespace ark {
+    enum class ToneMappingOperator : u32 {
+        Reinhard = 0,
+        Linear = 1,
+        ACES = 2,
+    };
+
     struct ToneMappingSettings {
         float exposure = 1.0f;
         float outputGamma = 2.2f;
+        ToneMappingOperator operatorType = ToneMappingOperator::Reinhard;
     };
+
+    ToneMappingOperator parseToneMappingOperator(
+        std::string_view name,
+        ToneMappingOperator fallback = ToneMappingOperator::Reinhard);
 
     class RenderView {
     public:

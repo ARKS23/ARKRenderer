@@ -28,7 +28,7 @@ namespace {
     struct alignas(16) CapturedToneMappingUniform {
         float exposure = 0.0f;
         float inverseOutputGamma = 0.0f;
-        float padding0 = 0.0f;
+        float operatorType = 0.0f;
         float padding1 = 0.0f;
     };
 
@@ -614,6 +614,7 @@ namespace {
         ark::ToneMappingSettings settings{};
         settings.exposure = 1.75f;
         settings.outputGamma = 2.0f;
+        settings.operatorType = ark::ToneMappingOperator::ACES;
 
         ExecutionCapture capture{};
         if (!runToneMappingPass(&settings, 1, capture)) {
@@ -626,7 +627,7 @@ namespace {
 
         if (!near(capture.uniform.exposure, 1.75f) ||
             !near(capture.uniform.inverseOutputGamma, 0.5f) ||
-            !near(capture.uniform.padding0, 0.0f) ||
+            !near(capture.uniform.operatorType, 2.0f) ||
             !near(capture.uniform.padding1, 0.0f)) {
             std::cerr << "ToneMappingPass uniform did not preserve RenderView tone mapping settings\n";
             return false;
@@ -639,6 +640,7 @@ namespace {
         ark::ToneMappingSettings settings{};
         settings.exposure = -5.0f;
         settings.outputGamma = 0.0f;
+        settings.operatorType = ark::ToneMappingOperator::Linear;
 
         ExecutionCapture capture{};
         if (!runToneMappingPass(&settings, 0, capture)) {
@@ -650,7 +652,8 @@ namespace {
         }
 
         if (!near(capture.uniform.exposure, 0.0f) ||
-            !near(capture.uniform.inverseOutputGamma, 1.0f / 2.2f)) {
+            !near(capture.uniform.inverseOutputGamma, 1.0f / 2.2f) ||
+            !near(capture.uniform.operatorType, 1.0f)) {
             std::cerr << "ToneMappingPass uniform did not clamp invalid tone mapping settings\n";
             return false;
         }
@@ -661,7 +664,8 @@ namespace {
         }
 
         if (!near(defaultCapture.uniform.exposure, 1.0f) ||
-            !near(defaultCapture.uniform.inverseOutputGamma, 1.0f / 2.2f)) {
+            !near(defaultCapture.uniform.inverseOutputGamma, 1.0f / 2.2f) ||
+            !near(defaultCapture.uniform.operatorType, 0.0f)) {
             std::cerr << "ToneMappingPass uniform did not use default settings when FrameContext has no view\n";
             return false;
         }

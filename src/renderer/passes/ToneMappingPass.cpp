@@ -25,7 +25,7 @@ namespace ark {
         struct alignas(16) ToneMappingUniform {
             float exposure = 1.0f;
             float inverseOutputGamma = 1.0f / DefaultOutputGamma;
-            float padding0 = 0.0f;
+            float operatorType = 0.0f;
             float padding1 = 0.0f;
         };
 
@@ -40,6 +40,7 @@ namespace ark {
             uniform.exposure = settings.exposure < 0.0f ? 0.0f : settings.exposure;
             uniform.inverseOutputGamma =
                 settings.outputGamma > 0.0f ? 1.0f / settings.outputGamma : 1.0f / DefaultOutputGamma;
+            uniform.operatorType = static_cast<float>(settings.operatorType);
             return uniform;
         }
     } // namespace

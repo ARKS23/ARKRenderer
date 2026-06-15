@@ -5,6 +5,7 @@
 #include "core/Memory.h"
 #include "renderer/PostProcessingSettings.h"
 #include "renderer/RendererQuality.h"
+#include "renderer/RenderView.h"
 
 namespace ark {
     class Renderer;
@@ -14,6 +15,7 @@ namespace ark {
         Path defaultModelPath;
         Path defaultEnvironmentPath;
         RendererQualityDesc rendererQuality;
+        ToneMappingSettings toneMapping;
         PostProcessingSettings postProcessing;
         bool useDebugOrientationEnvironment = false;
     };

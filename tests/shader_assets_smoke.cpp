@@ -193,7 +193,12 @@ namespace {
             !containsText(shaderSource, "[[vk::binding(2, 0)]]") ||
             !containsText(shaderSource, "g_ToneMapping.exposure") ||
             !containsText(shaderSource, "g_ToneMapping.inverseOutputGamma") ||
+            !containsText(shaderSource, "g_ToneMapping.operatorType") ||
             !containsText(shaderSource, "applyToneMapping") ||
+            !containsText(shaderSource, "toneMapLinear") ||
+            !containsText(shaderSource, "toneMapReinhard") ||
+            !containsText(shaderSource, "toneMapACES") ||
+            !containsText(shaderSource, "ACES fitted approximation") ||
             !containsText(shaderSource, "linearToOutput") ||
             !containsText(shaderSource, "pow") ||
             !containsText(shaderSource, "Sample")) {

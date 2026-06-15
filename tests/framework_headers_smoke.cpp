@@ -109,6 +109,7 @@ int main() {
     applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
     applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
     applicationDesc.rendererQuality.environmentBake.brdfLutSampleCount = 512;
+    applicationDesc.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
     applicationDesc.useDebugOrientationEnvironment = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
@@ -457,6 +458,16 @@ int main() {
         "bloom_validation_fixture.gltf") {
         return EXIT_FAILURE;
     }
+    constexpr std::array<std::string_view, 2> toneMappingArguments{
+        "--tone-mapping",
+        "linear",
+    };
+    const ark::ApplicationDesc toneMappingSandboxApplicationDesc =
+        ark::makeSandboxApplicationDesc(toneMappingArguments);
+    if (toneMappingSandboxApplicationDesc.toneMapping.operatorType !=
+        ark::ToneMappingOperator::Linear) {
+        return EXIT_FAILURE;
+    }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
     sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
     sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
@@ -516,9 +527,12 @@ int main() {
     ark::ToneMappingSettings toneMappingSettings{};
     toneMappingSettings.exposure = 1.25f;
     toneMappingSettings.outputGamma = 2.2f;
+    toneMappingSettings.operatorType = ark::ToneMappingOperator::ACES;
     renderView.setToneMappingSettings(toneMappingSettings);
     if (renderView.toneMappingSettings().exposure != 1.25f ||
-        renderView.toneMappingSettings().outputGamma != 2.2f) {
+        renderView.toneMappingSettings().outputGamma != 2.2f ||
+        renderView.toneMappingSettings().operatorType != ark::ToneMappingOperator::ACES ||
+        ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {
         return EXIT_FAILURE;
     }
     ark::RenderQueue renderQueue{};

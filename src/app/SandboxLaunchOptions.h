@@ -11,6 +11,7 @@
 namespace ark {
     struct SandboxLaunchOptions {
         RendererPresetDesc preset;
+        ToneMappingSettings toneMapping;
         PostProcessingSettings postProcessing;
         bool useDebugOrientationEnvironment = false;
         Path modelPathOverride;
@@ -23,6 +24,7 @@ namespace ark {
         bool missingBloomThresholdValue = false;
         bool missingBloomSoftKneeValue = false;
         bool missingBloomMipCountValue = false;
+        bool missingToneMappingValue = false;
     };
 
     SandboxLaunchOptions parseSandboxLaunchOptions(std::span<const std::string_view> arguments);
