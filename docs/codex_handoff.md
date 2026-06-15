@@ -1,5 +1,59 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.50)
+
+ARKRenderer has completed Phase 0.50: Public Scene / Resource Loading API Foundation.
+
+Key changes:
+- Added `src/renderer/SceneResource.h/.cpp`.
+- Added `SceneResourceLoadDesc`, model/environment fallback policy enums, source report enums, `SceneResourceLoadReport`, and owning `SceneResource`.
+- `SceneResource` now centralizes:
+  - model path resolution and default model fallback,
+  - requested/default HDR environment loading,
+  - debug orientation and procedural environment fallback,
+  - `ModelResource`, `EnvironmentResource`, and `RenderScene` lifetime ownership.
+- `DefaultRenderer` now owns default scene resources through `SceneResource m_DefaultSceneResource`.
+- Default IBL bake targets remain in `DefaultRenderer`:
+  - environment cubemap,
+  - irradiance cubemap,
+  - prefiltered specular cubemap,
+  - BRDF LUT.
+- Existing `RendererDesc.defaultModelPath`, `RendererDesc.defaultEnvironmentPath`, and `RendererDesc.useDebugOrientationEnvironment` behavior remains compatible.
+- Added `ark_scene_resource_smoke`.
+- `ark_framework_headers_smoke` now includes and instantiates the new scene resource API.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_scene_resource_smoke ark_framework_headers_smoke ark_sandbox
+build\msvc-vcpkg\Debug\ark_scene_resource_smoke.exe
+build\msvc-vcpkg\Debug\ark_framework_headers_smoke.exe
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke
+ark_sandbox hidden-window smoke with assets\models\material_ball_validation_fixture.gltf
+ark_sandbox hidden-window smoke with --debug-orientation
+```
+
+Results:
+```text
+targeted build passed
+ark_scene_resource_smoke passed
+ark_framework_headers_smoke passed
+ark_frame_validation_smoke passed with golden diff mean/max/mismatch all 0
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+CTest: 23/23 tests passed
+default sandbox hidden-window smoke passed
+material ball sandbox hidden-window smoke passed
+debug orientation sandbox hidden-window smoke passed
+```
+
+Recommended next step:
+- Phase 0.51 should build on the new `SceneResource` boundary and introduce a renderer quality/config API for default IBL bake settings: environment cubemap size, irradiance size, specular prefilter size/mips, BRDF LUT size, and sample counts.
+- Keep runtime scene switching, asset hot reload, and post-processing stack expansion out of the next phase unless the quality/config boundary is already stable.
+
 ## Latest Update (2026-06-15, Phase 0.49)
 
 ARKRenderer has completed Phase 0.49: Screenshot / Golden Image Validation Foundation.

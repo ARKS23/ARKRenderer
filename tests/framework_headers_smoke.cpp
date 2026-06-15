@@ -35,6 +35,7 @@
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
 #include "renderer/SandboxEnvironment.h"
+#include "renderer/SceneResource.h"
 #include "renderer/TextureCache.h"
 #include "renderer/TextureResource.h"
 #include "renderer/material/Material.h"
@@ -383,6 +384,14 @@ int main() {
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
     rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
     rendererDesc.useDebugOrientationEnvironment = true;
+    ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
+    sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
+    sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
+    sceneResourceLoadDesc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::DebugOrientation;
+    ark::SceneResourceLoadReport sceneResourceLoadReport{};
+    sceneResourceLoadReport.modelSource = ark::SceneModelSource::RequestedPath;
+    sceneResourceLoadReport.environmentSource = ark::SceneEnvironmentSource::DebugOrientation;
+    ark::SceneResource sceneResource{};
 
     ark::FrameContext frameContext{};
     frameContext.sceneColorView = sampledImageDescriptor.view;
@@ -518,6 +527,9 @@ int main() {
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
+    (void)sceneResourceLoadDesc;
+    (void)sceneResourceLoadReport;
+    (void)sceneResource;
     (void)meshResource;
     (void)modelResource;
     (void)renderGraphExecuted;

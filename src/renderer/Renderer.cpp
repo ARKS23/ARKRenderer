@@ -1,36 +1,26 @@
 #include "renderer/Renderer.h"
 
-#include "asset/GltfLoader.h"
-#include "asset/TextureLoader.h"
-#include "core/FileSystem.h"
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "renderer/EnvironmentBrdfLutGenerator.h"
 #include "renderer/EnvironmentBrdfLutResource.h"
 #include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
-#include "renderer/EnvironmentResource.h"
 #include "renderer/EnvironmentIrradianceGenerator.h"
 #include "renderer/EnvironmentSpecularPrefilterGenerator.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
-#include "renderer/ModelResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
-#include "renderer/SandboxEnvironment.h"
+#include "renderer/SceneResource.h"
 #include "rhi/RenderBackend.h"
 #include "rhi/TextureView.h"
 
-#include <array>
-#include <glm/mat4x4.hpp>
 #include <stdexcept>
 
 namespace ark {
     namespace {
-        constexpr const char* PreferredSandboxModelAssetPath = "assets/models/DamagedHelmet/DamagedHelmet.gltf";
-        constexpr const char* FallbackSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
-        constexpr const char* DefaultSandboxEnvironmentAssetPath = "assets/HDR/2k.hdr";
         constexpr rhi::Extent2D DefaultEnvironmentCubeFaceExtent{512, 512};
         constexpr rhi::Extent2D DefaultIrradianceCubeFaceExtent{32, 32};
         constexpr rhi::Extent2D DefaultSpecularCubeFaceExtent{256, 256};
@@ -50,52 +40,40 @@ namespace ark {
             return desc;
         }
 
-        Path findSandboxAssetFile(const Path& requestedPath) {
-            if (requestedPath.empty()) {
-                return {};
+        const char* toString(SceneModelSource source) {
+            switch (source) {
+            case SceneModelSource::None:
+                return "None";
+            case SceneModelSource::RequestedPath:
+                return "RequestedPath";
+            case SceneModelSource::DefaultFallback:
+                return "DefaultFallback";
             }
 
-            if (requestedPath.is_absolute()) {
-                return fileExists(requestedPath) ? requestedPath : Path{};
-            }
-
-            const std::array<Path, 5> candidates{
-                requestedPath,
-                Path{"../"} / requestedPath,
-                Path{"../../"} / requestedPath,
-                Path{"../../../"} / requestedPath,
-                Path{"../../../../"} / requestedPath,
-            };
-
-            return findFirstExistingPath(candidates);
+            return "Unknown";
         }
 
-        Path findSandboxModelFile(const Path& overridePath) {
-            if (!overridePath.empty()) {
-                return findSandboxAssetFile(overridePath);
+        const char* toString(SceneEnvironmentSource source) {
+            switch (source) {
+            case SceneEnvironmentSource::None:
+                return "None";
+            case SceneEnvironmentSource::RequestedHdr:
+                return "RequestedHdr";
+            case SceneEnvironmentSource::DefaultHdr:
+                return "DefaultHdr";
+            case SceneEnvironmentSource::Procedural:
+                return "Procedural";
+            case SceneEnvironmentSource::DebugOrientation:
+                return "DebugOrientation";
             }
 
-            Path modelPath = findSandboxAssetFile(Path{PreferredSandboxModelAssetPath});
-            if (!modelPath.empty()) {
-                return modelPath;
-            }
-
-            return findSandboxAssetFile(Path{FallbackSandboxModelAssetPath});
-        }
-
-        Path findSandboxEnvironmentFile(const Path& overridePath) {
-            const Path requestedPath =
-                overridePath.empty() ? Path{DefaultSandboxEnvironmentAssetPath} : overridePath;
-            return findSandboxAssetFile(requestedPath);
+            return "Unknown";
         }
 
         class DefaultRenderer final : public Renderer {
         public:
             explicit DefaultRenderer(const RendererDesc& desc)
-                : m_DefaultModelPath(desc.defaultModelPath),
-                  m_DefaultEnvironmentPath(desc.defaultEnvironmentPath),
-                  m_UseDebugOrientationEnvironment(desc.useDebugOrientationEnvironment),
-                  m_Extent(desc.extent) {
+                : m_Extent(desc.extent) {
                 // Renderer 只组装公共 RHI 描述，具体后端对象由内部工厂创建。
                 rhi::RenderBackendDesc backendDesc{};
                 backendDesc.device.desc.backend = rhi::RenderBackendType::Vulkan;
@@ -118,8 +96,7 @@ namespace ark {
                 m_EnvironmentSpecularPrefilterGenerator.setup(m_Backend->device());
                 m_EnvironmentBrdfLutGenerator.setup(m_Backend->device());
 
-                createDefaultScene();
-                createDefaultEnvironment();
+                createDefaultSceneResource(desc);
                 ARK_INFO("Renderer initialized");
             }
 
@@ -129,7 +106,7 @@ namespace ark {
                 }
 
                 m_FrameRenderer.reset();
-                m_DefaultScene.clear();
+                m_DefaultSceneResource.resetImmediate();
                 m_EnvironmentBrdfLutGenerator.resetImmediate();
                 m_EnvironmentSpecularPrefilterGenerator.resetImmediate();
                 m_EnvironmentIrradianceGenerator.resetImmediate();
@@ -138,8 +115,6 @@ namespace ark {
                 m_DefaultSpecularCube.resetImmediate();
                 m_DefaultIrradianceCube.resetImmediate();
                 m_DefaultEnvironmentCube.resetImmediate();
-                m_DefaultEnvironment.resetImmediate();
-                m_DefaultModel.reset();
                 m_Backend.reset();
                 ARK_INFO("Renderer shutdown");
             }
@@ -175,7 +150,8 @@ namespace ark {
 
                 // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue，pass 只消费 queue。
 
-                RenderScene& renderScene = scene.empty() && !m_DefaultScene.empty() ? m_DefaultScene : scene;
+                RenderScene& renderScene =
+                    scene.empty() && m_DefaultSceneResource.hasScene() ? m_DefaultSceneResource.scene() : scene;
                 prepareDefaultEnvironmentCube(context, renderScene);
                 prepareDefaultIrradianceCube(context, renderScene);
                 prepareDefaultSpecularCube(context, renderScene);
@@ -250,61 +226,36 @@ namespace ark {
                 return status == rhi::SwapChainStatus::Ready || status == rhi::SwapChainStatus::Suboptimal;
             }
 
-            bool createDefaultScene() {
-                const Path modelPath = findSandboxModelFile(m_DefaultModelPath);
-                if (modelPath.empty()) {
-                    if (m_DefaultModelPath.empty()) {
-                        ARK_WARN("Default sandbox models were not found: {} or {}",
-                                 PreferredSandboxModelAssetPath,
-                                 FallbackSandboxModelAssetPath);
-                    } else {
-                        ARK_WARN("Requested sandbox model was not found: {}", m_DefaultModelPath.string());
-                    }
-                    return false;
-                }
+            bool createDefaultSceneResource(const RendererDesc& desc) {
+                SceneResourceLoadDesc loadDesc{};
+                loadDesc.modelPath = desc.defaultModelPath;
+                loadDesc.modelFallback = SceneModelFallbackPolicy::DefaultSandboxModel;
+                loadDesc.environmentPath = desc.defaultEnvironmentPath;
+                loadDesc.environmentFallback = desc.useDebugOrientationEnvironment
+                                                   ? SceneEnvironmentFallbackPolicy::DebugOrientation
+                                                   : SceneEnvironmentFallbackPolicy::DefaultHdrThenProcedural;
+                loadDesc.sceneName = "DefaultSandboxScene";
+                loadDesc.modelName = "DefaultSandboxModel";
+                loadDesc.environmentName = "DefaultSandboxEnvironment";
+                loadDesc.environmentIntensity = 1.0f;
 
-                ARK_INFO("Using sandbox model: {}", modelPath.string());
-                asset::ModelData modelData = asset::loadGltfModel(modelPath);
-                if (modelData.empty()) {
-                    ARK_WARN("Default sandbox model fixture is empty: {}", modelPath.string());
-                    return false;
-                }
-
-                if (!m_DefaultModel.create(m_Backend->device(), modelData)) {
-                    ARK_ERROR("Renderer failed to create default sandbox model");
+                if (!m_DefaultSceneResource.load(m_Backend->device(), loadDesc)) {
+                    ARK_WARN("Renderer default scene resource was not loaded");
                     return false;
                 }
 
                 // 默认 sandbox scene 由 renderer 持有 GPU model，避免 app 层直接管理 RHI 生命周期。
-                m_DefaultScene.clear();
-                m_DefaultScene.addModel(m_DefaultModel, glm::mat4{1.0f}, "DefaultSandboxModel");
-                return true;
+                const SceneResourceLoadReport& report = m_DefaultSceneResource.report();
+                ARK_INFO("Renderer default scene loaded: modelSource={}, environmentSource={}",
+                         toString(report.modelSource),
+                         toString(report.environmentSource));
+
+                return createDefaultEnvironmentBakeTargets();
             }
 
-            bool createDefaultEnvironment() {
-                const Path environmentPath = findSandboxEnvironmentFile(m_DefaultEnvironmentPath);
-                asset::ImageData environmentImage{};
-                if (m_UseDebugOrientationEnvironment) {
-                    ARK_INFO("Using debug orientation sandbox environment");
-                    environmentImage = makeDebugOrientationEnvironmentImage();
-                } else if (!environmentPath.empty()) {
-                    ARK_INFO("Using sandbox environment: {}", environmentPath.string());
-                    environmentImage = asset::loadImageHdrRgba32F(environmentPath);
-                } else if (!m_DefaultEnvironmentPath.empty()) {
-                    ARK_WARN("Requested sandbox environment was not found: {}", m_DefaultEnvironmentPath.string());
-                } else {
-                    ARK_INFO("Default sandbox environment was not found: {}", DefaultSandboxEnvironmentAssetPath);
-                }
-
-                if (environmentImage.empty()) {
-                    ARK_INFO("Using procedural sandbox environment");
-                    environmentImage = makeProceduralSandboxEnvironmentImage();
-                }
-
-                EnvironmentResourceDesc environmentDesc{};
-                environmentDesc.debugName = "DefaultSandboxEnvironment";
-                if (!m_DefaultEnvironment.create(m_Backend->device(), environmentImage, environmentDesc)) {
-                    ARK_ERROR("Renderer failed to create default sandbox environment");
+            bool createDefaultEnvironmentBakeTargets() {
+                if (!m_DefaultSceneResource.environment()) {
+                    ARK_WARN("Renderer default environment was not loaded; skipping default IBL targets");
                     return false;
                 }
 
@@ -347,10 +298,6 @@ namespace ark {
                     m_DefaultBrdfLut.resetImmediate();
                 }
 
-                SceneEnvironment environment{};
-                environment.environment = &m_DefaultEnvironment;
-                environment.intensity = 1.0f;
-                m_DefaultScene.setEnvironment(environment);
                 return true;
             }
 
@@ -359,8 +306,9 @@ namespace ark {
                     return;
                 }
 
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
-                if (environment.environment != &m_DefaultEnvironment) {
+                if (!defaultEnvironment || environment.environment != defaultEnvironment) {
                     return;
                 }
 
@@ -369,13 +317,13 @@ namespace ark {
                     return;
                 }
 
-                if (!m_DefaultEnvironment.upload(context)) {
+                if (!defaultEnvironment->upload(context)) {
                     ARK_WARN("Renderer failed to upload default sandbox environment before cubemap conversion");
                     return;
                 }
 
                 EnvironmentCubeConversionDesc conversionDesc{};
-                conversionDesc.source = &m_DefaultEnvironment;
+                conversionDesc.source = defaultEnvironment;
                 conversionDesc.target = &m_DefaultEnvironmentCube;
                 conversionDesc.debugName = "DefaultSandboxEnvironmentCubeConversion";
                 if (!m_EnvironmentCubeConverter.convert(context, conversionDesc)) {
@@ -393,8 +341,9 @@ namespace ark {
                     return;
                 }
 
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
-                if (environment.environment != &m_DefaultEnvironment) {
+                if (!defaultEnvironment || environment.environment != defaultEnvironment) {
                     return;
                 }
 
@@ -427,8 +376,9 @@ namespace ark {
                     return;
                 }
 
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
-                if (environment.environment != &m_DefaultEnvironment) {
+                if (!defaultEnvironment || environment.environment != defaultEnvironment) {
                     return;
                 }
 
@@ -460,8 +410,9 @@ namespace ark {
                     return;
                 }
 
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
-                if (environment.environment != &m_DefaultEnvironment) {
+                if (!defaultEnvironment || environment.environment != defaultEnvironment) {
                     return;
                 }
 
@@ -484,9 +435,11 @@ namespace ark {
             }
 
             EnvironmentCubeResource* resolveFrameEnvironmentCube(RenderScene& renderScene) {
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultEnvironmentCubeConverted &&
-                    environment.environment == &m_DefaultEnvironment &&
+                    defaultEnvironment &&
+                    environment.environment == defaultEnvironment &&
                     m_DefaultEnvironmentCube.isValid()) {
                     return &m_DefaultEnvironmentCube;
                 }
@@ -495,9 +448,11 @@ namespace ark {
             }
 
             EnvironmentCubeResource* resolveFrameIrradianceCube(RenderScene& renderScene) {
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultIrradianceCubeGenerated &&
-                    environment.environment == &m_DefaultEnvironment &&
+                    defaultEnvironment &&
+                    environment.environment == defaultEnvironment &&
                     m_DefaultIrradianceCube.isValid()) {
                     return &m_DefaultIrradianceCube;
                 }
@@ -506,9 +461,11 @@ namespace ark {
             }
 
             EnvironmentCubeResource* resolveFramePrefilteredSpecularCube(RenderScene& renderScene) {
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultSpecularCubeGenerated &&
-                    environment.environment == &m_DefaultEnvironment &&
+                    defaultEnvironment &&
+                    environment.environment == defaultEnvironment &&
                     m_DefaultSpecularCube.isValid()) {
                     return &m_DefaultSpecularCube;
                 }
@@ -517,9 +474,11 @@ namespace ark {
             }
 
             EnvironmentBrdfLutResource* resolveFrameBrdfLut(RenderScene& renderScene) {
+                EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultBrdfLutGenerated &&
-                    environment.environment == &m_DefaultEnvironment &&
+                    defaultEnvironment &&
+                    environment.environment == defaultEnvironment &&
                     m_DefaultBrdfLut.isValid()) {
                     return &m_DefaultBrdfLut;
                 }
@@ -550,8 +509,7 @@ namespace ark {
 
             Scope<FrameRenderer> m_FrameRenderer;
             Scope<rhi::RenderBackend> m_Backend;
-            ModelResource m_DefaultModel;
-            EnvironmentResource m_DefaultEnvironment;
+            SceneResource m_DefaultSceneResource;
             EnvironmentCubeResource m_DefaultEnvironmentCube;
             EnvironmentCubeResource m_DefaultIrradianceCube;
             EnvironmentCubeResource m_DefaultSpecularCube;
@@ -560,11 +518,7 @@ namespace ark {
             EnvironmentIrradianceGenerator m_EnvironmentIrradianceGenerator;
             EnvironmentSpecularPrefilterGenerator m_EnvironmentSpecularPrefilterGenerator;
             EnvironmentBrdfLutGenerator m_EnvironmentBrdfLutGenerator;
-            RenderScene m_DefaultScene;
             RenderQueue m_RenderQueue;
-            Path m_DefaultModelPath;
-            Path m_DefaultEnvironmentPath;
-            bool m_UseDebugOrientationEnvironment = false;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
             bool m_DefaultEnvironmentCubeConversionAttempted = false;
