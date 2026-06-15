@@ -25,7 +25,8 @@
 
 namespace ark {
     namespace {
-        constexpr const char* DefaultSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
+        constexpr const char* PreferredSandboxModelAssetPath = "assets/models/DamagedHelmet/DamagedHelmet.gltf";
+        constexpr const char* FallbackSandboxModelAssetPath = "assets/models/forward_multinode_fixture.gltf";
         constexpr const char* DefaultSandboxEnvironmentAssetPath = "assets/HDR/2k.hdr";
         constexpr rhi::Extent2D DefaultEnvironmentCubeFaceExtent{512, 512};
         constexpr rhi::Extent2D DefaultIrradianceCubeFaceExtent{32, 32};
@@ -42,44 +43,43 @@ namespace ark {
             return desc;
         }
 
-        Path findSandboxModelFile(const Path& overridePath) {
-            if (!overridePath.empty()) {
-                if (overridePath.is_absolute()) {
-                    return fileExists(overridePath) ? overridePath : Path{};
-                }
-
-                const std::array<Path, 3> overrideCandidates{
-                    overridePath,
-                    Path{"../"} / overridePath,
-                    Path{"../../"} / overridePath,
-                };
-                return findFirstExistingPath(overrideCandidates);
+        Path findSandboxAssetFile(const Path& requestedPath) {
+            if (requestedPath.empty()) {
+                return {};
             }
-
-            const Path relative = Path{DefaultSandboxModelAssetPath};
-            const std::array<Path, 3> candidates{
-                relative,
-                Path{"../"} / relative,
-                Path{"../../"} / relative,
-            };
-
-            return findFirstExistingPath(candidates);
-        }
-
-        Path findSandboxEnvironmentFile(const Path& overridePath) {
-            const Path requestedPath =
-                overridePath.empty() ? Path{DefaultSandboxEnvironmentAssetPath} : overridePath;
 
             if (requestedPath.is_absolute()) {
                 return fileExists(requestedPath) ? requestedPath : Path{};
             }
 
-            const std::array<Path, 3> overrideCandidates{
+            const std::array<Path, 5> candidates{
                 requestedPath,
                 Path{"../"} / requestedPath,
                 Path{"../../"} / requestedPath,
+                Path{"../../../"} / requestedPath,
+                Path{"../../../../"} / requestedPath,
             };
-            return findFirstExistingPath(overrideCandidates);
+
+            return findFirstExistingPath(candidates);
+        }
+
+        Path findSandboxModelFile(const Path& overridePath) {
+            if (!overridePath.empty()) {
+                return findSandboxAssetFile(overridePath);
+            }
+
+            Path modelPath = findSandboxAssetFile(Path{PreferredSandboxModelAssetPath});
+            if (!modelPath.empty()) {
+                return modelPath;
+            }
+
+            return findSandboxAssetFile(Path{FallbackSandboxModelAssetPath});
+        }
+
+        Path findSandboxEnvironmentFile(const Path& overridePath) {
+            const Path requestedPath =
+                overridePath.empty() ? Path{DefaultSandboxEnvironmentAssetPath} : overridePath;
+            return findSandboxAssetFile(requestedPath);
         }
 
         class DefaultRenderer final : public Renderer {
@@ -237,7 +237,9 @@ namespace ark {
                 const Path modelPath = findSandboxModelFile(m_DefaultModelPath);
                 if (modelPath.empty()) {
                     if (m_DefaultModelPath.empty()) {
-                        ARK_WARN("Default sandbox model fixture was not found: {}", DefaultSandboxModelAssetPath);
+                        ARK_WARN("Default sandbox models were not found: {} or {}",
+                                 PreferredSandboxModelAssetPath,
+                                 FallbackSandboxModelAssetPath);
                     } else {
                         ARK_WARN("Requested sandbox model was not found: {}", m_DefaultModelPath.string());
                     }

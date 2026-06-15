@@ -87,7 +87,8 @@ Vulkan Dynamic Rendering
 当前默认 sandbox 仍加载：
 
 ```text
-assets/models/forward_multinode_fixture.gltf
+assets/models/DamagedHelmet/DamagedHelmet.gltf  # preferred local asset when present
+assets/models/forward_multinode_fixture.gltf    # committed fallback
 assets/textures/xiaowei.png
 shaders/mesh.vert.hlsl
 shaders/mesh.frag.hlsl
@@ -105,7 +106,7 @@ build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet
 build/msvc-vcpkg/Debug/ark_sandbox.exe --debug-orientation
 ```
 
-`assets/models/DamagedHelmet/` 是本地真实模型资产目录，已加入 `.gitignore`，不作为默认资源，也不应在未明确要求时提交。
+`assets/models/DamagedHelmet/` 是本地真实模型资产目录，已加入 `.gitignore`；当前默认 sandbox 会在本地存在时优先使用它，缺失时回退到提交内置 fixture，但该目录本身仍不应在未明确要求时提交。
 
 Phase 0.22 已完成的主要改动：
 
