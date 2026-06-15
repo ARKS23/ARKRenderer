@@ -249,6 +249,23 @@ namespace {
         return ark::findFirstExistingPath(candidates);
     }
 
+    bool applyFirstSceneCamera(ark::RenderView& view,
+                               const ark::asset::ModelData& modelData,
+                               ark::rhi::Extent2D extent) {
+        for (const ark::asset::SceneCameraData& sceneCamera : modelData.sceneCameras) {
+            if (static_cast<ark::usize>(sceneCamera.cameraIndex) >= modelData.cameras.size()) {
+                continue;
+            }
+
+            const ark::asset::CameraData& camera = modelData.cameras[sceneCamera.cameraIndex];
+            if (view.setPerspectiveCamera(camera, sceneCamera.worldTransform, extent)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool renderValidationFrame(ark::rhi::RenderDevice& device,
                                ark::rhi::DeviceContext& context,
                                ark::rhi::FrameResource& frame,
@@ -258,7 +275,8 @@ namespace {
                                ark::rhi::TextureView& depthView,
                                ark::EnvironmentCubeResource& skyboxCube,
                                ark::EnvironmentResource& environment,
-                               ark::ModelResource& model) {
+                               ark::ModelResource& model,
+                               const ark::asset::ModelData& modelData) {
         ark::SkyboxPass skyboxPass{};
         ark::ForwardPass forwardPass{};
         skyboxPass.setup(device);
@@ -284,16 +302,10 @@ namespace {
         }
 
         ark::RenderView view{};
-        const glm::vec3 cameraPosition{0.0f, 0.0f, 4.0f};
-        const glm::mat4 viewMatrix =
-            glm::lookAt(cameraPosition, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
-        glm::mat4 projection =
-            glm::perspectiveRH_ZO(glm::radians(45.0f),
-                                  static_cast<float>(FrameExtent.width) / static_cast<float>(FrameExtent.height),
-                                  0.1f,
-                                  100.0f);
-        projection[1][1] *= -1.0f;
-        view.setMatrices(viewMatrix, projection, cameraPosition);
+        if (!applyFirstSceneCamera(view, modelData, FrameExtent)) {
+            std::cerr << "Frame validation fixture does not provide a usable perspective scene camera\n";
+            return false;
+        }
 
         ark::FrameContext frameContext{};
         frameContext.frameIndex = frame.frameIndex;
@@ -475,7 +487,8 @@ namespace {
                                    *depthView,
                                    skyboxCube,
                                    environment,
-                                   model)) {
+                                   model,
+                                   modelData)) {
             return false;
         }
 

@@ -8,6 +8,7 @@
 #include <tiny_gltf.h>
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <map>
@@ -24,6 +25,7 @@ namespace ark::asset {
         constexpr const char* TangentAttributeName = "TANGENT";
         constexpr const char* TextureTransformExtensionName = "KHR_texture_transform";
         constexpr u32 InvalidMaterialIndex = std::numeric_limits<u32>::max();
+        constexpr u32 InvalidCameraIndex = std::numeric_limits<u32>::max();
 
         using Matrix4 = std::array<float, 16>;
 
@@ -439,6 +441,87 @@ namespace ark::asset {
             return node.name.empty() ? "GltfNode." + std::to_string(nodeIndex) : node.name;
         }
 
+        std::string makeCameraDebugName(const tinygltf::Camera& camera, usize cameraIndex) {
+            return camera.name.empty() ? "GltfCamera." + std::to_string(cameraIndex) : camera.name;
+        }
+
+        bool isPositiveFinite(double value) {
+            return std::isfinite(value) && value > 0.0;
+        }
+
+        bool loadCamera(const tinygltf::Camera& gltfCamera, usize cameraIndex, CameraData& camera) {
+            camera.debugName = makeCameraDebugName(gltfCamera, cameraIndex);
+            if (gltfCamera.type == "perspective") {
+                const tinygltf::PerspectiveCamera& perspective = gltfCamera.perspective;
+                if (!isPositiveFinite(perspective.yfov) || !isPositiveFinite(perspective.znear)) {
+                    ARK_WARN("glTF perspective camera is missing required positive yfov/znear: {}",
+                             camera.debugName);
+                    return false;
+                }
+
+                camera.type = CameraProjectionType::Perspective;
+                camera.perspective.yfov = static_cast<float>(perspective.yfov);
+                camera.perspective.aspectRatio =
+                    perspective.aspectRatio > 0.0 ? static_cast<float>(perspective.aspectRatio) : 0.0f;
+                camera.perspective.znear = static_cast<float>(perspective.znear);
+                camera.perspective.hasZfar = perspective.zfar > 0.0;
+                camera.perspective.zfar = camera.perspective.hasZfar ? static_cast<float>(perspective.zfar) : 0.0f;
+                if (camera.perspective.hasZfar && camera.perspective.zfar <= camera.perspective.znear) {
+                    ARK_WARN("glTF perspective camera zfar must be greater than znear: {}", camera.debugName);
+                    return false;
+                }
+                return true;
+            }
+
+            if (gltfCamera.type == "orthographic") {
+                const tinygltf::OrthographicCamera& orthographic = gltfCamera.orthographic;
+                if (!isPositiveFinite(orthographic.xmag) ||
+                    !isPositiveFinite(orthographic.ymag) ||
+                    !isPositiveFinite(orthographic.znear) ||
+                    !isPositiveFinite(orthographic.zfar) ||
+                    orthographic.zfar <= orthographic.znear) {
+                    ARK_WARN("glTF orthographic camera parameters are invalid: {}", camera.debugName);
+                    return false;
+                }
+
+                camera.type = CameraProjectionType::Orthographic;
+                camera.orthographic.xmag = static_cast<float>(orthographic.xmag);
+                camera.orthographic.ymag = static_cast<float>(orthographic.ymag);
+                camera.orthographic.znear = static_cast<float>(orthographic.znear);
+                camera.orthographic.zfar = static_cast<float>(orthographic.zfar);
+                return true;
+            }
+
+            ARK_WARN("glTF camera type is unsupported: {}", gltfCamera.type);
+            return false;
+        }
+
+        bool loadCameras(const tinygltf::Model& gltfModel,
+                         ModelData& model,
+                         std::vector<u32>& cameraIndexMap) {
+            cameraIndexMap.assign(gltfModel.cameras.size(), InvalidCameraIndex);
+            if (gltfModel.cameras.empty()) {
+                return true;
+            }
+
+            for (usize cameraIndex = 0; cameraIndex < gltfModel.cameras.size(); ++cameraIndex) {
+                CameraData camera{};
+                if (!loadCamera(gltfModel.cameras[cameraIndex], cameraIndex, camera)) {
+                    continue;
+                }
+
+                if (model.cameras.size() >= std::numeric_limits<u32>::max()) {
+                    ARK_ERROR("glTF camera count exceeds u32 range");
+                    return false;
+                }
+
+                cameraIndexMap[cameraIndex] = static_cast<u32>(model.cameras.size());
+                model.cameras.push_back(std::move(camera));
+            }
+
+            return true;
+        }
+
         const tinygltf::Texture* getTexture(const tinygltf::Model& model, int textureIndex) {
             if (textureIndex < 0 || static_cast<usize>(textureIndex) >= model.textures.size()) {
                 return nullptr;
@@ -795,6 +878,7 @@ namespace ark::asset {
 
         bool appendMeshInstances(const tinygltf::Model& gltfModel,
                                  const std::vector<std::vector<u32>>& meshPrimitiveMap,
+                                 const std::vector<u32>& cameraIndexMap,
                                  usize nodeIndex,
                                  const Matrix4& parentTransform,
                                  ModelData& model) {
@@ -809,11 +893,22 @@ namespace ark::asset {
                 return false;
             }
 
+            const Matrix4 worldTransform = multiplyMatrix(parentTransform, nodeLocalMatrix(node));
+            const std::string nodeName = makeNodeDebugName(node, nodeIndex);
             if (node.camera >= 0) {
-                ARK_WARN("glTF node camera is ignored by Phase 0.10 loader");
+                const usize sourceCameraIndex = static_cast<usize>(node.camera);
+                if (sourceCameraIndex >= cameraIndexMap.size() ||
+                    cameraIndexMap[sourceCameraIndex] == InvalidCameraIndex) {
+                    ARK_WARN("glTF node references unsupported or invalid camera: node={}", nodeName);
+                } else {
+                    SceneCameraData sceneCamera{};
+                    sceneCamera.cameraIndex = cameraIndexMap[sourceCameraIndex];
+                    sceneCamera.worldTransform = toTransformData(worldTransform);
+                    sceneCamera.debugName = nodeName;
+                    model.sceneCameras.push_back(std::move(sceneCamera));
+                }
             }
 
-            const Matrix4 worldTransform = multiplyMatrix(parentTransform, nodeLocalMatrix(node));
             if (node.mesh >= 0) {
                 const usize meshIndex = static_cast<usize>(node.mesh);
                 if (meshIndex >= meshPrimitiveMap.size()) {
@@ -821,7 +916,6 @@ namespace ark::asset {
                     return false;
                 }
 
-                const std::string nodeName = makeNodeDebugName(node, nodeIndex);
                 for (u32 primitiveMeshIndex : meshPrimitiveMap[meshIndex]) {
                     MeshPrimitiveInstanceData instance{};
                     instance.meshIndex = primitiveMeshIndex;
@@ -837,7 +931,12 @@ namespace ark::asset {
                     return false;
                 }
 
-                if (!appendMeshInstances(gltfModel, meshPrimitiveMap, static_cast<usize>(childIndex), worldTransform, model)) {
+                if (!appendMeshInstances(gltfModel,
+                                         meshPrimitiveMap,
+                                         cameraIndexMap,
+                                         static_cast<usize>(childIndex),
+                                         worldTransform,
+                                         model)) {
                     return false;
                 }
             }
@@ -847,6 +946,7 @@ namespace ark::asset {
 
         bool loadSceneInstances(const tinygltf::Model& gltfModel,
                                 const std::vector<std::vector<u32>>& meshPrimitiveMap,
+                                const std::vector<u32>& cameraIndexMap,
                                 ModelData& model) {
             if (gltfModel.scenes.empty()) {
                 ARK_WARN("glTF file has no scene; creating identity primitive instances");
@@ -874,7 +974,12 @@ namespace ark::asset {
                     return false;
                 }
 
-                if (!appendMeshInstances(gltfModel, meshPrimitiveMap, static_cast<usize>(nodeIndex), rootTransform, model)) {
+                if (!appendMeshInstances(gltfModel,
+                                         meshPrimitiveMap,
+                                         cameraIndexMap,
+                                         static_cast<usize>(nodeIndex),
+                                         rootTransform,
+                                         model)) {
                     return false;
                 }
             }
@@ -916,6 +1021,11 @@ namespace ark::asset {
         ModelData model{};
         model.debugName = path.string();
 
+        std::vector<u32> cameraIndexMap;
+        if (!loadCameras(gltfModel, model, cameraIndexMap)) {
+            return {};
+        }
+
         // 先保留 glTF 原始 material index，最后再压缩成 ModelData 的连续 material 数组。
         std::vector<u32> sourceMaterialIndices;
         std::vector<std::vector<u32>> meshPrimitiveMap(gltfModel.meshes.size());
@@ -950,7 +1060,7 @@ namespace ark::asset {
             return {};
         }
 
-        if (!loadSceneInstances(gltfModel, meshPrimitiveMap, model)) {
+        if (!loadSceneInstances(gltfModel, meshPrimitiveMap, cameraIndexMap, model)) {
             return {};
         }
 
@@ -971,11 +1081,13 @@ namespace ark::asset {
             model.meshes[meshIndex].materialIndex = remappedIndex;
         }
 
-        ARK_INFO("Loaded glTF model: {} (primitives={}, materials={}, instances={})",
+        ARK_INFO("Loaded glTF model: {} (primitives={}, materials={}, instances={}, cameras={}, sceneCameras={})",
                  path.string(),
                  model.meshes.size(),
                  model.materials.size(),
-                 model.instances.size());
+                 model.instances.size(),
+                 model.cameras.size(),
+                 model.sceneCameras.size());
         return model;
     }
 } // namespace ark::asset

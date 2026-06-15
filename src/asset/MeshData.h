@@ -134,6 +134,39 @@ namespace ark::asset {
         };
     };
 
+    enum class CameraProjectionType {
+        Perspective,
+        Orthographic,
+    };
+
+    struct PerspectiveCameraData {
+        float yfov = 0.0f;
+        float aspectRatio = 0.0f;
+        float znear = 0.0f;
+        float zfar = 0.0f;
+        bool hasZfar = false;
+    };
+
+    struct OrthographicCameraData {
+        float xmag = 0.0f;
+        float ymag = 0.0f;
+        float znear = 0.0f;
+        float zfar = 0.0f;
+    };
+
+    struct CameraData {
+        CameraProjectionType type = CameraProjectionType::Perspective;
+        PerspectiveCameraData perspective;
+        OrthographicCameraData orthographic;
+        std::string debugName;
+    };
+
+    struct SceneCameraData {
+        u32 cameraIndex = 0;
+        TransformData worldTransform;
+        std::string debugName;
+    };
+
     // 表达一个 glTF node 对某个 primitive 的实例化；meshIndex 指向 ModelData::meshes。
     struct MeshPrimitiveInstanceData {
         u32 meshIndex = 0;
@@ -146,6 +179,8 @@ namespace ark::asset {
         std::vector<MeshPrimitiveData> meshes;
         std::vector<MaterialData> materials;
         std::vector<MeshPrimitiveInstanceData> instances;
+        std::vector<CameraData> cameras;
+        std::vector<SceneCameraData> sceneCameras;
         std::string debugName;
 
         bool empty() const {

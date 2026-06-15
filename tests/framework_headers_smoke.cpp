@@ -297,6 +297,20 @@ int main() {
     ark::asset::ModelData modelData{};
     modelData.meshes.push_back(meshPrimitive);
     modelData.materials.push_back(materialData);
+    ark::asset::CameraData cameraData{};
+    cameraData.debugName = "SmokePerspectiveCamera";
+    cameraData.type = ark::asset::CameraProjectionType::Perspective;
+    cameraData.perspective.yfov = 0.785398f;
+    cameraData.perspective.aspectRatio = 1.777778f;
+    cameraData.perspective.znear = 0.1f;
+    cameraData.perspective.zfar = 100.0f;
+    cameraData.perspective.hasZfar = true;
+    modelData.cameras.push_back(cameraData);
+    ark::asset::SceneCameraData sceneCameraData{};
+    sceneCameraData.cameraIndex = 0;
+    sceneCameraData.worldTransform.matrix[14] = 4.0f;
+    sceneCameraData.debugName = "SmokeSceneCamera";
+    modelData.sceneCameras.push_back(sceneCameraData);
     ark::asset::GltfLoader gltfLoader{};
     ark::MaterialResource materialResource{};
     ark::MaterialTextureCoordinateSet textureCoordinates{};
@@ -403,6 +417,11 @@ int main() {
     }
     ark::RenderView renderView{};
     renderView.setDefaultPerspective(swapChainDesc.extent);
+    if (!renderView.setPerspectiveCamera(modelData.cameras.front(),
+                                         modelData.sceneCameras.front().worldTransform,
+                                         swapChainDesc.extent)) {
+        return EXIT_FAILURE;
+    }
     ark::InputSnapshot inputSnapshot{};
     inputSnapshot.cursorPosition = glm::vec2{1.0f, 2.0f};
     inputSnapshot.cursorDelta = glm::vec2{0.5f, -0.25f};

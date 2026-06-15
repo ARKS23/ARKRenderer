@@ -6,7 +6,7 @@
   "scene": 0,
   "scenes": [
     {
-      "nodes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+      "nodes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     }
   ],
   "nodes": [
@@ -24,7 +24,20 @@
     { "name": "Node_M100_R025", "mesh": 11, "translation": [-0.6, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
     { "name": "Node_M100_R050", "mesh": 12, "translation": [0.0, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
     { "name": "Node_M100_R075", "mesh": 13, "translation": [0.6, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
-    { "name": "Node_M100_R100", "mesh": 14, "translation": [1.2, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] }
+    { "name": "Node_M100_R100", "mesh": 14, "translation": [1.2, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "ValidationCameraNode", "camera": 0, "translation": [0.0, 0.0, 4.0] }
+  ],
+  "cameras": [
+    {
+      "name": "ValidationCamera",
+      "type": "perspective",
+      "perspective": {
+        "yfov": 0.7853981633974483,
+        "aspectRatio": 1.7777777777777777,
+        "znear": 0.1,
+        "zfar": 100.0
+      }
+    }
   ],
   "meshes": [
     { "name": "Mesh_M00_R005", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 0, "mode": 4 }] },

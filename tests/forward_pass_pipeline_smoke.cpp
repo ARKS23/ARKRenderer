@@ -984,6 +984,41 @@ namespace {
             return false;
         }
 
+        ark::asset::CameraData camera{};
+        camera.debugName = "ForwardPassSmokeCamera";
+        camera.type = ark::asset::CameraProjectionType::Perspective;
+        camera.perspective.yfov = 0.5f;
+        camera.perspective.znear = 0.25f;
+        camera.perspective.zfar = 50.0f;
+        camera.perspective.hasZfar = true;
+
+        ark::asset::TransformData cameraTransform{};
+        cameraTransform.matrix[12] = 1.5f;
+        cameraTransform.matrix[13] = 2.0f;
+        cameraTransform.matrix[14] = 4.0f;
+
+        ark::RenderView cameraView{};
+        if (!cameraView.setPerspectiveCamera(camera, cameraTransform, ark::rhi::Extent2D{1600, 800})) {
+            std::cerr << "RenderView did not accept a valid perspective camera\n";
+            return false;
+        }
+
+        const float expectedProjectionY = -1.0f / std::tan(camera.perspective.yfov * 0.5f);
+        const float expectedProjectionX = expectedProjectionY / -2.0f;
+        if (!nearVec3(cameraView.cameraPosition(), glm::vec3{1.5f, 2.0f, 4.0f}) ||
+            !near(cameraView.projectionMatrix()[0][0], expectedProjectionX) ||
+            !near(cameraView.projectionMatrix()[1][1], expectedProjectionY)) {
+            std::cerr << "RenderView perspective camera matrices are invalid\n";
+            return false;
+        }
+
+        ark::asset::CameraData invalidCamera = camera;
+        invalidCamera.perspective.znear = 0.0f;
+        if (cameraView.setPerspectiveCamera(invalidCamera, cameraTransform, ark::rhi::Extent2D{1600, 800})) {
+            std::cerr << "RenderView accepted an invalid perspective camera\n";
+            return false;
+        }
+
         return true;
     }
 

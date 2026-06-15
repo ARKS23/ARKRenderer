@@ -303,6 +303,29 @@ namespace {
             return false;
         }
 
+        if (model.cameras.size() != 1 || model.sceneCameras.size() != 1) {
+            std::cerr << "Specular IBL validation fixture camera was not loaded\n";
+            return false;
+        }
+
+        const ark::asset::CameraData& camera = model.cameras.front();
+        const ark::asset::SceneCameraData& sceneCamera = model.sceneCameras.front();
+        if (camera.debugName != "ValidationCamera" ||
+            camera.type != ark::asset::CameraProjectionType::Perspective ||
+            !near(camera.perspective.yfov, 0.785398f) ||
+            !near(camera.perspective.aspectRatio, 1.777778f) ||
+            !near(camera.perspective.znear, 0.1f) ||
+            !near(camera.perspective.zfar, 100.0f) ||
+            !camera.perspective.hasZfar ||
+            sceneCamera.debugName != "ValidationCameraNode" ||
+            sceneCamera.cameraIndex != 0 ||
+            !near(sceneCamera.worldTransform.matrix[12], 0.0f) ||
+            !near(sceneCamera.worldTransform.matrix[13], 0.0f) ||
+            !near(sceneCamera.worldTransform.matrix[14], 4.0f)) {
+            std::cerr << "Specular IBL validation fixture camera data is invalid\n";
+            return false;
+        }
+
         for (std::size_t index = 0; index < MaterialCount; ++index) {
             const std::size_t row = index / ColumnCount;
             const std::size_t column = index % ColumnCount;

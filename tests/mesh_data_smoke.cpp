@@ -165,8 +165,26 @@ namespace {
         model.debugName = "SmokeModel";
         model.meshes.push_back(primitive);
         model.materials.push_back(material);
+        ark::asset::CameraData camera{};
+        camera.debugName = "SmokeCamera";
+        camera.type = ark::asset::CameraProjectionType::Perspective;
+        camera.perspective.yfov = 0.785398f;
+        camera.perspective.aspectRatio = 1.777778f;
+        camera.perspective.znear = 0.1f;
+        camera.perspective.zfar = 100.0f;
+        camera.perspective.hasZfar = true;
+        model.cameras.push_back(camera);
 
-        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1) {
+        ark::asset::SceneCameraData sceneCamera{};
+        sceneCamera.cameraIndex = 0;
+        sceneCamera.worldTransform.matrix[14] = 4.0f;
+        sceneCamera.debugName = "SmokeSceneCamera";
+        model.sceneCameras.push_back(sceneCamera);
+
+        if (model.empty() || model.meshes.size() != 1 || model.materials.size() != 1 ||
+            model.cameras.size() != 1 || model.sceneCameras.size() != 1 ||
+            model.sceneCameras.front().cameraIndex != 0 ||
+            !near(model.sceneCameras.front().worldTransform.matrix[14], 4.0f)) {
             std::cerr << "ModelData did not preserve mesh/material data\n";
             return false;
         }
