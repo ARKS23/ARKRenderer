@@ -14,6 +14,7 @@
 #include <spdlog/spdlog.h>
 #include <spirv_reflect.h>
 #include <stb_image.h>
+#include <stb_image_write.h>
 #include <tiny_gltf.h>
 #include <vk_mem_alloc.h>
 #include <volk.h>

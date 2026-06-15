@@ -1,5 +1,53 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.49)
+
+ARKRenderer has completed Phase 0.49: Screenshot / Golden Image Validation Foundation.
+
+Key changes:
+- `ark_frame_validation_smoke` now writes tone-mapped `RGBA8Unorm` LDR PNG artifacts for both validation fixtures.
+- Artifact output path:
+  - `build/msvc-vcpkg/test_artifacts/frame_validation/specular_ibl_validation_fixture.png`
+  - `build/msvc-vcpkg/test_artifacts/frame_validation/material_ball_validation_fixture.png`
+- Golden baselines are now committed under:
+  - `tests/golden/frame_validation/specular_ibl_validation_fixture.png`
+  - `tests/golden/frame_validation/material_ball_validation_fixture.png`
+- `ark_frame_validation_smoke --update-golden` updates the committed baseline PNGs.
+- Default `ark_frame_validation_smoke` keeps the existing HDR/LDR stats checks and additionally compares against the golden PNGs when present.
+- Golden comparison is tolerant, not bit-exact:
+  - `meanAbsError <= 0.02`
+  - `maxChannelError <= 0.25`
+  - `mismatchedPixelRatio <= 0.10`
+- `tests/dependency_smoke.cpp` now includes `stb_image_write.h` so the dependency smoke covers the writer header used by frame validation.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_frame_validation_smoke ark_dependency_smoke
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe --update-golden
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe
+build\msvc-vcpkg\Debug\ark_dependency_smoke.exe
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke
+```
+
+Results:
+```text
+targeted frame-validation/dependency smoke build passed
+ark_frame_validation_smoke --update-golden passed
+ark_frame_validation_smoke passed with golden diff mean/max/mismatch all 0
+ark_dependency_smoke passed
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+CTest: 22/22 tests passed
+default sandbox hidden-window smoke passed
+```
+
+Recommended next step:
+- Phase 0.50 should prioritize public scene/resource loading API: move model, environment, camera, fixture/default scene setup, and quality config boundaries out of sandbox/test-specific code into reusable renderer-facing entry points.
+- After that, consider renderer quality config, then post-processing work such as Bloom / auto exposure / ACES once screenshot/golden validation can catch visual regressions.
+
 更新时间：2026-06-15
 
 ## 1. 当前状态

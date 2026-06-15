@@ -3,6 +3,7 @@
 #endif
 
 #include "asset/GltfLoader.h"
+#include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
 #include "core/Memory.h"
 #include "renderer/EnvironmentCubeConverter.h"
@@ -30,13 +31,20 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -47,6 +55,15 @@ namespace {
         static_cast<ark::u64>(FrameExtent.width) * FrameExtent.height * HdrFrameBytesPerPixel;
     constexpr ark::u64 LdrFrameByteSize =
         static_cast<ark::u64>(FrameExtent.width) * FrameExtent.height * LdrFrameBytesPerPixel;
+    constexpr float GoldenMeanAbsErrorThreshold = 0.02f;
+    constexpr float GoldenMaxChannelErrorThreshold = 0.25f;
+    constexpr float GoldenMismatchedPixelRatioThreshold = 0.10f;
+    constexpr ark::u8 GoldenMismatchByteThreshold = 8;
+
+    struct FrameValidationOptions {
+        bool updateGolden = false;
+        ark::Path artifactRoot;
+    };
 
     class HiddenGlfwWindow final {
     public:
@@ -108,6 +125,56 @@ namespace {
         float minAlpha = std::numeric_limits<float>::max();
         float meanAlpha = 0.0f;
     };
+
+    struct ImageDiffStats {
+        ark::u64 pixelCount = 0;
+        ark::u64 channelCount = 0;
+        ark::u64 mismatchedPixelCount = 0;
+        float meanAbsError = 0.0f;
+        float maxChannelError = 0.0f;
+        float mismatchedPixelRatio = 0.0f;
+    };
+
+    bool isCMakeConfigDirectoryName(std::string_view name) {
+        return name == "Debug" || name == "Release" || name == "RelWithDebInfo" ||
+               name == "MinSizeRel";
+    }
+
+    ark::Path artifactRootFromExecutablePath(std::string_view executablePath) {
+        std::error_code error;
+        ark::Path executable =
+            executablePath.empty() ? std::filesystem::current_path(error)
+                                   : std::filesystem::absolute(ark::Path{std::string{executablePath}}, error);
+        if (error) {
+            executable = std::filesystem::current_path();
+        }
+
+        ark::Path outputRoot = executable.has_parent_path() ? executable.parent_path()
+                                                            : std::filesystem::current_path();
+        if (isCMakeConfigDirectoryName(outputRoot.filename().string()) && outputRoot.has_parent_path()) {
+            outputRoot = outputRoot.parent_path();
+        }
+
+        return outputRoot / "test_artifacts" / "frame_validation";
+    }
+
+    bool parseOptions(int argc, char** argv, FrameValidationOptions& options) {
+        options.artifactRoot = artifactRootFromExecutablePath(argc > 0 && argv[0] ? argv[0] : "");
+
+        for (int index = 1; index < argc; ++index) {
+            const std::string_view argument{argv[index] ? argv[index] : ""};
+            if (argument == "--update-golden") {
+                options.updateGolden = true;
+                continue;
+            }
+
+            std::cerr << "Unknown argument: " << argument << '\n'
+                      << "Usage: ark_frame_validation_smoke [--update-golden]\n";
+            return false;
+        }
+
+        return true;
+    }
 
     float halfToFloat(ark::u16 value) {
         const ark::u32 sign = static_cast<ark::u32>(value & 0x8000u) << 16u;
@@ -328,6 +395,223 @@ namespace {
         }
 
         return true;
+    }
+
+    ark::u64 rgba8ByteSize(ark::rhi::Extent2D extent) {
+        return static_cast<ark::u64>(extent.width) * static_cast<ark::u64>(extent.height) *
+               LdrFrameBytesPerPixel;
+    }
+
+    bool writeRgba8Png(const std::vector<ark::u8>& bytes,
+                       ark::rhi::Extent2D extent,
+                       const ark::Path& path) {
+        const ark::u64 expectedByteSize = rgba8ByteSize(extent);
+        if (static_cast<ark::u64>(bytes.size()) != expectedByteSize) {
+            std::cerr << "PNG write input has unexpected byte size: expected "
+                      << expectedByteSize << " got " << bytes.size() << '\n';
+            return false;
+        }
+
+        const ark::Path parentPath = path.parent_path();
+        if (!parentPath.empty()) {
+            std::error_code createDirectoryError;
+            std::filesystem::create_directories(parentPath, createDirectoryError);
+            if (createDirectoryError) {
+                std::cerr << "Failed to create PNG output directory: "
+                          << parentPath.string() << " (" << createDirectoryError.message() << ")\n";
+                return false;
+            }
+        }
+
+        const int strideBytes = static_cast<int>(extent.width * LdrFrameBytesPerPixel);
+        const int writeResult = stbi_write_png(path.string().c_str(),
+                                               static_cast<int>(extent.width),
+                                               static_cast<int>(extent.height),
+                                               static_cast<int>(LdrFrameBytesPerPixel),
+                                               bytes.data(),
+                                               strideBytes);
+        if (writeResult == 0) {
+            std::cerr << "Failed to write PNG image: " << path.string() << '\n';
+            return false;
+        }
+
+        return true;
+    }
+
+    ImageDiffStats computeImageDiffStats(const std::vector<ark::u8>& currentBytes,
+                                         const std::vector<ark::u8>& goldenBytes,
+                                         ark::rhi::Extent2D extent) {
+        ImageDiffStats stats{};
+        stats.pixelCount = static_cast<ark::u64>(extent.width) * static_cast<ark::u64>(extent.height);
+        stats.channelCount = stats.pixelCount * LdrFrameBytesPerPixel;
+
+        double absErrorSum = 0.0;
+        for (ark::u64 pixelIndex = 0; pixelIndex < stats.pixelCount; ++pixelIndex) {
+            bool pixelMismatched = false;
+            const ark::u64 pixelOffset = pixelIndex * LdrFrameBytesPerPixel;
+
+            for (ark::u64 channelIndex = 0; channelIndex < LdrFrameBytesPerPixel; ++channelIndex) {
+                const ark::usize byteOffset = static_cast<ark::usize>(pixelOffset + channelIndex);
+                const int delta =
+                    std::abs(static_cast<int>(currentBytes[byteOffset]) -
+                             static_cast<int>(goldenBytes[byteOffset]));
+                const float normalizedDelta = static_cast<float>(delta) / 255.0f;
+                absErrorSum += normalizedDelta;
+                stats.maxChannelError = std::max(stats.maxChannelError, normalizedDelta);
+                if (delta > GoldenMismatchByteThreshold) {
+                    pixelMismatched = true;
+                }
+            }
+
+            if (pixelMismatched) {
+                ++stats.mismatchedPixelCount;
+            }
+        }
+
+        if (stats.channelCount > 0) {
+            stats.meanAbsError =
+                static_cast<float>(absErrorSum / static_cast<double>(stats.channelCount));
+        }
+        if (stats.pixelCount > 0) {
+            stats.mismatchedPixelRatio =
+                static_cast<float>(static_cast<double>(stats.mismatchedPixelCount) /
+                                   static_cast<double>(stats.pixelCount));
+        }
+
+        return stats;
+    }
+
+    void printImageDiffStats(const char* fixtureId, const ImageDiffStats& stats) {
+        std::cerr << "Golden diff stats for " << fixtureId
+                  << ": pixels=" << stats.pixelCount
+                  << " meanAbsError=" << stats.meanAbsError
+                  << " maxChannelError=" << stats.maxChannelError
+                  << " mismatchedPixelRatio=" << stats.mismatchedPixelRatio << '\n';
+    }
+
+    bool isProjectRootCandidate(const ark::Path& path) {
+        std::error_code error;
+        return std::filesystem::is_regular_file(path / "CMakeLists.txt", error) &&
+               std::filesystem::is_directory(path / "docs" / "phase", error) &&
+               std::filesystem::is_directory(path / "assets" / "models", error);
+    }
+
+    ark::Path findProjectRootFromSeed(ark::Path seedPath) {
+        std::error_code canonicalError;
+        seedPath = std::filesystem::weakly_canonical(seedPath, canonicalError);
+        if (canonicalError) {
+            seedPath = std::filesystem::absolute(seedPath);
+        }
+
+        for (ark::Path candidate = seedPath; !candidate.empty(); candidate = candidate.parent_path()) {
+            if (isProjectRootCandidate(candidate)) {
+                return candidate;
+            }
+
+            if (candidate == candidate.parent_path()) {
+                break;
+            }
+        }
+
+        return {};
+    }
+
+    ark::Path projectRootFromFixturePath(const ark::Path& fixturePath) {
+        if (ark::Path projectRoot = findProjectRootFromSeed(std::filesystem::current_path());
+            !projectRoot.empty()) {
+            return projectRoot;
+        }
+
+        std::error_code error;
+        ark::Path absolutePath = std::filesystem::absolute(fixturePath, error);
+        if (error) {
+            absolutePath = fixturePath;
+        }
+
+        if (ark::Path projectRoot = findProjectRootFromSeed(absolutePath.parent_path());
+            !projectRoot.empty()) {
+            return projectRoot;
+        }
+
+        return absolutePath.parent_path().parent_path().parent_path();
+    }
+
+    ark::Path goldenPathForFixture(const ark::Path& fixturePath, const char* fixtureId) {
+        return projectRootFromFixturePath(fixturePath) / "tests" / "golden" /
+               "frame_validation" / (std::string{fixtureId} + ".png");
+    }
+
+    bool compareWithGolden(const std::vector<ark::u8>& ldrBytes,
+                           ark::rhi::Extent2D extent,
+                           const ark::Path& goldenPath,
+                           const char* fixtureId) {
+        const ark::asset::ImageData goldenImage = ark::asset::loadImageRgba8(goldenPath);
+        if (goldenImage.empty()) {
+            std::cerr << "Failed to load golden image: " << goldenPath.string() << '\n';
+            return false;
+        }
+
+        if (goldenImage.format != ark::asset::ImageFormat::Rgba8Unorm ||
+            goldenImage.bytesPerPixel != LdrFrameBytesPerPixel) {
+            std::cerr << "Golden image has an unexpected format: " << goldenPath.string() << '\n';
+            return false;
+        }
+
+        if (goldenImage.width != extent.width || goldenImage.height != extent.height) {
+            std::cerr << "Golden image dimensions do not match current frame for " << fixtureId
+                      << ": golden=" << goldenImage.width << "x" << goldenImage.height
+                      << " current=" << extent.width << "x" << extent.height << '\n';
+            return false;
+        }
+
+        const ark::u64 expectedByteSize = rgba8ByteSize(extent);
+        if (static_cast<ark::u64>(ldrBytes.size()) != expectedByteSize ||
+            static_cast<ark::u64>(goldenImage.pixels.size()) != expectedByteSize) {
+            std::cerr << "Golden image byte size does not match current frame for " << fixtureId << '\n';
+            return false;
+        }
+
+        const ImageDiffStats diffStats = computeImageDiffStats(ldrBytes, goldenImage.pixels, extent);
+        printImageDiffStats(fixtureId, diffStats);
+
+        if (diffStats.meanAbsError > GoldenMeanAbsErrorThreshold ||
+            diffStats.maxChannelError > GoldenMaxChannelErrorThreshold ||
+            diffStats.mismatchedPixelRatio > GoldenMismatchedPixelRatioThreshold) {
+            std::cerr << "Golden image diff exceeded thresholds for " << fixtureId << '\n';
+            return false;
+        }
+
+        return true;
+    }
+
+    bool writeArtifactAndValidateGolden(const std::vector<ark::u8>& ldrBytes,
+                                        ark::rhi::Extent2D extent,
+                                        const ark::Path& fixturePath,
+                                        const char* fixtureId,
+                                        const FrameValidationOptions& options) {
+        const ark::Path artifactPath = options.artifactRoot / (std::string{fixtureId} + ".png");
+        if (!writeRgba8Png(ldrBytes, extent, artifactPath)) {
+            return false;
+        }
+        std::cerr << "Wrote frame validation artifact: " << artifactPath.string() << '\n';
+
+        const ark::Path goldenPath = goldenPathForFixture(fixturePath, fixtureId);
+        if (options.updateGolden) {
+            if (!writeRgba8Png(ldrBytes, extent, goldenPath)) {
+                return false;
+            }
+            std::cerr << "Updated frame validation golden: " << goldenPath.string() << '\n';
+        }
+
+        std::error_code existsError;
+        const bool goldenExists = std::filesystem::is_regular_file(goldenPath, existsError);
+        if (existsError || !goldenExists) {
+            std::cerr << "No golden baseline found for " << fixtureId
+                      << "; skipping image diff. Expected path: " << goldenPath.string() << '\n';
+            return true;
+        }
+
+        return compareWithGolden(ldrBytes, extent, goldenPath, fixtureId);
     }
 
     ark::Scope<ark::rhi::Texture> createSceneColorTexture(ark::rhi::RenderDevice& device) {
@@ -569,7 +853,9 @@ namespace {
 
     bool validateFixtureFrameColorReadback(const ark::Path& fixtureRelativePath,
                                            const char* fixtureName,
-                                           const char* sceneModelName) {
+                                           const char* fixtureId,
+                                           const char* sceneModelName,
+                                           const FrameValidationOptions& options) {
         HiddenGlfwWindow window{};
 
         ark::rhi::RenderBackendDesc backendDesc{};
@@ -784,24 +1070,36 @@ namespace {
 
         const FrameColorStats hdrStats = computeFrameColorStats(hdrBytes, FrameExtent);
         const LdrFrameColorStats ldrStats = computeLdrFrameColorStats(ldrBytes, FrameExtent);
-        return validateStats(hdrStats) && validateLdrStats(ldrStats);
+        const bool statsValid = validateStats(hdrStats) && validateLdrStats(ldrStats);
+        const bool goldenValid =
+            writeArtifactAndValidateGolden(ldrBytes, FrameExtent, modelPath, fixtureId, options);
+        return statsValid && goldenValid;
     }
 
-    bool validateFrameColorReadback() {
+    bool validateFrameColorReadback(const FrameValidationOptions& options) {
         return validateFixtureFrameColorReadback(
                    ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"},
                    "specular IBL validation fixture",
-                   "FrameValidationSpecularFixture") &&
+                   "specular_ibl_validation_fixture",
+                   "FrameValidationSpecularFixture",
+                   options) &&
                validateFixtureFrameColorReadback(
                    ark::Path{"assets/models/material_ball_validation_fixture.gltf"},
                    "material ball validation fixture",
-                   "FrameValidationMaterialBallFixture");
+                   "material_ball_validation_fixture",
+                   "FrameValidationMaterialBallFixture",
+                   options);
     }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
-        return validateFrameColorReadback() ? EXIT_SUCCESS : EXIT_FAILURE;
+        FrameValidationOptions options{};
+        if (!parseOptions(argc, argv, options)) {
+            return EXIT_FAILURE;
+        }
+
+        return validateFrameColorReadback(options) ? EXIT_SUCCESS : EXIT_FAILURE;
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
         return EXIT_FAILURE;
