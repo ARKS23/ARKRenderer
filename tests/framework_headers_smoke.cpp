@@ -2,6 +2,7 @@
 #include "app/GlfwWindow.h"
 #include "app/Input.h"
 #include "app/SandboxCameraController.h"
+#include "app/SandboxLaunchOptions.h"
 #include "app/Window.h"
 #include "asset/GltfLoader.h"
 #include "asset/MeshData.h"
@@ -34,6 +35,7 @@
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
+#include "renderer/RendererPreset.h"
 #include "renderer/RendererQuality.h"
 #include "renderer/SandboxEnvironment.h"
 #include "renderer/SceneResource.h"
@@ -97,12 +99,15 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstdlib>
+#include <string_view>
 
 int main() {
     ark::ApplicationDesc applicationDesc{};
     applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
     applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
+    applicationDesc.rendererQuality.environmentBake.brdfLutSampleCount = 512;
     applicationDesc.useDebugOrientationEnvironment = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
@@ -393,6 +398,36 @@ int main() {
     if (sanitizedRendererQualityDesc.environmentBake.specularPrefilterSampleCount != 256) {
         return EXIT_FAILURE;
     }
+    ark::RendererPresetDesc rendererPresetDesc{};
+    rendererPresetDesc.scene = ark::RendererScenePreset::MaterialBall;
+    rendererPresetDesc.quality = ark::RendererQualityPreset::Low;
+    const ark::ResolvedRendererPreset resolvedRendererPreset =
+        ark::resolveRendererPreset(rendererPresetDesc);
+    if (resolvedRendererPreset.scene.modelPath.filename() != "material_ball_validation_fixture.gltf" ||
+        resolvedRendererPreset.quality.environmentBake.brdfLutSampleCount != 512) {
+        return EXIT_FAILURE;
+    }
+    const ark::RendererScenePreset parsedRendererScenePreset =
+        ark::parseRendererScenePreset("debug_orientation");
+    const ark::RendererQualityPreset parsedRendererQualityPreset =
+        ark::parseRendererQualityPreset("high");
+    constexpr std::array<std::string_view, 4> sandboxArguments{
+        "--preset",
+        "specular-validation",
+        "--quality",
+        "high",
+    };
+    const ark::SandboxLaunchOptions sandboxLaunchOptions =
+        ark::parseSandboxLaunchOptions(sandboxArguments);
+    const ark::ApplicationDesc sandboxApplicationDesc =
+        ark::makeSandboxApplicationDesc(sandboxLaunchOptions);
+    if (sandboxApplicationDesc.defaultModelPath.filename() !=
+            "specular_ibl_validation_fixture.gltf" ||
+        sandboxApplicationDesc.rendererQuality.environmentBake.specularPrefilterSampleCount != 256 ||
+        parsedRendererScenePreset != ark::RendererScenePreset::DebugOrientation ||
+        parsedRendererQualityPreset != ark::RendererQualityPreset::High) {
+        return EXIT_FAILURE;
+    }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
     sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
     sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
@@ -538,6 +573,13 @@ int main() {
     (void)rendererDesc;
     (void)rendererQualityDesc;
     (void)sanitizedRendererQualityDesc;
+    (void)rendererPresetDesc;
+    (void)resolvedRendererPreset;
+    (void)parsedRendererScenePreset;
+    (void)parsedRendererQualityPreset;
+    (void)sandboxArguments;
+    (void)sandboxLaunchOptions;
+    (void)sandboxApplicationDesc;
     (void)sceneResourceLoadDesc;
     (void)sceneResourceLoadReport;
     (void)sceneResource;

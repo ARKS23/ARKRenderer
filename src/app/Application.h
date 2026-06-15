@@ -3,6 +3,7 @@
 #include "app/Window.h"
 #include "core/FileSystem.h"
 #include "core/Memory.h"
+#include "renderer/RendererQuality.h"
 
 namespace ark {
     class Renderer;
@@ -11,6 +12,7 @@ namespace ark {
         WindowDesc window;
         Path defaultModelPath;
         Path defaultEnvironmentPath;
+        RendererQualityDesc rendererQuality;
         bool useDebugOrientationEnvironment = false;
     };
 

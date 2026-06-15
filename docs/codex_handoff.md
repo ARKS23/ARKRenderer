@@ -1,5 +1,62 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.52)
+
+ARKRenderer has completed Phase 0.52: Scene / Quality Preset Foundation.
+
+Key changes:
+- Added `src/renderer/RendererPreset.h/.cpp`.
+- Added `RendererScenePreset`, `RendererQualityPreset`, `RendererPresetDesc`, `ResolvedRendererPreset`, `resolveRendererPreset()`, `parseRendererScenePreset()`, and `parseRendererQualityPreset()`.
+- Presets now resolve to `SceneResourceLoadDesc` plus sanitized `RendererQualityDesc`.
+- Scene presets include default sandbox, material ball, specular validation, and debug orientation.
+- Quality presets include low, default, and high environment bake settings while keeping all bake feature flags enabled.
+- Added `src/app/SandboxLaunchOptions.h/.cpp` so sandbox CLI preset parsing and override rules are testable outside `main()`.
+- `ApplicationDesc` now exposes `RendererQualityDesc rendererQuality`.
+- `Application::run()` forwards `ApplicationDesc::rendererQuality` into `RendererDesc::quality`.
+- `ark_sandbox` now supports:
+  - `--preset default`
+  - `--preset material-ball`
+  - `--preset specular-validation`
+  - `--preset debug-orientation`
+  - `--quality low`
+  - `--quality default`
+  - `--quality high`
+  - `--preset=name` / `--quality=name`
+- Existing sandbox positional model/environment paths remain compatible and override preset paths.
+- `--debug-orientation` only overrides the environment fallback, so `--preset material-ball --debug-orientation` keeps the material ball model.
+- Added `ark_renderer_preset_smoke`.
+- `ark_framework_headers_smoke` now covers the preset and sandbox launch option public APIs.
+- Added a concise root `README.md`.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_renderer_preset_smoke ark_framework_headers_smoke ark_frame_validation_smoke ark_sandbox
+build\msvc-vcpkg\Debug\ark_renderer_preset_smoke.exe
+build\msvc-vcpkg\Debug\ark_framework_headers_smoke.exe
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, material-ball, specular-validation, debug-orientation, quality low/high, explicit model, and material-ball debug-orientation
+```
+
+Results:
+```text
+targeted build passed
+ark_renderer_preset_smoke passed
+ark_framework_headers_smoke passed
+ark_frame_validation_smoke passed with golden diff mean/max/mismatch all 0
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+CTest: 25/25 tests passed
+sandbox hidden-window smoke passed for all Phase 0.52 preset/quality/default cases
+```
+
+Recommended next step:
+- Phase 0.53 can now use scene / quality presets as stable manual and automated validation entry points.
+- Good next candidates are Bloom foundation, tone-mapping operator presets, auto exposure prelude, screenshot preset routing, or Blend bucket transparent sorting.
+- Keep the default `ark_sandbox.exe` path and golden baselines unchanged unless the next phase explicitly targets visual output changes.
+
 ## Latest Update (2026-06-15, Phase 0.51)
 
 ARKRenderer has completed Phase 0.51: Renderer Quality / Environment Bake Config API.
