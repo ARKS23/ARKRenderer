@@ -10,6 +10,7 @@ namespace ark {
         Default,
         MaterialBall,
         SpecularValidation,
+        BloomValidation,
         DebugOrientation,
     };
 

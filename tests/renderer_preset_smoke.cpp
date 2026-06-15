@@ -79,6 +79,17 @@ namespace {
             return false;
         }
 
+        preset.scene = ark::RendererScenePreset::BloomValidation;
+        resolved = ark::resolveRendererPreset(preset);
+        if (resolved.scene.modelPath.filename() != "bloom_validation_fixture.gltf" ||
+            resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
+            resolved.scene.environmentFallback !=
+                ark::SceneEnvironmentFallbackPolicy::DefaultHdrThenProcedural ||
+            resolved.scene.sceneName != "BloomValidationScene") {
+            std::cerr << "Bloom validation scene preset is invalid\n";
+            return false;
+        }
+
         preset.scene = ark::RendererScenePreset::DebugOrientation;
         resolved = ark::resolveRendererPreset(preset);
         if (!resolved.scene.modelPath.empty() ||
@@ -139,6 +150,10 @@ namespace {
                 ark::RendererScenePreset::MaterialBall ||
             ark::parseRendererScenePreset("SPECULAR") !=
                 ark::RendererScenePreset::SpecularValidation ||
+            ark::parseRendererScenePreset("bloom-validation") !=
+                ark::RendererScenePreset::BloomValidation ||
+            ark::parseRendererScenePreset("EMISSIVE_BLOOM") !=
+                ark::RendererScenePreset::BloomValidation ||
             ark::parseRendererScenePreset("unknown",
                                           ark::RendererScenePreset::DebugOrientation) !=
                 ark::RendererScenePreset::DebugOrientation ||
@@ -196,12 +211,12 @@ namespace {
         {
             constexpr std::array<std::string_view, 3> args{
                 "--preset",
-                "material-ball",
+                "bloom-validation",
                 "--debug-orientation",
             };
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{args});
-            if (desc.defaultModelPath.filename() != "material_ball_validation_fixture.gltf" ||
+            if (desc.defaultModelPath.filename() != "bloom_validation_fixture.gltf" ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox debug orientation override behavior is invalid\n";
                 return false;

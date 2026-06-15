@@ -39,9 +39,11 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe
 ```powershell
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset material-ball
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset specular-validation
+build\msvc-vcpkg\Debug\ark_sandbox.exe --preset bloom-validation
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset debug-orientation
 build\msvc-vcpkg\Debug\ark_sandbox.exe --quality low
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset material-ball --bloom
+build\msvc-vcpkg\Debug\ark_sandbox.exe --preset bloom-validation --bloom
 build\msvc-vcpkg\Debug\ark_sandbox.exe --bloom --bloom-intensity 0.08
 build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\material_ball_validation_fixture.gltf
 ```

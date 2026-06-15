@@ -10,6 +10,8 @@ namespace ark {
             "assets/models/material_ball_validation_fixture.gltf";
         constexpr const char* SpecularValidationFixturePath =
             "assets/models/specular_ibl_validation_fixture.gltf";
+        constexpr const char* BloomValidationFixturePath =
+            "assets/models/bloom_validation_fixture.gltf";
 
         std::string normalizePresetName(std::string_view name) {
             std::string normalized{name};
@@ -46,6 +48,12 @@ namespace ark {
                 scene.sceneName = "SpecularValidationScene";
                 scene.modelName = "SpecularValidationModel";
                 scene.environmentName = "SpecularValidationEnvironment";
+                break;
+            case RendererScenePreset::BloomValidation:
+                scene.modelPath = BloomValidationFixturePath;
+                scene.sceneName = "BloomValidationScene";
+                scene.modelName = "BloomValidationModel";
+                scene.environmentName = "BloomValidationEnvironment";
                 break;
             case RendererScenePreset::DebugOrientation:
                 scene.environmentFallback = SceneEnvironmentFallbackPolicy::DebugOrientation;
@@ -103,6 +111,14 @@ namespace ark {
             normalized == "specular-ibl-validation" ||
             normalized == "specular") {
             return RendererScenePreset::SpecularValidation;
+        }
+
+        if (normalized == "bloom-validation" ||
+            normalized == "bloomvalidation" ||
+            normalized == "bloom" ||
+            normalized == "emissive-bloom" ||
+            normalized == "emissivebloom") {
+            return RendererScenePreset::BloomValidation;
         }
 
         if (normalized == "debug-orientation" || normalized == "debug") {

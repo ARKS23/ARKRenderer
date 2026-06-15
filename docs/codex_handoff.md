@@ -1,5 +1,27 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.54)
+
+ARKRenderer has completed Phase 0.54: Bloom Visual Validation Fixture.
+
+Key changes:
+- Added `assets/models/bloom_validation_fixture.gltf` as a Bloom-focused visual validation scene.
+- Added `RendererScenePreset::BloomValidation` and preset aliases:
+  - `bloom-validation`
+  - `bloom`
+  - `emissive-bloom`
+- `resolveRendererPreset()` now maps BloomValidation to the new fixture.
+- `ark_sandbox` now accepts `--preset bloom-validation`, which can be combined with `--bloom`.
+- Added `ark_bloom_validation_fixture_smoke` to cover fixture loading, emissive material data, preset parsing, and sandbox launch description plumbing.
+- Updated `ark_renderer_preset_smoke`, `ark_framework_headers_smoke`, `README.md`, and `docs/phase/phase54.md`.
+- Default sandbox behavior and existing frame validation baselines remain unchanged.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_renderer_preset_smoke ark_framework_headers_smoke ark_bloom_validation_fixture_smoke ark_frame_validation_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(renderer_preset|framework_headers|bloom_validation_fixture)_smoke" --output-on-failure
+```
+
 ## Latest Update (2026-06-15, Phase 0.53)
 
 ARKRenderer has completed Phase 0.53: Physically Based Bloom Foundation.

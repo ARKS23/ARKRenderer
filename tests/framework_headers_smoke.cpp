@@ -419,6 +419,8 @@ int main() {
     }
     const ark::RendererScenePreset parsedRendererScenePreset =
         ark::parseRendererScenePreset("debug_orientation");
+    const ark::RendererScenePreset parsedBloomRendererScenePreset =
+        ark::parseRendererScenePreset("bloom-validation");
     const ark::RendererQualityPreset parsedRendererQualityPreset =
         ark::parseRendererQualityPreset("high");
     constexpr std::array<std::string_view, 4> sandboxArguments{
@@ -435,12 +437,13 @@ int main() {
             "specular_ibl_validation_fixture.gltf" ||
         sandboxApplicationDesc.rendererQuality.environmentBake.specularPrefilterSampleCount != 256 ||
         parsedRendererScenePreset != ark::RendererScenePreset::DebugOrientation ||
+        parsedBloomRendererScenePreset != ark::RendererScenePreset::BloomValidation ||
         parsedRendererQualityPreset != ark::RendererQualityPreset::High) {
         return EXIT_FAILURE;
     }
     constexpr std::array<std::string_view, 4> bloomArguments{
         "--preset",
-        "material-ball",
+        "bloom-validation",
         "--bloom",
         "--bloom-intensity=0.12",
     };
@@ -448,6 +451,10 @@ int main() {
         ark::makeSandboxApplicationDesc(bloomArguments);
     if (!bloomSandboxApplicationDesc.postProcessing.bloom.enabled ||
         bloomSandboxApplicationDesc.postProcessing.bloom.intensity != 0.12f) {
+        return EXIT_FAILURE;
+    }
+    if (bloomSandboxApplicationDesc.defaultModelPath.filename() !=
+        "bloom_validation_fixture.gltf") {
         return EXIT_FAILURE;
     }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};

@@ -1,0 +1,109 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "ARKRenderer Phase 0.54 bloom validation fixture"
+  },
+  "scene": 0,
+  "scenes": [
+    { "nodes": [0, 1, 2, 3, 4] }
+  ],
+  "nodes": [
+    { "name": "Bloom_Dark_Background", "mesh": 0, "translation": [0.0, 0.0, -0.08], "scale": [4.2, 2.3, 1.0] },
+    { "name": "Bloom_Warm_Emissive_Strip", "mesh": 1, "translation": [0.0, 0.35, 0.0], "scale": [2.6, 0.22, 1.0] },
+    { "name": "Bloom_Cool_Emissive_Accent", "mesh": 2, "translation": [-1.15, -0.15, 0.02], "scale": [0.32, 1.25, 1.0] },
+    { "name": "Bloom_Neutral_Reference", "mesh": 3, "translation": [1.0, -0.45, 0.03], "scale": [0.7, 0.7, 1.0] },
+    { "name": "BloomValidationCameraNode", "camera": 0, "translation": [0.0, 0.0, 4.0] }
+  ],
+  "cameras": [
+    {
+      "name": "BloomValidationCamera",
+      "type": "perspective",
+      "perspective": {
+        "yfov": 0.7853981633974483,
+        "aspectRatio": 1.7777777777777777,
+        "znear": 0.1,
+        "zfar": 100.0
+      }
+    }
+  ],
+  "meshes": [
+    { "name": "Bloom_Dark_Background_Mesh", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 0, "mode": 4 }] },
+    { "name": "Bloom_Warm_Emissive_Strip_Mesh", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 1, "mode": 4 }] },
+    { "name": "Bloom_Cool_Emissive_Accent_Mesh", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 2, "mode": 4 }] },
+    { "name": "Bloom_Neutral_Reference_Mesh", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 3, "mode": 4 }] }
+  ],
+  "materials": [
+    {
+      "name": "Bloom_Dark_Background",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.015, 0.016, 0.02, 1.0],
+        "baseColorTexture": { "index": 0 },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.85
+      },
+      "alphaMode": "OPAQUE",
+      "doubleSided": true
+    },
+    {
+      "name": "Bloom_Warm_Emissive_Strip",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1.0, 0.86, 0.55, 1.0],
+        "baseColorTexture": { "index": 0 },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.35
+      },
+      "emissiveFactor": [8.0, 5.0, 2.0],
+      "emissiveTexture": { "index": 0 },
+      "alphaMode": "OPAQUE",
+      "doubleSided": true
+    },
+    {
+      "name": "Bloom_Cool_Emissive_Accent",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.55, 0.75, 1.0, 1.0],
+        "baseColorTexture": { "index": 0 },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.4
+      },
+      "emissiveFactor": [1.5, 4.0, 10.0],
+      "emissiveTexture": { "index": 0 },
+      "alphaMode": "OPAQUE",
+      "doubleSided": true
+    },
+    {
+      "name": "Bloom_Neutral_Reference",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.34, 0.34, 0.38, 1.0],
+        "baseColorTexture": { "index": 0 },
+        "metallicFactor": 0.15,
+        "roughnessFactor": 0.65
+      },
+      "alphaMode": "OPAQUE",
+      "doubleSided": true
+    }
+  ],
+  "textures": [
+    { "source": 0 }
+  ],
+  "images": [
+    { "uri": "../textures/xiaowei.png" }
+  ],
+  "buffers": [
+    {
+      "uri": "data:application/octet-stream;base64,AAAAvwAAAL8AAAAAAAAAPwAAAL8AAAAAAAAAPwAAAD8AAAAAAAAAvwAAAD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AAAAAAAAgD8AAAEAAgAAAAIAAwA=",
+      "byteLength": 140
+    }
+  ],
+  "bufferViews": [
+    { "buffer": 0, "byteOffset": 0, "byteLength": 48, "target": 34962 },
+    { "buffer": 0, "byteOffset": 48, "byteLength": 48, "target": 34962 },
+    { "buffer": 0, "byteOffset": 96, "byteLength": 32, "target": 34962 },
+    { "buffer": 0, "byteOffset": 128, "byteLength": 12, "target": 34963 }
+  ],
+  "accessors": [
+    { "bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [-0.5, -0.5, 0.0], "max": [0.5, 0.5, 0.0] },
+    { "bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3" },
+    { "bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2" },
+    { "bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR" }
+  ]
+}

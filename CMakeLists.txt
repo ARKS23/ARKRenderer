@@ -221,6 +221,7 @@ if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_sandbox_camera_controller_smoke tests/sandbox_camera_controller_smoke.cpp)
     ark_add_smoke_test(ark_scene_resource_smoke tests/scene_resource_smoke.cpp)
     ark_add_smoke_test(ark_post_processing_settings_smoke tests/post_processing_settings_smoke.cpp)
+    ark_add_smoke_test(ark_bloom_validation_fixture_smoke tests/bloom_validation_fixture_smoke.cpp)
     ark_add_smoke_test(ark_texture_loader_smoke tests/texture_loader_smoke.cpp)
 
     if(ARK_DXC_SUPPORTED)
