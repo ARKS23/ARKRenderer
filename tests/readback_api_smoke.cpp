@@ -405,13 +405,13 @@ namespace {
 
         ark::rhi::TextureDesc textureDesc{};
         textureDesc.extent = ark::rhi::Extent2D{4, 4};
-        textureDesc.format = ark::rhi::Format::RGBA32Float;
+        textureDesc.format = ark::rhi::Format::RGBA16Float;
         textureDesc.usage = ark::rhi::TextureUsage::ShaderResource | ark::rhi::TextureUsage::TransferSrc;
         FakeTexture texture{textureDesc};
 
         ark::rhi::BufferDesc readbackDesc{};
         readbackDesc.debugName = "TextureReadback";
-        readbackDesc.size = 4 * 4 * 16;
+        readbackDesc.size = 4 * 4 * 8;
         readbackDesc.usage = ark::rhi::BufferUsage::TransferDst;
         readbackDesc.memoryUsage = ark::rhi::MemoryUsage::GpuToCpu;
         FakeBuffer readbackBuffer{readbackDesc};
@@ -420,7 +420,7 @@ namespace {
         readback.texture = &texture;
         readback.destinationBuffer = &readbackBuffer;
         readback.extent = textureDesc.extent;
-        readback.bytesPerPixel = 16;
+        readback.bytesPerPixel = 8;
 
         if (context.copyTextureToBuffer(readback)) {
             std::cerr << "copyTextureToBuffer accepted copy before command recording\n";
@@ -455,7 +455,7 @@ namespace {
             context.copyDescs.front().destinationBuffer != &readbackBuffer ||
             context.copyDescs.front().extent.width != 4 ||
             context.copyDescs.front().extent.height != 4 ||
-            context.copyDescs.front().bytesPerPixel != 16) {
+            context.copyDescs.front().bytesPerPixel != 8) {
             std::cerr << "copyTextureToBuffer did not record expected descriptor\n";
             return false;
         }

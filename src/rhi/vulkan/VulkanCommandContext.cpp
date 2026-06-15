@@ -218,6 +218,8 @@ namespace ark::rhi::vulkan {
             case Format::RGBA8Unorm:
             case Format::RGBA8Srgb:
                 return 4;
+            case Format::RGBA16Float:
+                return 8;
             case Format::RGBA32Float:
                 return 16;
             default:

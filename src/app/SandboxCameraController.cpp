@@ -57,7 +57,7 @@ namespace ark {
             const float panScale = m_Distance * PanSensitivity;
             m_Target += (-right * input.cursorDelta.x + up * input.cursorDelta.y) * panScale;
         } else if (input.rightMouseDown) {
-            m_Yaw += input.cursorDelta.x * OrbitSensitivity;
+            m_Yaw -= input.cursorDelta.x * OrbitSensitivity;
             m_Pitch = std::clamp(m_Pitch - input.cursorDelta.y * OrbitSensitivity, MinPitch, MaxPitch);
         }
 

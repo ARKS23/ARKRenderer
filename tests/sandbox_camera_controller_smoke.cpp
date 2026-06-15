@@ -43,7 +43,7 @@ namespace {
         orbitInput.rightMouseDown = true;
         orbitInput.cursorDelta = glm::vec2{100.0f, -40.0f};
         controller.update(orbitInput);
-        if (!near(controller.yaw(), 0.5f) || !near(controller.pitch(), 0.2f)) {
+        if (!near(controller.yaw(), -0.5f) || !near(controller.pitch(), 0.2f)) {
             std::cerr << "Sandbox camera orbit input did not update yaw/pitch\n";
             return false;
         }
