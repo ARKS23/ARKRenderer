@@ -376,6 +376,134 @@ namespace {
         return true;
     }
 
+    bool validateMaterialBallValidationFixture() {
+        constexpr std::size_t RowCount = 3;
+        constexpr std::size_t ColumnCount = 5;
+        constexpr std::size_t MaterialCount = RowCount * ColumnCount;
+        constexpr std::size_t SphereVertexCount = 91;
+        constexpr std::size_t SphereIndexCount = 432;
+        const std::array<float, RowCount> metallicValues{0.0f, 0.5f, 1.0f};
+        const std::array<float, ColumnCount> roughnessValues{0.05f, 0.25f, 0.5f, 0.75f, 1.0f};
+        const std::array<std::array<float, 4>, RowCount> baseColorValues{{
+            {0.8f, 0.76f, 0.68f, 1.0f},
+            {0.82f, 0.82f, 0.82f, 1.0f},
+            {0.95f, 0.93f, 0.86f, 1.0f},
+        }};
+        const std::array<const char*, MaterialCount> materialNames{
+            "MB_M00_R005",
+            "MB_M00_R025",
+            "MB_M00_R050",
+            "MB_M00_R075",
+            "MB_M00_R100",
+            "MB_M50_R005",
+            "MB_M50_R025",
+            "MB_M50_R050",
+            "MB_M50_R075",
+            "MB_M50_R100",
+            "MB_M100_R005",
+            "MB_M100_R025",
+            "MB_M100_R050",
+            "MB_M100_R075",
+            "MB_M100_R100",
+        };
+
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/material_ball_validation_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find material ball validation fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != MaterialCount ||
+            model.materials.size() != MaterialCount || model.instances.size() != MaterialCount) {
+            std::cerr << "Unexpected material ball validation fixture shape\n";
+            return false;
+        }
+
+        if (model.cameras.size() != 1 || model.sceneCameras.size() != 1) {
+            std::cerr << "Material ball validation fixture camera was not loaded\n";
+            return false;
+        }
+
+        const ark::asset::CameraData& camera = model.cameras.front();
+        const ark::asset::SceneCameraData& sceneCamera = model.sceneCameras.front();
+        if (camera.debugName != "MaterialBallCamera" ||
+            camera.type != ark::asset::CameraProjectionType::Perspective ||
+            !near(camera.perspective.yfov, 0.785398f) ||
+            !near(camera.perspective.aspectRatio, 1.777778f) ||
+            !near(camera.perspective.znear, 0.1f) ||
+            !near(camera.perspective.zfar, 100.0f) ||
+            !camera.perspective.hasZfar ||
+            sceneCamera.debugName != "MaterialBallCameraNode" ||
+            sceneCamera.cameraIndex != 0 ||
+            !near(sceneCamera.worldTransform.matrix[12], 0.0f) ||
+            !near(sceneCamera.worldTransform.matrix[13], 0.0f) ||
+            !near(sceneCamera.worldTransform.matrix[14], 6.0f)) {
+            std::cerr << "Material ball validation fixture camera data is invalid\n";
+            return false;
+        }
+
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            const std::size_t row = index / ColumnCount;
+            const std::size_t column = index % ColumnCount;
+            const ark::asset::MaterialData& material = model.materials[index];
+            const ark::asset::MeshPrimitiveData& mesh = model.meshes[index];
+            const ark::asset::MeshPrimitiveInstanceData& instance = model.instances[index];
+
+            if (material.debugName != materialNames[index] ||
+                mesh.materialIndex != index || instance.meshIndex != index ||
+                material.alphaMode != ark::asset::AlphaMode::Opaque ||
+                material.doubleSided ||
+                !material.hasBaseColorTexture() ||
+                material.baseColorTexturePath.filename() != "xiaowei.png" ||
+                material.hasNormalTexture() ||
+                material.hasMetallicRoughnessTexture() ||
+                material.hasOcclusionTexture() ||
+                material.hasEmissiveTexture()) {
+                std::cerr << "Unexpected material ball validation fixture material or primitive metadata\n";
+                return false;
+            }
+
+            const std::array<float, 4>& baseColor = baseColorValues[row];
+            if (!near(material.baseColorFactor[0], baseColor[0]) ||
+                !near(material.baseColorFactor[1], baseColor[1]) ||
+                !near(material.baseColorFactor[2], baseColor[2]) ||
+                !near(material.baseColorFactor[3], baseColor[3]) ||
+                !near(material.metallicFactor, metallicValues[row]) ||
+                !near(material.roughnessFactor, roughnessValues[column])) {
+                std::cerr << "Unexpected material ball validation fixture material factors\n";
+                return false;
+            }
+
+            if (mesh.vertices.size() != SphereVertexCount || mesh.indices.size() != SphereIndexCount) {
+                std::cerr << "Unexpected material ball validation fixture mesh data\n";
+                return false;
+            }
+
+            const ark::asset::MeshVertex& sampleVertex = mesh.vertices[20];
+            const float normalLength =
+                std::sqrt(sampleVertex.normal[0] * sampleVertex.normal[0] +
+                          sampleVertex.normal[1] * sampleVertex.normal[1] +
+                          sampleVertex.normal[2] * sampleVertex.normal[2]);
+            if (!near(normalLength, 1.0f) || !validTangent(sampleVertex)) {
+                std::cerr << "Material ball validation fixture generated invalid sphere basis data\n";
+                return false;
+            }
+        }
+
+        if (!near(model.instances.front().localTransform.matrix[12], -2.4f) ||
+            !near(model.instances.front().localTransform.matrix[13], 1.1f) ||
+            !near(model.instances.front().localTransform.matrix[0], 0.45f) ||
+            !near(model.instances.back().localTransform.matrix[12], 2.4f) ||
+            !near(model.instances.back().localTransform.matrix[13], -1.1f) ||
+            !near(model.instances.back().localTransform.matrix[10], 0.45f)) {
+            std::cerr << "Unexpected material ball validation fixture transforms\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateTextureCacheFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/texture_cache_fixture.gltf"});
         if (path.empty()) {
@@ -642,6 +770,7 @@ namespace {
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
                    validateSpecularIblValidationFixture() &&
+                   validateMaterialBallValidationFixture() &&
                    validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
                    validateAlphaModesFixture() && validateTexcoord1Fixture() &&
                    validateTextureTransformFixture() && validateOptionalDamagedHelmetFixture()

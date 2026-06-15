@@ -276,7 +276,8 @@ namespace {
                                ark::EnvironmentCubeResource& skyboxCube,
                                ark::EnvironmentResource& environment,
                                ark::ModelResource& model,
-                               const ark::asset::ModelData& modelData) {
+                               const ark::asset::ModelData& modelData,
+                               const char* sceneModelName) {
         ark::SkyboxPass skyboxPass{};
         ark::ForwardPass forwardPass{};
         skyboxPass.setup(device);
@@ -292,7 +293,7 @@ namespace {
         lighting.mainLight.color = glm::vec3{1.0f, 0.97f, 0.90f};
         lighting.ambientColor = glm::vec3{0.04f, 0.05f, 0.06f};
         scene.setLighting(lighting);
-        scene.addModel(model, glm::mat4{1.0f}, "FrameValidationSpecularFixture");
+        scene.addModel(model, glm::mat4{1.0f}, sceneModelName);
 
         ark::RenderQueue queue{};
         queue.build(scene);
@@ -377,7 +378,9 @@ namespace {
         return true;
     }
 
-    bool validateFrameColorReadback() {
+    bool validateFixtureFrameColorReadback(const ark::Path& fixtureRelativePath,
+                                           const char* fixtureName,
+                                           const char* sceneModelName) {
         HiddenGlfwWindow window{};
 
         ark::rhi::RenderBackendDesc backendDesc{};
@@ -416,22 +419,21 @@ namespace {
             return false;
         }
 
-        const ark::Path modelPath =
-            findFixturePath(ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"});
+        const ark::Path modelPath = findFixturePath(fixtureRelativePath);
         if (modelPath.empty()) {
-            std::cerr << "Failed to find specular IBL validation fixture\n";
+            std::cerr << "Failed to find " << fixtureName << '\n';
             return false;
         }
 
         const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
         if (modelData.empty()) {
-            std::cerr << "Failed to load specular IBL validation fixture\n";
+            std::cerr << "Failed to load " << fixtureName << '\n';
             return false;
         }
 
         ark::ModelResource model{};
         if (!model.create(device, modelData)) {
-            std::cerr << "Failed to create specular IBL validation model resource\n";
+            std::cerr << "Failed to create " << fixtureName << " model resource\n";
             return false;
         }
 
@@ -488,7 +490,8 @@ namespace {
                                    skyboxCube,
                                    environment,
                                    model,
-                                   modelData)) {
+                                   modelData,
+                                   sceneModelName)) {
             return false;
         }
 
@@ -530,6 +533,17 @@ namespace {
 
         const FrameColorStats stats = computeFrameColorStats(bytes, FrameExtent);
         return validateStats(stats);
+    }
+
+    bool validateFrameColorReadback() {
+        return validateFixtureFrameColorReadback(
+                   ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"},
+                   "specular IBL validation fixture",
+                   "FrameValidationSpecularFixture") &&
+               validateFixtureFrameColorReadback(
+                   ark::Path{"assets/models/material_ball_validation_fixture.gltf"},
+                   "material ball validation fixture",
+                   "FrameValidationMaterialBallFixture");
     }
 } // namespace
 
