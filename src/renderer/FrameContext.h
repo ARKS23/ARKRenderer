@@ -12,6 +12,7 @@ namespace ark::rhi {
 } // namespace ark::rhi
 
 namespace ark {
+    class EnvironmentBrdfLutResource;
     class EnvironmentCubeResource;
     class RenderQueue;
     class RenderScene;
@@ -35,6 +36,8 @@ namespace ark {
         rhi::TextureView* sceneColorView = nullptr;
         EnvironmentCubeResource* environmentCube = nullptr;
         EnvironmentCubeResource* irradianceCube = nullptr;
+        EnvironmentCubeResource* prefilteredSpecularCube = nullptr;
+        EnvironmentBrdfLutResource* brdfLut = nullptr;
 
         rhi::Extent2D extent{};
         rhi::Format colorFormat = rhi::Format::Unknown;

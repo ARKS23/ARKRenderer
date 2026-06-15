@@ -374,12 +374,16 @@ int main() {
     frameContext.sceneColorView = sampledImageDescriptor.view;
     frameContext.environmentCube = &environmentCubeResource;
     frameContext.irradianceCube = &environmentCubeResource;
+    frameContext.prefilteredSpecularCube = &environmentCubeResource;
+    frameContext.brdfLut = &environmentBrdfLutResource;
     frameContext.colorFormat = ark::rhi::Format::RGBA16Float;
     frameContext.depthFormat = ark::rhi::Format::D32Float;
     if (!textureHasShaderResourceUsage || frameContext.colorFormat != ark::rhi::Format::RGBA16Float ||
         frameContext.depthFormat != ark::rhi::Format::D32Float ||
         frameContext.environmentCube != &environmentCubeResource ||
-        frameContext.irradianceCube != &environmentCubeResource) {
+        frameContext.irradianceCube != &environmentCubeResource ||
+        frameContext.prefilteredSpecularCube != &environmentCubeResource ||
+        frameContext.brdfLut != &environmentBrdfLutResource) {
         return EXIT_FAILURE;
     }
     ark::MeshResource meshResource{};
