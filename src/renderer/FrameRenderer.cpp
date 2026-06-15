@@ -4,6 +4,7 @@
 #include "core/Memory.h"
 #include "renderer/FrameContext.h"
 #include "renderer/RenderPass.h"
+#include "renderer/passes/BloomPass.h"
 #include "renderer/passes/ClearPass.h"
 #include "renderer/passes/ForwardPass.h"
 #include "renderer/passes/SkyboxPass.h"
@@ -25,7 +26,8 @@ namespace ark {
         public:
             DefaultFrameRenderer()
                 : m_ClearPass(makeScope<ClearPass>()), m_ForwardPass(makeScope<ForwardPass>()),
-                  m_SkyboxPass(makeScope<SkyboxPass>()), m_ToneMappingPass(makeScope<ToneMappingPass>()),
+                  m_SkyboxPass(makeScope<SkyboxPass>()), m_BloomPass(makeScope<BloomPass>()),
+                  m_ToneMappingPass(makeScope<ToneMappingPass>()),
                   m_ScenePasses{m_ClearPass.get(), m_SkyboxPass.get(), m_ForwardPass.get()},
                   m_PostPasses{m_ToneMappingPass.get()} {
             }
@@ -37,6 +39,7 @@ namespace ark {
                 for (RenderPass* pass : m_ScenePasses) {
                     pass->setup(device);
                 }
+                m_BloomPass->setup(device);
                 for (RenderPass* pass : m_PostPasses) {
                     pass->setup(device);
                 }
@@ -106,19 +109,29 @@ namespace ark {
 
                 frameContext.context->endRendering();
 
-                const std::array<rhi::ResourceBarrier, 2> toToneMapping{{
+                const std::array<rhi::ResourceBarrier, 1> sceneColorToShaderResource{{
                     rhi::ResourceBarrier{
                         .texture = sceneColor,
                         .before = sceneColor->getState(),
                         .after = rhi::ResourceState::ShaderResource,
                     },
+                }};
+                frameContext.context->pipelineBarrier(sceneColorToShaderResource);
+
+                frameContext.colorFormat = SceneColorFormat;
+                frameContext.depthFormat = rhi::Format::Unknown;
+                if (!m_BloomPass->prepare(frameContext) || !m_BloomPass->execute(frameContext)) {
+                    return false;
+                }
+
+                const std::array<rhi::ResourceBarrier, 1> backBufferToRenderTarget{{
                     rhi::ResourceBarrier{
                         .texture = backBuffer,
                         .before = backBuffer->getState(),
                         .after = rhi::ResourceState::RenderTarget,
                     },
                 }};
-                frameContext.context->pipelineBarrier(toToneMapping);
+                frameContext.context->pipelineBarrier(backBufferToRenderTarget);
 
                 frameContext.colorFormat = frameContext.swapChain->getDesc().colorFormat;
                 frameContext.depthFormat = rhi::Format::Unknown;
@@ -231,6 +244,7 @@ namespace ark {
             Scope<ClearPass> m_ClearPass;
             Scope<ForwardPass> m_ForwardPass;
             Scope<SkyboxPass> m_SkyboxPass;
+            Scope<BloomPass> m_BloomPass;
             Scope<ToneMappingPass> m_ToneMappingPass;
             std::array<RenderPass*, 3> m_ScenePasses{};
             std::array<RenderPass*, 1> m_PostPasses{};

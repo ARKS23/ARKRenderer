@@ -1,5 +1,64 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.53)
+
+ARKRenderer has completed Phase 0.53: Physically Based Bloom Foundation.
+
+Key changes:
+- Added `src/renderer/PostProcessingSettings.h/.cpp`.
+- Added `BloomSettings`, `PostProcessingSettings`, and `sanitizePostProcessingSettings()`.
+- `RenderView` now stores sanitized post-processing settings.
+- `ApplicationDesc` now exposes `PostProcessingSettings postProcessing`.
+- `Application::run()` writes post-processing settings into the active `RenderView`.
+- `SandboxLaunchOptions` now supports:
+  - `--bloom`
+  - `--bloom-intensity value` / `--bloom-intensity=value`
+  - `--bloom-scatter value` / `--bloom-scatter=value`
+  - `--bloom-threshold value` / `--bloom-threshold=value`
+  - `--bloom-soft-knee value` / `--bloom-soft-knee=value`
+  - `--bloom-mips value` / `--bloom-mips=value`
+- Added `shaders/bloom.frag.hlsl`, compiled as `bloom.frag.spv`.
+- `BloomPass` now implements a fullscreen graphics-path bloom pipeline:
+  - linear HDR prefilter with soft threshold,
+  - multi-level downsample,
+  - progressive upsample with scatter,
+  - HDR composite into an independent post scene color texture.
+- `FrameRenderer` now runs optional `BloomPass` after scene rendering and before `ToneMappingPass`.
+- Bloom remains disabled by default, so the default sandbox and golden baseline stay unchanged.
+- Added `ark_post_processing_settings_smoke` and `ark_bloom_pass_smoke`.
+- `ark_shader_assets_smoke` now validates the bloom shader asset and source path.
+- `ark_framework_headers_smoke` now covers post-processing settings and sandbox Bloom CLI plumbing.
+- Root `README.md` is now Chinese and includes Bloom sandbox examples.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_post_processing_settings_smoke ark_bloom_pass_smoke ark_framework_headers_smoke ark_shader_assets_smoke ark_frame_validation_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(post_processing_settings|bloom_pass|framework_headers|shader_assets|frame_validation)_smoke" --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, --bloom, material-ball --bloom, and specular-validation --bloom
+```
+
+Results:
+```text
+targeted build passed
+ark_post_processing_settings_smoke passed
+ark_bloom_pass_smoke passed
+ark_framework_headers_smoke passed
+ark_shader_assets_smoke passed
+ark_frame_validation_smoke passed with default golden diff unchanged
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+CTest: 27/27 tests passed
+sandbox hidden-window smoke passed for default, --bloom, material-ball --bloom, and specular-validation --bloom
+```
+
+Recommended next step:
+- Add a Bloom validation fixture with emissive or high-intensity HDR surfaces so the effect is visually obvious and can later be golden-tested.
+- Then consider tone-mapping operator presets, auto exposure prelude, or transparent sorting.
+- Keep Bloom default disabled until a deliberate visual baseline update is requested.
+
 ## Latest Update (2026-06-15, Phase 0.52)
 
 ARKRenderer has completed Phase 0.52: Scene / Quality Preset Foundation.

@@ -204,6 +204,49 @@ namespace {
         return true;
     }
 
+    bool validateBloomFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("bloom.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find bloom fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read bloom fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "linear HDR scene color") ||
+            !containsText(shaderSource, "Texture2D<float4> g_Source0") ||
+            !containsText(shaderSource, "Texture2D<float4> g_Source1") ||
+            !containsText(shaderSource, "SamplerState g_BloomSampler") ||
+            !containsText(shaderSource, "struct BloomUniform") ||
+            !containsText(shaderSource, "g_Bloom.intensity") ||
+            !containsText(shaderSource, "g_Bloom.scatter") ||
+            !containsText(shaderSource, "g_Bloom.threshold") ||
+            !containsText(shaderSource, "g_Bloom.softKnee") ||
+            !containsText(shaderSource, "softThresholdResponse") ||
+            !containsText(shaderSource, "sampleBloomFilter") ||
+            !containsText(shaderSource, "prefilterBloom") ||
+            !containsText(shaderSource, "downsampleBloom") ||
+            !containsText(shaderSource, "upsampleBloom") ||
+            !containsText(shaderSource, "compositeBloom") ||
+            !containsText(shaderSource, "BloomModePrefilter") ||
+            !containsText(shaderSource, "BloomModeComposite")) {
+            std::cerr << "Bloom fragment shader does not expose expected HDR bloom path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "linearToOutput") ||
+            containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "Bloom fragment shader should output linear HDR without tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateEquirectToCubeVertexShaderSource() {
         const ark::Path shaderPath = findShaderSource("equirect_to_cube.vert.hlsl");
         if (shaderPath.empty()) {
@@ -535,6 +578,7 @@ int main() {
     const bool meshFragmentShaderValid = validateCompiledShader("mesh.frag.spv");
     const bool toneMappingVertexShaderValid = validateCompiledShader("tonemap.vert.spv");
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
+    const bool bloomFragmentShaderValid = validateCompiledShader("bloom.frag.spv");
     const bool brdfLutVertexShaderValid = validateCompiledShader("brdf_lut.vert.spv");
     const bool brdfLutFragmentShaderValid = validateCompiledShader("brdf_lut.frag.spv");
     const bool equirectToCubeVertexShaderValid = validateCompiledShader("equirect_to_cube.vert.spv");
@@ -549,6 +593,7 @@ int main() {
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
                    meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
+                   bloomFragmentShaderValid &&
                    brdfLutVertexShaderValid && brdfLutFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
                    irradianceVertexShaderValid && irradianceFragmentShaderValid &&
@@ -556,6 +601,7 @@ int main() {
                    skyboxVertexShaderValid && skyboxFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
+                   validateBloomFragmentShaderSource() &&
                    validateBrdfLutVertexShaderSource() && validateBrdfLutFragmentShaderSource() &&
                    validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource() &&
                    validateIrradianceVertexShaderSource() && validateIrradianceFragmentShaderSource() &&

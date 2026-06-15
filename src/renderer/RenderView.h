@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asset/MeshData.h"
+#include "renderer/PostProcessingSettings.h"
 #include "rhi/RHICommon.h"
 
 #include <cmath>
@@ -88,6 +89,14 @@ namespace ark {
             m_ToneMappingSettings = settings;
         }
 
+        const PostProcessingSettings& postProcessingSettings() const {
+            return m_PostProcessingSettings;
+        }
+
+        void setPostProcessingSettings(const PostProcessingSettings& settings) {
+            m_PostProcessingSettings = sanitizePostProcessingSettings(settings);
+        }
+
     private:
         static bool isFinitePositive(float value) {
             return std::isfinite(value) && value > 0.0f;
@@ -115,5 +124,6 @@ namespace ark {
         glm::mat4 m_Projection{1.0f};
         glm::vec3 m_CameraPosition{0.0f};
         ToneMappingSettings m_ToneMappingSettings;
+        PostProcessingSettings m_PostProcessingSettings;
     };
 } // namespace ark

@@ -3,6 +3,7 @@
 #include "app/Window.h"
 #include "core/FileSystem.h"
 #include "core/Memory.h"
+#include "renderer/PostProcessingSettings.h"
 #include "renderer/RendererQuality.h"
 
 namespace ark {
@@ -13,6 +14,7 @@ namespace ark {
         Path defaultModelPath;
         Path defaultEnvironmentPath;
         RendererQualityDesc rendererQuality;
+        PostProcessingSettings postProcessing;
         bool useDebugOrientationEnvironment = false;
     };
 

@@ -37,6 +37,7 @@
 #include "renderer/Renderer.h"
 #include "renderer/RendererPreset.h"
 #include "renderer/RendererQuality.h"
+#include "renderer/PostProcessingSettings.h"
 #include "renderer/SandboxEnvironment.h"
 #include "renderer/SceneResource.h"
 #include "renderer/TextureCache.h"
@@ -393,9 +394,18 @@ int main() {
     ark::RendererQualityDesc rendererQualityDesc{};
     rendererQualityDesc.environmentBake.specularPrefilterSampleCount = 256;
     rendererDesc.quality = rendererQualityDesc;
+    ark::PostProcessingSettings applicationPostProcessing{};
+    applicationPostProcessing.bloom.enabled = true;
+    applicationPostProcessing.bloom.intensity = 0.06f;
+    applicationPostProcessing.bloom.scatter = 0.55f;
+    applicationDesc.postProcessing = applicationPostProcessing;
     const ark::RendererQualityDesc sanitizedRendererQualityDesc =
         ark::sanitizeRendererQualityDesc(rendererDesc.quality);
     if (sanitizedRendererQualityDesc.environmentBake.specularPrefilterSampleCount != 256) {
+        return EXIT_FAILURE;
+    }
+    if (!applicationDesc.postProcessing.bloom.enabled ||
+        applicationDesc.postProcessing.bloom.intensity != 0.06f) {
         return EXIT_FAILURE;
     }
     ark::RendererPresetDesc rendererPresetDesc{};
@@ -426,6 +436,18 @@ int main() {
         sandboxApplicationDesc.rendererQuality.environmentBake.specularPrefilterSampleCount != 256 ||
         parsedRendererScenePreset != ark::RendererScenePreset::DebugOrientation ||
         parsedRendererQualityPreset != ark::RendererQualityPreset::High) {
+        return EXIT_FAILURE;
+    }
+    constexpr std::array<std::string_view, 4> bloomArguments{
+        "--preset",
+        "material-ball",
+        "--bloom",
+        "--bloom-intensity=0.12",
+    };
+    const ark::ApplicationDesc bloomSandboxApplicationDesc =
+        ark::makeSandboxApplicationDesc(bloomArguments);
+    if (!bloomSandboxApplicationDesc.postProcessing.bloom.enabled ||
+        bloomSandboxApplicationDesc.postProcessing.bloom.intensity != 0.12f) {
         return EXIT_FAILURE;
     }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};

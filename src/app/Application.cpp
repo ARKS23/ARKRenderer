@@ -49,6 +49,7 @@ namespace ark {
 
         RenderScene scene;
         RenderView view;
+        view.setPostProcessingSettings(m_Desc.postProcessing);
         SandboxCameraController cameraController;
         rhi::Extent2D currentExtent = rendererDesc.extent;
         cameraController.setViewportExtent(currentExtent);
@@ -66,6 +67,7 @@ namespace ark {
 
             cameraController.update(m_Window->getInputSnapshot());
             cameraController.writeTo(view);
+            view.setPostProcessingSettings(m_Desc.postProcessing);
             m_Renderer->render(scene, view);
         }
 

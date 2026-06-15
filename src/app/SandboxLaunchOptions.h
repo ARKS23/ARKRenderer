@@ -11,12 +11,18 @@
 namespace ark {
     struct SandboxLaunchOptions {
         RendererPresetDesc preset;
+        PostProcessingSettings postProcessing;
         bool useDebugOrientationEnvironment = false;
         Path modelPathOverride;
         Path environmentPathOverride;
         u32 ignoredExtraPositionalArgumentCount = 0;
         bool missingPresetValue = false;
         bool missingQualityValue = false;
+        bool missingBloomIntensityValue = false;
+        bool missingBloomScatterValue = false;
+        bool missingBloomThresholdValue = false;
+        bool missingBloomSoftKneeValue = false;
+        bool missingBloomMipCountValue = false;
     };
 
     SandboxLaunchOptions parseSandboxLaunchOptions(std::span<const std::string_view> arguments);

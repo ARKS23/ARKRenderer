@@ -1,6 +1,8 @@
 #include "app/SandboxLaunchOptions.h"
 
+#include <charconv>
 #include <string>
+#include <system_error>
 
 namespace ark {
     namespace {
@@ -14,6 +16,58 @@ namespace ark {
 
         Path makePath(std::string_view argument) {
             return Path{std::string{argument}};
+        }
+
+        bool parseFloat(std::string_view argument, float& value) {
+            const char* begin = argument.data();
+            const char* end = argument.data() + argument.size();
+            float parsed = 0.0f;
+            const std::from_chars_result result = std::from_chars(begin, end, parsed);
+            if (result.ec != std::errc{} || result.ptr != end) {
+                return false;
+            }
+
+            value = parsed;
+            return true;
+        }
+
+        bool parseU32(std::string_view argument, u32& value) {
+            const char* begin = argument.data();
+            const char* end = argument.data() + argument.size();
+            u32 parsed = 0;
+            const std::from_chars_result result = std::from_chars(begin, end, parsed);
+            if (result.ec != std::errc{} || result.ptr != end) {
+                return false;
+            }
+
+            value = parsed;
+            return true;
+        }
+
+        bool takeValue(std::span<const std::string_view> arguments,
+                       usize& argumentIndex,
+                       std::string_view& value) {
+            if (argumentIndex + 1 >= arguments.size() || isFlag(arguments[argumentIndex + 1])) {
+                return false;
+            }
+
+            ++argumentIndex;
+            value = arguments[argumentIndex];
+            return true;
+        }
+
+        void applyFloatOption(std::string_view value, float& target) {
+            float parsed = 0.0f;
+            if (parseFloat(value, parsed)) {
+                target = parsed;
+            }
+        }
+
+        void applyU32Option(std::string_view value, u32& target) {
+            u32 parsed = 0;
+            if (parseU32(value, parsed)) {
+                target = parsed;
+            }
         }
     } // namespace
 
@@ -32,11 +86,19 @@ namespace ark {
                 continue;
             }
 
+            if (argument == "--bloom") {
+                options.postProcessing.bloom.enabled = true;
+                if (options.postProcessing.bloom.intensity <= 0.0f) {
+                    options.postProcessing.bloom.intensity = 0.08f;
+                }
+                continue;
+            }
+
             if (argument == "--preset") {
-                if (argumentIndex + 1 < arguments.size() && !isFlag(arguments[argumentIndex + 1])) {
-                    ++argumentIndex;
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
                     options.preset.scene =
-                        parseRendererScenePreset(arguments[argumentIndex], options.preset.scene);
+                        parseRendererScenePreset(value, options.preset.scene);
                 } else {
                     options.missingPresetValue = true;
                 }
@@ -51,10 +113,10 @@ namespace ark {
             }
 
             if (argument == "--quality") {
-                if (argumentIndex + 1 < arguments.size() && !isFlag(arguments[argumentIndex + 1])) {
-                    ++argumentIndex;
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
                     options.preset.quality =
-                        parseRendererQualityPreset(arguments[argumentIndex], options.preset.quality);
+                        parseRendererQualityPreset(value, options.preset.quality);
                 } else {
                     options.missingQualityValue = true;
                 }
@@ -66,6 +128,101 @@ namespace ark {
                 options.preset.quality =
                     parseRendererQualityPreset(argument.substr(qualityPrefix.size()),
                                                options.preset.quality);
+                continue;
+            }
+
+            if (argument == "--bloom-intensity") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.postProcessing.bloom.intensity);
+                } else {
+                    options.missingBloomIntensityValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view bloomIntensityPrefix = "--bloom-intensity=";
+            if (hasPrefix(argument, bloomIntensityPrefix)) {
+                options.postProcessing.bloom.enabled = true;
+                applyFloatOption(argument.substr(bloomIntensityPrefix.size()),
+                                 options.postProcessing.bloom.intensity);
+                continue;
+            }
+
+            if (argument == "--bloom-scatter") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.postProcessing.bloom.scatter);
+                } else {
+                    options.missingBloomScatterValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view bloomScatterPrefix = "--bloom-scatter=";
+            if (hasPrefix(argument, bloomScatterPrefix)) {
+                options.postProcessing.bloom.enabled = true;
+                applyFloatOption(argument.substr(bloomScatterPrefix.size()),
+                                 options.postProcessing.bloom.scatter);
+                continue;
+            }
+
+            if (argument == "--bloom-threshold") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.postProcessing.bloom.threshold);
+                } else {
+                    options.missingBloomThresholdValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view bloomThresholdPrefix = "--bloom-threshold=";
+            if (hasPrefix(argument, bloomThresholdPrefix)) {
+                options.postProcessing.bloom.enabled = true;
+                applyFloatOption(argument.substr(bloomThresholdPrefix.size()),
+                                 options.postProcessing.bloom.threshold);
+                continue;
+            }
+
+            if (argument == "--bloom-soft-knee") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.postProcessing.bloom.softKnee);
+                } else {
+                    options.missingBloomSoftKneeValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view bloomSoftKneePrefix = "--bloom-soft-knee=";
+            if (hasPrefix(argument, bloomSoftKneePrefix)) {
+                options.postProcessing.bloom.enabled = true;
+                applyFloatOption(argument.substr(bloomSoftKneePrefix.size()),
+                                 options.postProcessing.bloom.softKnee);
+                continue;
+            }
+
+            if (argument == "--bloom-mips") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.postProcessing.bloom.enabled = true;
+                    applyU32Option(value, options.postProcessing.bloom.maxMipCount);
+                } else {
+                    options.missingBloomMipCountValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view bloomMipsPrefix = "--bloom-mips=";
+            if (hasPrefix(argument, bloomMipsPrefix)) {
+                options.postProcessing.bloom.enabled = true;
+                applyU32Option(argument.substr(bloomMipsPrefix.size()),
+                               options.postProcessing.bloom.maxMipCount);
                 continue;
             }
 
@@ -105,6 +262,7 @@ namespace ark {
         desc.defaultModelPath = resolved.scene.modelPath;
         desc.defaultEnvironmentPath = resolved.scene.environmentPath;
         desc.rendererQuality = resolved.quality;
+        desc.postProcessing = sanitizePostProcessingSettings(options.postProcessing);
         desc.useDebugOrientationEnvironment =
             resolved.scene.environmentFallback == SceneEnvironmentFallbackPolicy::DebugOrientation;
         return desc;
