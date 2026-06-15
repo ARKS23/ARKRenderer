@@ -443,6 +443,69 @@ namespace {
 
         return true;
     }
+
+    bool validateBrdfLutVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("brdf_lut.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find BRDF LUT vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read BRDF LUT vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SV_VertexID") ||
+            !containsText(shaderSource, "[[vk::location(0)]] float2 uv") ||
+            !containsText(shaderSource, "positions[3]")) {
+            std::cerr << "BRDF LUT vertex shader does not expose expected fullscreen triangle path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateBrdfLutFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("brdf_lut.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find BRDF LUT fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read BRDF LUT fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct BrdfLutUniform") ||
+            !containsText(shaderSource, "sampleCount") ||
+            !containsText(shaderSource, "roughness") ||
+            !containsText(shaderSource, "nDotV") ||
+            !containsText(shaderSource, "Hammersley") ||
+            !containsText(shaderSource, "ImportanceSampleGGX") ||
+            !containsText(shaderSource, "GeometrySmith") ||
+            !containsText(shaderSource, "IntegrateBRDF") ||
+            !containsText(shaderSource, "geometryVisibility") ||
+            !containsText(shaderSource, "float4(brdf.x, brdf.y, 0.0f, 1.0f)") ||
+            !containsText(shaderSource, "PI")) {
+            std::cerr << "BRDF LUT fragment shader does not expose expected split-sum integration path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "TextureCube") ||
+            containsText(shaderSource, "Texture2D") ||
+            containsText(shaderSource, "Sample(") ||
+            containsText(shaderSource, "linearToOutput") ||
+            containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "BRDF LUT fragment shader should be generated data without texture sampling or tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -456,6 +519,8 @@ int main() {
     const bool meshFragmentShaderValid = validateCompiledShader("mesh.frag.spv");
     const bool toneMappingVertexShaderValid = validateCompiledShader("tonemap.vert.spv");
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
+    const bool brdfLutVertexShaderValid = validateCompiledShader("brdf_lut.vert.spv");
+    const bool brdfLutFragmentShaderValid = validateCompiledShader("brdf_lut.frag.spv");
     const bool equirectToCubeVertexShaderValid = validateCompiledShader("equirect_to_cube.vert.spv");
     const bool equirectToCubeFragmentShaderValid = validateCompiledShader("equirect_to_cube.frag.spv");
     const bool irradianceVertexShaderValid = validateCompiledShader("irradiance_convolve.vert.spv");
@@ -468,12 +533,14 @@ int main() {
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
                    meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
+                   brdfLutVertexShaderValid && brdfLutFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
                    irradianceVertexShaderValid && irradianceFragmentShaderValid &&
                    specularPrefilterVertexShaderValid && specularPrefilterFragmentShaderValid &&
                    skyboxVertexShaderValid && skyboxFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
+                   validateBrdfLutVertexShaderSource() && validateBrdfLutFragmentShaderSource() &&
                    validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource() &&
                    validateIrradianceVertexShaderSource() && validateIrradianceFragmentShaderSource() &&
                    validateSpecularPrefilterVertexShaderSource() &&

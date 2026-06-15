@@ -19,6 +19,8 @@
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
 #include "renderer/CubemapOrientation.h"
+#include "renderer/EnvironmentBrdfLutGenerator.h"
+#include "renderer/EnvironmentBrdfLutResource.h"
 #include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
@@ -339,6 +341,15 @@ int main() {
     environmentSpecularPrefilterDesc.target = &environmentCubeResource;
     environmentSpecularPrefilterDesc.sampleCount = 64;
     environmentSpecularPrefilterDesc.debugName = "SmokeEnvironmentSpecularPrefilter";
+    ark::EnvironmentBrdfLutResource environmentBrdfLutResource{};
+    ark::EnvironmentBrdfLutResourceDesc environmentBrdfLutResourceDesc{};
+    environmentBrdfLutResourceDesc.debugName = "SmokeEnvironmentBrdfLut";
+    environmentBrdfLutResourceDesc.extent = ark::rhi::Extent2D{128, 128};
+    ark::EnvironmentBrdfLutGenerator environmentBrdfLutGenerator{};
+    ark::EnvironmentBrdfLutGenerationDesc environmentBrdfLutGenerationDesc{};
+    environmentBrdfLutGenerationDesc.target = &environmentBrdfLutResource;
+    environmentBrdfLutGenerationDesc.sampleCount = 256;
+    environmentBrdfLutGenerationDesc.debugName = "SmokeEnvironmentBrdfLutGeneration";
     ark::rhi::TextureView* smokeFaceView = environmentCubeResource.faceRenderTargetView(0);
     ark::rhi::TextureView* smokeFaceMipView = environmentCubeResource.faceMipRenderTargetView(0, 0);
     ark::rhi::Extent2D smokeMipExtent = environmentCubeResource.mipExtent(0);
@@ -470,6 +481,10 @@ int main() {
     (void)environmentIrradianceGenerationDesc;
     (void)environmentSpecularPrefilterGenerator;
     (void)environmentSpecularPrefilterDesc;
+    (void)environmentBrdfLutResource;
+    (void)environmentBrdfLutResourceDesc;
+    (void)environmentBrdfLutGenerator;
+    (void)environmentBrdfLutGenerationDesc;
     (void)smokeFaceView;
     (void)smokeFaceMipView;
     (void)smokeMipExtent;
