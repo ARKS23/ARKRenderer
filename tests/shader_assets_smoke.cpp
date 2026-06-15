@@ -69,6 +69,14 @@ namespace {
             !containsText(shaderSource, "TextureCube<float4> g_IrradianceCube") ||
             !containsText(shaderSource, "[[vk::binding(17, 0)]]") ||
             !containsText(shaderSource, "SamplerState g_IrradianceSampler") ||
+            !containsText(shaderSource, "[[vk::binding(18, 0)]]") ||
+            !containsText(shaderSource, "TextureCube<float4> g_PrefilteredSpecularCube") ||
+            !containsText(shaderSource, "[[vk::binding(19, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_PrefilteredSpecularSampler") ||
+            !containsText(shaderSource, "[[vk::binding(20, 0)]]") ||
+            !containsText(shaderSource, "Texture2D<float4> g_BrdfLut") ||
+            !containsText(shaderSource, "[[vk::binding(21, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_BrdfLutSampler") ||
             !containsText(shaderSource, "normalize(normal)") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
@@ -91,6 +99,7 @@ namespace {
             !containsText(shaderSource, "geometrySchlickGGX") ||
             !containsText(shaderSource, "geometrySmith") ||
             !containsText(shaderSource, "fresnelSchlick") ||
+            !containsText(shaderSource, "fresnelSchlickRoughness") ||
             !containsText(shaderSource, "nDotV") ||
             !containsText(shaderSource, "vDotH") ||
             !containsText(shaderSource, "f0") ||
@@ -98,9 +107,16 @@ namespace {
             !containsText(shaderSource, "directionToEquirectUv") ||
             !containsText(shaderSource, "sampleEnvironment") ||
             !containsText(shaderSource, "sampleIrradiance") ||
-            !containsText(shaderSource, "evaluateAmbientLighting") ||
+            !containsText(shaderSource, "sampleDiffuseIbl") ||
+            !containsText(shaderSource, "samplePrefilteredSpecular") ||
+            !containsText(shaderSource, "sampleBrdfLut") ||
+            !containsText(shaderSource, "SampleLevel") ||
+            !containsText(shaderSource, "reflect") ||
+            !containsText(shaderSource, "evaluateIndirectLighting") ||
             !containsText(shaderSource, "g_Lighting.environment") ||
-            !containsText(shaderSource, "g_Lighting.environment.z")) {
+            !containsText(shaderSource, "g_Lighting.environment.z") ||
+            !containsText(shaderSource, "g_Lighting.environment.w") ||
+            !containsText(shaderSource, "environmentSpecular")) {
             std::cerr << "Mesh fragment shader does not expose expected BRDF, alpha and UV selection path\n";
             return false;
         }

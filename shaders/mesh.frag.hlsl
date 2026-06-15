@@ -49,6 +49,18 @@ TextureCube<float4> g_IrradianceCube;
 [[vk::binding(17, 0)]]
 SamplerState g_IrradianceSampler;
 
+[[vk::binding(18, 0)]]
+TextureCube<float4> g_PrefilteredSpecularCube;
+
+[[vk::binding(19, 0)]]
+SamplerState g_PrefilteredSpecularSampler;
+
+[[vk::binding(20, 0)]]
+Texture2D<float4> g_BrdfLut;
+
+[[vk::binding(21, 0)]]
+SamplerState g_BrdfLutSampler;
+
 struct MaterialUniform {
     float4 baseColorFactor;
     float4 emissiveFactor;
@@ -89,6 +101,7 @@ struct LightingUniform {
     float4 ambientColor;
     float4 cameraPosition;
     float4 environment;
+    float4 environmentSpecular;
 };
 
 [[vk::binding(13, 0)]]
@@ -194,6 +207,12 @@ float3 fresnelSchlick(float cosTheta, float3 f0) {
     return f0 + (1.0f - f0) * pow(1.0f - saturate(cosTheta), 5.0f);
 }
 
+float3 fresnelSchlickRoughness(float cosTheta, float3 f0, float roughness) {
+    const float oneMinusRoughness = 1.0f - roughness;
+    const float3 grazing = max(float3(oneMinusRoughness, oneMinusRoughness, oneMinusRoughness), f0);
+    return f0 + (grazing - f0) * pow(1.0f - saturate(cosTheta), 5.0f);
+}
+
 float2 directionToEquirectUv(float3 direction) {
     const float3 d = normalize(direction);
     const float u = atan2(d.z, d.x) * (1.0f / (2.0f * PI)) + 0.5f;
@@ -209,7 +228,7 @@ float3 sampleIrradiance(float3 normal) {
     return g_IrradianceCube.Sample(g_IrradianceSampler, normalize(normal)).rgb;
 }
 
-float3 evaluateAmbientLighting(float3 normal, float3 albedo) {
+float3 sampleDiffuseIbl(float3 normal, float3 albedo) {
     if (g_Lighting.environment.z > 0.5f) {
         const float3 irradiance = sampleIrradiance(normal) * g_Lighting.environment.x;
         return irradiance * albedo;
@@ -221,6 +240,43 @@ float3 evaluateAmbientLighting(float3 normal, float3 albedo) {
     }
 
     return g_Lighting.ambientColor.rgb * albedo;
+}
+
+float3 samplePrefilteredSpecular(float3 reflectionDirection, float roughness) {
+    const float maxMip = max(g_Lighting.environmentSpecular.x, 0.0f);
+    const float mipLevel = saturate(roughness) * maxMip;
+    return g_PrefilteredSpecularCube.SampleLevel(
+        g_PrefilteredSpecularSampler,
+        normalize(reflectionDirection),
+        mipLevel
+    ).rgb;
+}
+
+float2 sampleBrdfLut(float nDotV, float roughness) {
+    return g_BrdfLut.Sample(g_BrdfLutSampler, float2(saturate(nDotV), saturate(roughness))).rg;
+}
+
+float3 evaluateIndirectLighting(float3 n,
+                                float3 v,
+                                float3 albedo,
+                                float metallic,
+                                float roughness,
+                                float3 f0) {
+    const float nDotV = max(saturate(dot(n, v)), 0.0001f);
+    const float3 fresnel = fresnelSchlickRoughness(nDotV, f0, roughness);
+    const float3 kd = (1.0f - fresnel) * (1.0f - metallic);
+
+    const float3 diffuseIbl = sampleDiffuseIbl(n, albedo);
+    float3 specularIbl = float3(0.0f, 0.0f, 0.0f);
+    if (g_Lighting.environment.w > 0.5f) {
+        const float3 reflectionDirection = reflect(-v, n);
+        const float3 prefilteredSpecular =
+            samplePrefilteredSpecular(reflectionDirection, roughness) * g_Lighting.environment.x;
+        const float2 brdf = sampleBrdfLut(nDotV, roughness);
+        specularIbl = prefilteredSpecular * (f0 * brdf.x + brdf.y);
+    }
+
+    return diffuseIbl * kd + specularIbl;
 }
 
 float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
@@ -248,10 +304,9 @@ float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 kd = (1.0f - fresnel) * (1.0f - metallic);
     const float3 diffuse = kd * albedo / PI;
 
-    // Phase 0.26 升级为 Cook-Torrance direct BRDF，但仍不声明完整 HDR/IBL PBR 链路。
-    const float3 ambient = evaluateAmbientLighting(n, albedo);
+    const float3 indirect = evaluateIndirectLighting(n, v, albedo, metallic, roughness, f0);
     const float3 direct = g_Lighting.lightColor.rgb * nDotL * (diffuse + specular);
-    return (ambient + direct) * inputs.occlusion + inputs.emissive;
+    return (indirect + direct) * inputs.occlusion + inputs.emissive;
 }
 
 float4 main(PSInput input) : SV_Target0 {

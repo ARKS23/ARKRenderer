@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Memory.h"
+#include "renderer/EnvironmentBrdfLutResource.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
@@ -39,6 +40,8 @@ namespace ark {
         bool createPipelineResources();
         bool ensureFallbackEnvironment();
         bool ensureFallbackIrradianceCube();
+        bool ensureFallbackSpecularCube();
+        bool ensureFallbackBrdfLut();
         bool uploadEnvironmentResources(FrameContext& frameContext);
         usize drawItemCount(const FrameContext& frameContext) const;
         bool ensureDrawDescriptorResources(u32 frameSlot, usize drawCount);
@@ -59,6 +62,8 @@ namespace ark {
                                      MaterialResource& material);
         EnvironmentResource* resolveEnvironmentResource(FrameContext& frameContext);
         EnvironmentCubeResource* resolveIrradianceResource(FrameContext& frameContext);
+        EnvironmentCubeResource* resolvePrefilteredSpecularResource(FrameContext& frameContext);
+        EnvironmentBrdfLutResource* resolveBrdfLutResource(FrameContext& frameContext);
         bool drawMeshItem(FrameContext& frameContext,
                           u32 frameSlot,
                           usize drawIndex,
@@ -103,5 +108,7 @@ namespace ark {
         std::map<ForwardPipelineKey, Scope<rhi::PipelineState>> m_Pipelines;
         EnvironmentResource m_FallbackEnvironment;
         EnvironmentCubeResource m_FallbackIrradianceCube;
+        EnvironmentCubeResource m_FallbackSpecularCube;
+        EnvironmentBrdfLutResource m_FallbackBrdfLut;
     };
 } // namespace ark

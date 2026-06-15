@@ -1,6 +1,7 @@
 #include "asset/MeshData.h"
 #include "asset/TextureLoader.h"
 #include "core/Memory.h"
+#include "renderer/EnvironmentBrdfLutResource.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/FrameContext.h"
@@ -40,9 +41,10 @@ namespace {
         glm::vec4 ambientColor;
         glm::vec4 cameraPosition;
         glm::vec4 environment;
+        glm::vec4 environmentSpecular;
     };
 
-    static_assert(sizeof(CapturedLightingUniform) == 80);
+    static_assert(sizeof(CapturedLightingUniform) == 96);
 
     bool near(float a, float b, float epsilon = 0.0001f) {
         return std::fabs(a - b) <= epsilon;
@@ -98,10 +100,18 @@ namespace {
         bool environmentSamplerBound = false;
         bool irradianceImageBound = false;
         bool irradianceSamplerBound = false;
+        bool specularImageBound = false;
+        bool specularSamplerBound = false;
+        bool brdfLutImageBound = false;
+        bool brdfLutSamplerBound = false;
         ark::rhi::TextureDesc environmentTextureDesc{};
         ark::rhi::SamplerDesc environmentSamplerDesc{};
         ark::rhi::TextureDesc irradianceTextureDesc{};
         ark::rhi::SamplerDesc irradianceSamplerDesc{};
+        ark::rhi::TextureDesc specularTextureDesc{};
+        ark::rhi::SamplerDesc specularSamplerDesc{};
+        ark::rhi::TextureDesc brdfLutTextureDesc{};
+        ark::rhi::SamplerDesc brdfLutSamplerDesc{};
     };
 
     class FakeBuffer final : public ark::rhi::Buffer {
@@ -232,6 +242,12 @@ namespace {
             if (binding == 16) {
                 irradianceImageView = image.view;
             }
+            if (binding == 18) {
+                specularImageView = image.view;
+            }
+            if (binding == 20) {
+                brdfLutImageView = image.view;
+            }
         }
 
         void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor& sampler) override {
@@ -242,6 +258,12 @@ namespace {
             if (binding == 17) {
                 irradianceSampler = sampler.sampler;
             }
+            if (binding == 19) {
+                specularSampler = sampler.sampler;
+            }
+            if (binding == 21) {
+                brdfLutSampler = sampler.sampler;
+            }
         }
 
         std::vector<ark::u32> uniformBindings;
@@ -251,6 +273,10 @@ namespace {
         ark::rhi::Sampler* environmentSampler = nullptr;
         ark::rhi::TextureView* irradianceImageView = nullptr;
         ark::rhi::Sampler* irradianceSampler = nullptr;
+        ark::rhi::TextureView* specularImageView = nullptr;
+        ark::rhi::Sampler* specularSampler = nullptr;
+        ark::rhi::TextureView* brdfLutImageView = nullptr;
+        ark::rhi::Sampler* brdfLutSampler = nullptr;
     };
 
     class FakeFence final : public ark::rhi::Fence {
@@ -536,7 +562,8 @@ namespace {
                             ark::rhi::Format colorFormat = ark::rhi::Format::Unknown,
                             ark::rhi::Format depthFormat = ark::rhi::Format::Unknown,
                             float environmentIntensity = 0.0f,
-                            bool useIrradianceCube = false) {
+                            bool useIrradianceCube = false,
+                            bool useSpecularResources = false) {
         FakeRenderDevice device{};
         FakeDeviceContext context{};
         FakeSwapChain swapChain{};
@@ -545,6 +572,8 @@ namespace {
         ark::MaterialResource material{};
         ark::EnvironmentResource environmentResource{};
         ark::EnvironmentCubeResource irradianceResource{};
+        ark::EnvironmentCubeResource specularResource{};
+        ark::EnvironmentBrdfLutResource brdfLutResource{};
 
         if (!mesh.create(device, makeTriangle()) ||
             !createMaterial(device, textureCache, material, alphaMode, doubleSided)) {
@@ -569,6 +598,27 @@ namespace {
             irradianceDesc.mipLevels = 1;
             if (!irradianceResource.create(device, irradianceDesc)) {
                 std::cerr << "Failed to create ForwardPass irradiance resource\n";
+                return false;
+            }
+        }
+
+        if (useSpecularResources) {
+            ark::EnvironmentCubeResourceDesc specularDesc{};
+            specularDesc.debugName = "ForwardPassCaptureSpecular";
+            specularDesc.faceExtent = ark::rhi::Extent2D{4, 4};
+            specularDesc.format = ark::rhi::Format::RGBA16Float;
+            specularDesc.mipLevels = 3;
+            if (!specularResource.create(device, specularDesc)) {
+                std::cerr << "Failed to create ForwardPass specular resource\n";
+                return false;
+            }
+
+            ark::EnvironmentBrdfLutResourceDesc brdfLutDesc{};
+            brdfLutDesc.debugName = "ForwardPassCaptureBrdfLut";
+            brdfLutDesc.extent = ark::rhi::Extent2D{4, 4};
+            brdfLutDesc.format = ark::rhi::Format::RGBA16Float;
+            if (!brdfLutResource.create(device, brdfLutDesc)) {
+                std::cerr << "Failed to create ForwardPass BRDF LUT resource\n";
                 return false;
             }
         }
@@ -610,6 +660,8 @@ namespace {
         frameContext.colorFormat = colorFormat;
         frameContext.depthFormat = depthFormat;
         frameContext.irradianceCube = useIrradianceCube ? &irradianceResource : nullptr;
+        frameContext.prefilteredSpecularCube = useSpecularResources ? &specularResource : nullptr;
+        frameContext.brdfLut = useSpecularResources ? &brdfLutResource : nullptr;
 
         if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
             std::cerr << "ForwardPass pipeline smoke failed to execute\n";
@@ -636,10 +688,18 @@ namespace {
             ark::rhi::Sampler* environmentSampler = device.descriptorSets.front()->environmentSampler;
             ark::rhi::TextureView* irradianceImageView = device.descriptorSets.front()->irradianceImageView;
             ark::rhi::Sampler* irradianceSampler = device.descriptorSets.front()->irradianceSampler;
+            ark::rhi::TextureView* specularImageView = device.descriptorSets.front()->specularImageView;
+            ark::rhi::Sampler* specularSampler = device.descriptorSets.front()->specularSampler;
+            ark::rhi::TextureView* brdfLutImageView = device.descriptorSets.front()->brdfLutImageView;
+            ark::rhi::Sampler* brdfLutSampler = device.descriptorSets.front()->brdfLutSampler;
             capture.environmentImageBound = environmentImageView != nullptr;
             capture.environmentSamplerBound = environmentSampler != nullptr;
             capture.irradianceImageBound = irradianceImageView != nullptr;
             capture.irradianceSamplerBound = irradianceSampler != nullptr;
+            capture.specularImageBound = specularImageView != nullptr;
+            capture.specularSamplerBound = specularSampler != nullptr;
+            capture.brdfLutImageBound = brdfLutImageView != nullptr;
+            capture.brdfLutSamplerBound = brdfLutSampler != nullptr;
             if (environmentImageView && environmentImageView->getTexture()) {
                 capture.environmentTextureDesc = environmentImageView->getTexture()->getDesc();
             }
@@ -651,6 +711,18 @@ namespace {
             }
             if (irradianceSampler) {
                 capture.irradianceSamplerDesc = irradianceSampler->getDesc();
+            }
+            if (specularImageView && specularImageView->getTexture()) {
+                capture.specularTextureDesc = specularImageView->getTexture()->getDesc();
+            }
+            if (specularSampler) {
+                capture.specularSamplerDesc = specularSampler->getDesc();
+            }
+            if (brdfLutImageView && brdfLutImageView->getTexture()) {
+                capture.brdfLutTextureDesc = brdfLutImageView->getTexture()->getDesc();
+            }
+            if (brdfLutSampler) {
+                capture.brdfLutSamplerDesc = brdfLutSampler->getDesc();
             }
         }
         return true;
@@ -751,7 +823,9 @@ namespace {
             !nearVec3(glm::vec3{uniform.cameraPosition}, cameraPosition) ||
             !near(uniform.cameraPosition.w, 1.0f) ||
             !near(uniform.environment.x, 0.0f) ||
-            !near(uniform.environment.y, 0.0f)) {
+            !near(uniform.environment.y, 0.0f) ||
+            !near(uniform.environment.w, 0.0f) ||
+            !near(uniform.environmentSpecular.x, 0.0f)) {
             std::cerr << "ForwardPass lighting uniform did not use scene lighting and view camera position\n";
             return false;
         }
@@ -780,13 +854,31 @@ namespace {
             !containsBinding(capture.descriptorBindings,
                              17,
                              ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             18,
+                             ark::rhi::DescriptorType::SampledImage,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             19,
+                             ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             20,
+                             ark::rhi::DescriptorType::SampledImage,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             21,
+                             ark::rhi::DescriptorType::Sampler,
                              ark::rhi::ShaderStageFlags::Fragment)) {
-            std::cerr << "ForwardPass descriptor layout does not expose environment and irradiance bindings\n";
+            std::cerr << "ForwardPass descriptor layout does not expose environment IBL bindings\n";
             return false;
         }
 
         if (!capture.environmentImageBound || !capture.environmentSamplerBound ||
             !capture.irradianceImageBound || !capture.irradianceSamplerBound ||
+            !capture.specularImageBound || !capture.specularSamplerBound ||
+            !capture.brdfLutImageBound || !capture.brdfLutSamplerBound ||
             capture.textureUploadCount == 0) {
             std::cerr << "ForwardPass did not bind or upload fallback environment descriptors\n";
             return false;
@@ -808,9 +900,31 @@ namespace {
             return false;
         }
 
+        if (capture.specularTextureDesc.type != ark::rhi::TextureType::Cube ||
+            capture.specularTextureDesc.format != ark::rhi::Format::RGBA16Float ||
+            capture.specularTextureDesc.extent.width != 1 ||
+            capture.specularTextureDesc.extent.height != 1 ||
+            capture.specularTextureDesc.arrayLayers != 6 ||
+            capture.specularTextureDesc.mipLevels != 1) {
+            std::cerr << "ForwardPass fallback specular cubemap is invalid\n";
+            return false;
+        }
+
+        if (capture.brdfLutTextureDesc.type != ark::rhi::TextureType::Texture2D ||
+            capture.brdfLutTextureDesc.format != ark::rhi::Format::RGBA16Float ||
+            capture.brdfLutTextureDesc.extent.width != 1 ||
+            capture.brdfLutTextureDesc.extent.height != 1 ||
+            capture.brdfLutTextureDesc.arrayLayers != 1 ||
+            capture.brdfLutTextureDesc.mipLevels != 1) {
+            std::cerr << "ForwardPass fallback BRDF LUT is invalid\n";
+            return false;
+        }
+
         if (!near(capture.lightingUniform.environment.x, 0.0f) ||
             !near(capture.lightingUniform.environment.y, 0.0f) ||
-            !near(capture.lightingUniform.environment.z, 0.0f)) {
+            !near(capture.lightingUniform.environment.z, 0.0f) ||
+            !near(capture.lightingUniform.environment.w, 0.0f) ||
+            !near(capture.lightingUniform.environmentSpecular.x, 0.0f)) {
             std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
             return false;
         }
@@ -836,13 +950,17 @@ namespace {
 
         if (!near(capture.lightingUniform.environment.x, EnvironmentIntensity) ||
             !near(capture.lightingUniform.environment.y, 1.0f) ||
-            !near(capture.lightingUniform.environment.z, 1.0f)) {
+            !near(capture.lightingUniform.environment.z, 1.0f) ||
+            !near(capture.lightingUniform.environment.w, 0.0f) ||
+            !near(capture.lightingUniform.environmentSpecular.x, 0.0f)) {
             std::cerr << "ForwardPass did not write scene environment intensity/enabled/irradiance flags\n";
             return false;
         }
 
         if (!capture.environmentImageBound || !capture.environmentSamplerBound ||
-            !capture.irradianceImageBound || !capture.irradianceSamplerBound) {
+            !capture.irradianceImageBound || !capture.irradianceSamplerBound ||
+            !capture.specularImageBound || !capture.specularSamplerBound ||
+            !capture.brdfLutImageBound || !capture.brdfLutSamplerBound) {
             std::cerr << "ForwardPass did not bind scene environment descriptors\n";
             return false;
         }
@@ -865,6 +983,61 @@ namespace {
 
         if (capture.textureUploadCount < 2) {
             std::cerr << "ForwardPass should upload fallback and scene environment textures\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateForwardPassSceneSpecularResources() {
+        constexpr float EnvironmentIntensity = 1.25f;
+
+        ForwardPassCapture capture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque,
+                                false,
+                                capture,
+                                nullptr,
+                                nullptr,
+                                ark::rhi::Format::Unknown,
+                                ark::rhi::Format::Unknown,
+                                EnvironmentIntensity,
+                                true,
+                                true)) {
+            return false;
+        }
+
+        if (!near(capture.lightingUniform.environment.x, EnvironmentIntensity) ||
+            !near(capture.lightingUniform.environment.y, 1.0f) ||
+            !near(capture.lightingUniform.environment.z, 1.0f) ||
+            !near(capture.lightingUniform.environment.w, 1.0f) ||
+            !near(capture.lightingUniform.environmentSpecular.x, 2.0f)) {
+            std::cerr << "ForwardPass did not enable scene specular IBL uniform data\n";
+            return false;
+        }
+
+        if (!capture.specularImageBound || !capture.specularSamplerBound ||
+            !capture.brdfLutImageBound || !capture.brdfLutSamplerBound) {
+            std::cerr << "ForwardPass did not bind scene specular IBL descriptors\n";
+            return false;
+        }
+
+        if (capture.specularTextureDesc.type != ark::rhi::TextureType::Cube ||
+            capture.specularTextureDesc.format != ark::rhi::Format::RGBA16Float ||
+            capture.specularTextureDesc.extent.width != 4 ||
+            capture.specularTextureDesc.extent.height != 4 ||
+            capture.specularTextureDesc.arrayLayers != 6 ||
+            capture.specularTextureDesc.mipLevels != 3) {
+            std::cerr << "ForwardPass scene specular cubemap binding is invalid\n";
+            return false;
+        }
+
+        if (capture.brdfLutTextureDesc.type != ark::rhi::TextureType::Texture2D ||
+            capture.brdfLutTextureDesc.format != ark::rhi::Format::RGBA16Float ||
+            capture.brdfLutTextureDesc.extent.width != 4 ||
+            capture.brdfLutTextureDesc.extent.height != 4 ||
+            capture.brdfLutTextureDesc.arrayLayers != 1 ||
+            capture.brdfLutTextureDesc.mipLevels != 1) {
+            std::cerr << "ForwardPass scene BRDF LUT binding is invalid\n";
             return false;
         }
 
@@ -923,6 +1096,7 @@ int main() {
                    validateForwardPassLightingUniform() &&
                    validateForwardPassEnvironmentDescriptors() &&
                    validateForwardPassSceneEnvironmentUniform() &&
+                   validateForwardPassSceneSpecularResources() &&
                    validateForwardPassUsesFrameContextFormats() &&
                    validateDoubleSidedCullModes()
                ? EXIT_SUCCESS

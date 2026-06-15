@@ -4,9 +4,9 @@
 
 ## 1. 当前状态
 
-ARKRenderer 当前代码实现已完成 Phase 0.42。`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer；Phase 0.29 新增了 HDR environment texture 前置链路；Phase 0.30 已把 environment resource 接入 ForwardPass 与 mesh shader 的最小 equirectangular ambient lighting 路径；Phase 0.31 已补齐 cubemap resource foundation 和 HDR asset baseline；Phase 0.32 已新增 equirectangular -> cubemap GPU conversion foundation；Phase 0.33 已新增 cubemap debug skybox path，并让默认 sandbox 优先加载 `assets/HDR/2k.hdr`，缺失时回退到程序化 HDR environment，避免默认打开只有空背景；Phase 0.34 已新增 diffuse irradiance cubemap generation foundation；Phase 0.35 已把默认生成的 irradiance cubemap 通过 `FrameContext::irradianceCube` 接入 `ForwardPass`，mesh shader 现在优先使用 `TextureCube` irradiance 做 diffuse ambient IBL；Phase 0.36 已新增 sandbox orbit camera controller，让默认 sandbox 支持 orbit、zoom、pan 和 reset；Phase 0.37 已新增 cubemap face orientation contract、程序化 debug orientation environment 和 `ark_sandbox --debug-orientation` 路径；Phase 0.38 已新增最小 RHI texture readback、Vulkan image-to-buffer copy 和 automated cubemap orientation pixel validation；Phase 0.39 已新增 cubemap mip / face-mip render target view foundation；Phase 0.40 已新增 prefiltered specular environment generation foundation，能从 `ShaderResource` source cubemap 渲染 target cubemap 的完整 roughness mip chain；Phase 0.41 已新增 BRDF integration LUT resource / generator foundation；Phase 0.42 已把默认 renderer 的 specular bake path 接起来，默认启动会生成 prefiltered specular cubemap 和 BRDF LUT，并通过 `FrameContext` 传递给后续 pass。
+ARKRenderer 当前代码实现已完成 Phase 0.43。`KHR_texture_transform` 最小闭环已经从 asset/glTF loader 一直打通到 `MaterialResource`、`ForwardPass` material uniform、mesh fragment shader、fixture 和 smoke tests；`RenderQueue` 已完成最小 alpha bucket ordering，保证 Opaque / Mask draw items 在 Blend draw items 前绘制；`ForwardPass` 已按 glTF `doubleSided` 精确设置 raster culling；`RenderScene` / `RenderView` 已提供可配置 scene lighting 和 camera position；mesh fragment shader 已把 direct lighting 从旧 specular power 路径升级到 Cook-Torrance direct BRDF；`FrameRenderer` 现在通过 `RGBA16Float` HDR scene color 和 `ToneMappingPass` 输出到 swapchain backbuffer；Phase 0.29 新增了 HDR environment texture 前置链路；Phase 0.30 已把 environment resource 接入 ForwardPass 与 mesh shader 的最小 equirectangular ambient lighting 路径；Phase 0.31 已补齐 cubemap resource foundation 和 HDR asset baseline；Phase 0.32 已新增 equirectangular -> cubemap GPU conversion foundation；Phase 0.33 已新增 cubemap debug skybox path，并让默认 sandbox 优先加载 `assets/HDR/2k.hdr`，缺失时回退到程序化 HDR environment，避免默认打开只有空背景；Phase 0.34 已新增 diffuse irradiance cubemap generation foundation；Phase 0.35 已把默认生成的 irradiance cubemap 通过 `FrameContext::irradianceCube` 接入 `ForwardPass`，mesh shader 现在优先使用 `TextureCube` irradiance 做 diffuse ambient IBL；Phase 0.36 已新增 sandbox orbit camera controller，让默认 sandbox 支持 orbit、zoom、pan 和 reset；Phase 0.37 已新增 cubemap face orientation contract、程序化 debug orientation environment 和 `ark_sandbox --debug-orientation` 路径；Phase 0.38 已新增最小 RHI texture readback、Vulkan image-to-buffer copy 和 automated cubemap orientation pixel validation；Phase 0.39 已新增 cubemap mip / face-mip render target view foundation；Phase 0.40 已新增 prefiltered specular environment generation foundation，能从 `ShaderResource` source cubemap 渲染 target cubemap 的完整 roughness mip chain；Phase 0.41 已新增 BRDF integration LUT resource / generator foundation；Phase 0.42 已把默认 renderer 的 specular bake path 接起来，默认启动会生成 prefiltered specular cubemap 和 BRDF LUT，并通过 `FrameContext` 传递给后续 pass；Phase 0.43 已把 prefiltered specular cubemap 和 BRDF LUT 接入 `ForwardPass` binding 18-21 与 mesh shader split-sum specular IBL。
 
-Phase 0.28 已把 `ToneMappingPass` 从 hardcoded exposure 改为 `RenderView` 持有 `ark::ToneMappingSettings` -> per-frame uniform buffer -> `tonemap.frag.hlsl` constant buffer 的数据流，并新增 fake RHI `ark_tone_mapping_pass_smoke` 覆盖 uniform 数据流、descriptor layout、per-frame resources、pipeline state 和 fullscreen triangle draw。Phase 0.29 已新增 `loadImageHdrRgba32F()`、`rhi::Format::RGBA32Float`、Vulkan `RGBA32Float` upload、`EnvironmentResource` 和 `RenderScene` environment API。Phase 0.30 已新增 ForwardPass environment bindings 14/15、fallback environment、lighting uniform environment intensity/enabled、mesh shader equirectangular sampling 和 sandbox environment path override。Phase 0.31 已新增 `rhi::TextureType::Cube` / `rhi::TextureViewType::Cube`、Vulkan cube-compatible image/view mapping、`EnvironmentCubeResource` 和 `ark_environment_cube_resource_smoke`。Phase 0.32 已扩展 `EnvironmentCubeResource` face render target views、新增 equirectangular-to-cube shaders、`EnvironmentCubeConverter`、默认 renderer minimal conversion path 和 `ark_equirectangular_to_cube_smoke`。Phase 0.33 已新增 `FrameContext::environmentCube`、`skybox.vert/frag.hlsl`、`SkyboxPass`、`ark_skybox_pass_smoke`，并把 scene pass 顺序调整为 `ClearPass -> SkyboxPass -> ForwardPass`。Phase 0.34 已新增 `irradiance_convolve.vert/frag.hlsl`、`EnvironmentIrradianceGenerator`、默认 renderer irradiance bake path 和 `ark_environment_irradiance_smoke`。Phase 0.35 已新增 `FrameContext::irradianceCube`、ForwardPass irradiance binding 16/17、fallback irradiance cubemap、`LightingUniform.environment.z` irradiance flag 和 mesh shader diffuse irradiance IBL path。Phase 0.36 已新增 `InputSnapshot`、`Window::getInputSnapshot()`、`GlfwWindow` 输入采集、`SandboxCameraController` 和 `ark_sandbox_camera_controller_smoke`。Phase 0.37 已新增 `CubemapOrientation` face contract、`SandboxEnvironment` procedural/debug environment helpers、sandbox `--debug-orientation` flag 和 `ark_cubemap_orientation_contract_smoke`。Phase 0.38 已新增 `MemoryUsage::GpuToCpu`、`Buffer::readData()`、`TextureReadbackDesc`、`DeviceContext::copyTextureToBuffer()`、Vulkan readback buffer/image-to-buffer copy、`EnvironmentCubeResourceDesc::allowReadback`、`ark_readback_api_smoke` 和 `ark_cubemap_orientation_pixel_smoke`。Phase 0.39 已新增 `EnvironmentCubeResource::faceMipRenderTargetView()`、`EnvironmentCubeResource::mipExtent()` 和完整 face-mip render target view 生命周期，为 prefiltered specular environment 铺好资源基础。Phase 0.40 已新增 `EnvironmentSpecularPrefilterGenerator`、`specular_prefilter` shaders 和 `ark_specular_prefilter_smoke`，能按 face+mip 渲染 roughness mip chain。Phase 0.41 已新增 `EnvironmentBrdfLutResource`、`EnvironmentBrdfLutGenerator`、`brdf_lut` shaders 和 `ark_brdf_lut_smoke`。Phase 0.42 已新增默认 renderer specular cubemap / BRDF LUT resource lifetime、one-shot bake path 和 `FrameContext` specular resource plumbing。Windows/MSVC/vcpkg/DXC debug preset 下 full build、CTest 21/21、default sandbox smoke、debug orientation sandbox smoke 和 DamagedHelmet + 本地 HDR environment smoke 均已通过。
+Phase 0.28 已把 `ToneMappingPass` 从 hardcoded exposure 改为 `RenderView` 持有 `ark::ToneMappingSettings` -> per-frame uniform buffer -> `tonemap.frag.hlsl` constant buffer 的数据流，并新增 fake RHI `ark_tone_mapping_pass_smoke` 覆盖 uniform 数据流、descriptor layout、per-frame resources、pipeline state 和 fullscreen triangle draw。Phase 0.29 已新增 `loadImageHdrRgba32F()`、`rhi::Format::RGBA32Float`、Vulkan `RGBA32Float` upload、`EnvironmentResource` 和 `RenderScene` environment API。Phase 0.30 已新增 ForwardPass environment bindings 14/15、fallback environment、lighting uniform environment intensity/enabled、mesh shader equirectangular sampling 和 sandbox environment path override。Phase 0.31 已新增 `rhi::TextureType::Cube` / `rhi::TextureViewType::Cube`、Vulkan cube-compatible image/view mapping、`EnvironmentCubeResource` 和 `ark_environment_cube_resource_smoke`。Phase 0.32 已扩展 `EnvironmentCubeResource` face render target views、新增 equirectangular-to-cube shaders、`EnvironmentCubeConverter`、默认 renderer minimal conversion path 和 `ark_equirectangular_to_cube_smoke`。Phase 0.33 已新增 `FrameContext::environmentCube`、`skybox.vert/frag.hlsl`、`SkyboxPass`、`ark_skybox_pass_smoke`，并把 scene pass 顺序调整为 `ClearPass -> SkyboxPass -> ForwardPass`。Phase 0.34 已新增 `irradiance_convolve.vert/frag.hlsl`、`EnvironmentIrradianceGenerator`、默认 renderer irradiance bake path 和 `ark_environment_irradiance_smoke`。Phase 0.35 已新增 `FrameContext::irradianceCube`、ForwardPass irradiance binding 16/17、fallback irradiance cubemap、`LightingUniform.environment.z` irradiance flag 和 mesh shader diffuse irradiance IBL path。Phase 0.36 已新增 `InputSnapshot`、`Window::getInputSnapshot()`、`GlfwWindow` 输入采集、`SandboxCameraController` 和 `ark_sandbox_camera_controller_smoke`。Phase 0.37 已新增 `CubemapOrientation` face contract、`SandboxEnvironment` procedural/debug environment helpers、sandbox `--debug-orientation` flag 和 `ark_cubemap_orientation_contract_smoke`。Phase 0.38 已新增 `MemoryUsage::GpuToCpu`、`Buffer::readData()`、`TextureReadbackDesc`、`DeviceContext::copyTextureToBuffer()`、Vulkan readback buffer/image-to-buffer copy、`EnvironmentCubeResourceDesc::allowReadback`、`ark_readback_api_smoke` 和 `ark_cubemap_orientation_pixel_smoke`。Phase 0.39 已新增 `EnvironmentCubeResource::faceMipRenderTargetView()`、`EnvironmentCubeResource::mipExtent()` 和完整 face-mip render target view 生命周期，为 prefiltered specular environment 铺好资源基础。Phase 0.40 已新增 `EnvironmentSpecularPrefilterGenerator`、`specular_prefilter` shaders 和 `ark_specular_prefilter_smoke`，能按 face+mip 渲染 roughness mip chain。Phase 0.41 已新增 `EnvironmentBrdfLutResource`、`EnvironmentBrdfLutGenerator`、`brdf_lut` shaders 和 `ark_brdf_lut_smoke`。Phase 0.42 已新增默认 renderer specular cubemap / BRDF LUT resource lifetime、one-shot bake path 和 `FrameContext` specular resource plumbing。Phase 0.43 已新增 `ForwardPass` specular IBL descriptor/fallback path、`LightingUniform.environmentSpecular`、`mesh.frag.hlsl` split-sum specular IBL 和 smoke coverage。Windows/MSVC/vcpkg/DXC debug preset 下 full build、CTest 21/21、default sandbox smoke、debug orientation sandbox smoke 和 DamagedHelmet + 本地 HDR environment smoke 均已通过。
 
 当前默认渲染主线：
 
@@ -32,7 +32,7 @@ Vulkan Dynamic Rendering
         -> FrameContext
             -> environmentCube for SkyboxPass
             -> irradianceCube for ForwardPass diffuse ambient IBL
-            -> prefilteredSpecularCube / brdfLut for upcoming ForwardPass specular IBL
+            -> prefilteredSpecularCube / brdfLut for ForwardPass specular IBL
         -> default environment fallback
             -> assets/HDR/2k.hdr when present
             -> procedural 64x32 RGBA32F HDR sky gradient otherwise
@@ -69,11 +69,17 @@ Vulkan Dynamic Rendering
             -> baseColor / normal / metallicRoughness / occlusion / emissive sampled images + samplers
             -> environment sampled image/sampler with fallback binding 14/15
             -> irradiance cubemap sampled image/sampler with fallback binding 16/17
+            -> prefiltered specular cubemap sampled image/sampler with fallback binding 18/19
+            -> BRDF LUT sampled image/sampler with fallback binding 20/21
+            -> lighting uniform environment.w specular IBL enabled flag
+            -> lighting uniform environmentSpecular.x max prefiltered mip
             -> per-slot selectUv() + transformUv() before sampling
             -> Cook-Torrance direct BRDF
                GGX distribution + Smith geometry + Schlick Fresnel
             -> diffuse irradiance cubemap ambient when available
             -> equirectangular environment ambient fallback when irradiance is unavailable
+            -> split-sum specular IBL when prefiltered specular cubemap and BRDF LUT are available
+               reflection vector + roughness mip SampleLevel + BRDF LUT scale/bias
             -> alphaMode / doubleSided pipeline variant key
             -> doubleSided culling: None for double-sided, Back for single-sided
             -> indexed textured mesh draw(s) in RenderQueue order
@@ -267,6 +273,42 @@ tests/framework_headers_smoke.cpp
 docs/codex_handoff.md
 ```
 
+Phase 0.41 已完成的主要改动：
+
+```text
+docs/phase/phase41.md
+src/renderer/EnvironmentBrdfLutResource.h/.cpp
+src/renderer/EnvironmentBrdfLutGenerator.h/.cpp
+shaders/brdf_lut.vert.hlsl
+shaders/brdf_lut.frag.hlsl
+CMakeLists.txt
+tests/brdf_lut_smoke.cpp
+tests/shader_assets_smoke.cpp
+tests/framework_headers_smoke.cpp
+docs/codex_handoff.md
+```
+
+Phase 0.42 已完成的主要改动：
+
+```text
+docs/phase/phase42.md
+src/renderer/FrameContext.h
+src/renderer/Renderer.h/.cpp
+tests/framework_headers_smoke.cpp
+docs/codex_handoff.md
+```
+
+Phase 0.43 已完成的主要改动：
+
+```text
+docs/phase/phase43.md
+src/renderer/passes/ForwardPass.h/.cpp
+shaders/mesh.frag.hlsl
+tests/forward_pass_pipeline_smoke.cpp
+tests/shader_assets_smoke.cpp
+docs/codex_handoff.md
+```
+
 当前支持范围：
 
 - 读取 textureInfo 上的 `KHR_texture_transform`。
@@ -288,8 +330,8 @@ docs/codex_handoff.md
 - `RenderScene` 持有最小 `SceneLighting`：一个 directional light 和 ambient color。
 - `RenderScene::lighting()` / `setLighting()` 可配置 scene lighting，默认值与 Phase 0.24 hardcoded light 对齐。
 - `RenderView` 持有 camera position；`setDefaultPerspective()` 写入默认 `(0, 0, -4)`。
-- `ForwardPass::makeLightingUniform()` 从 `FrameContext::scene` 和 `FrameContext::view` 读取 lighting 与 camera position。
-- `LightingUniform` binding / size / descriptor layout 未变化；scene lighting / camera position 只改变 uniform 数据来源。
+- `ForwardPass::makeLightingUniform()` 从 `FrameContext::scene`、`FrameContext::view` 和 environment/specular frame resources 读取 lighting、camera position、IBL enable flag 和 prefiltered mip 信息。
+- `LightingUniform` binding 13 当前包含 light、camera、environment 和 specular IBL 参数；CPU/HLSL size 由 smoke test 约束。
 - `mesh.frag.hlsl` 的 direct lighting 已升级为 Cook-Torrance direct BRDF：
   - GGX / Trowbridge-Reitz normal distribution
   - Smith geometry term
@@ -316,11 +358,15 @@ docs/codex_handoff.md
 - `RenderScene::clear()` 保留 lighting/environment policy；显式清空 environment 使用 `clearEnvironment()`。
 - `ForwardPass` descriptor layout 已新增 binding 14/15：environment sampled image / sampler。
 - `ForwardPass` descriptor layout 已新增 binding 16/17：diffuse irradiance cubemap sampled image / sampler。
+- `ForwardPass` descriptor layout 已新增 binding 18/19：prefiltered specular cubemap sampled image / sampler。
+- `ForwardPass` descriptor layout 已新增 binding 20/21：BRDF LUT sampled image / sampler。
 - `ForwardPass` 持有 1x1 RGBA32F fallback environment，保证 environment disabled 时 descriptor 仍完整。
 - `ForwardPass` 持有 1x1 RGBA16F fallback irradiance cubemap，保证 irradiance descriptor 仍完整；缺少真实 irradiance 时通过 `environment.z = 0` 禁用采样。
-- `LightingUniform` environment vector 当前语义：`x = intensity`，`y = environment enabled`，`z = irradiance enabled`，`w = reserved`。
-- `mesh.frag.hlsl` 已新增 equirectangular direction -> UV、environment sampling、irradiance cubemap sampling 和 `evaluateAmbientLighting()`。
-- environment enabled 且 irradiance cube valid 时，mesh shader 用 sampled irradiance cubemap * intensity * albedo 作为 diffuse ambient contribution；没有 irradiance 时 fallback 到 equirectangular environment；disabled 时保持旧 `ambientColor * albedo`。
+- `ForwardPass` 持有 1x1 RGBA16F fallback prefiltered specular cubemap 和 1x1 RGBA16F fallback BRDF LUT，保证 specular descriptor 仍完整；缺少真实 specular resources 时通过 `environment.w = 0` 禁用 specular IBL。
+- `LightingUniform` environment vector 当前语义：`x = intensity`，`y = environment enabled`，`z = irradiance enabled`，`w = specular IBL enabled`。
+- `LightingUniform.environmentSpecular.x` 当前保存最大 prefiltered specular mip level；其余分量保留。
+- `mesh.frag.hlsl` 已新增 equirectangular direction -> UV、environment sampling、irradiance cubemap sampling、roughness mip `SampleLevel()`、BRDF LUT sampling 和 `evaluateIndirectLighting()`。
+- environment enabled 且 irradiance cube valid 时，mesh shader 用 sampled irradiance cubemap * intensity * albedo 作为 diffuse ambient contribution；没有 irradiance 时 fallback 到 equirectangular environment；prefiltered specular cubemap + BRDF LUT 同时 valid 时启用 split-sum specular IBL；disabled 时保持旧 `ambientColor * albedo`。
 - `ApplicationDesc` / `RendererDesc` 已支持 `defaultEnvironmentPath`，`ark_sandbox.exe [model] [environment.hdr]` 可选加载本地 HDR environment。
 - 默认 sandbox 无参数时优先加载 `assets/HDR/2k.hdr`，缺失时使用程序化 RGBA32F HDR sky gradient。
 - `assets/HDR/` 已作为 HDR environment 资源目录；`assets/HDR/*.hdr` 默认忽略，`assets/HDR/debug_*.hdr` 可作为小型 fixture 入库。
@@ -335,36 +381,32 @@ docs/codex_handoff.md
 - `ForwardPass` 已通过 `FrameContext::irradianceCube` 消费默认 irradiance cubemap，形成 diffuse ambient IBL 闭环。
 - `EnvironmentSpecularPrefilterGenerator` 已支持从 source cubemap 生成 prefiltered specular target cubemap 的完整 roughness mip chain，并覆盖 face-mip render path smoke。
 - `EnvironmentBrdfLutResource` / `EnvironmentBrdfLutGenerator` 已支持生成 split-sum BRDF integration LUT，并覆盖 resource/generator smoke。
-- 当前仍不是完整 IBL；prefiltered specular 和 BRDF LUT 都还是 standalone foundation，尚未接入默认 renderer bake path、`FrameContext`、`ForwardPass` specular IBL、roughness mip runtime sampling、shadow、多光源、bloom 或 auto exposure。
+- 默认 renderer 已把 prefiltered specular cubemap 和 BRDF LUT 通过 `FrameContext` 传给 `ForwardPass`；mesh shader 已用 split-sum 公式消费 roughness mip chain 和 BRDF LUT。
+- 当前仍不是完整 production IBL；尚缺 screenshot/golden image 验证、roughness/metallic 视觉 fixture、specular quality policy、shadow、多光源、bloom 或 auto exposure。
 
 ## 2. 最近提交与工作区
 
 最近提交（接手时仍以 `git log --oneline -n 5` 为准）：
 
 ```text
+d48006a Add renderer default specular bake path
+db315f8 模型加载
+ae573b9 Add BRDF LUT generation foundation
+705c35d Add specular environment prefilter generator
 79be8cb Add cubemap face mip views
-85e5540 Add RHI texture readback validation
-0d06784 完成 Phase37 cubemap orientation debug foundation
-2291d8f 完成 Phase36 sandbox orbit camera
-5f434b4 完成 Phase35 diffuse irradiance IBL 接入
 ```
 
-本轮 0.41.0 ~ 0.41.5 收尾主要工作区改动：
+本轮 0.43.0 ~ 0.43.6 收尾主要工作区改动：
 
 ```text
 ## main...origin/main
- M CMakeLists.txt
  M docs/codex_handoff.md
- M docs/phase/phase41.md
- M tests/framework_headers_smoke.cpp
+ M shaders/mesh.frag.hlsl
+ M src/renderer/passes/ForwardPass.cpp
+ M src/renderer/passes/ForwardPass.h
+ M tests/forward_pass_pipeline_smoke.cpp
  M tests/shader_assets_smoke.cpp
-?? shaders/brdf_lut.frag.hlsl
-?? shaders/brdf_lut.vert.hlsl
-?? src/renderer/EnvironmentBrdfLutGenerator.cpp
-?? src/renderer/EnvironmentBrdfLutGenerator.h
-?? src/renderer/EnvironmentBrdfLutResource.cpp
-?? src/renderer/EnvironmentBrdfLutResource.h
-?? tests/brdf_lut_smoke.cpp
+?? docs/phase/phase43.md
 ```
 
 接手时先执行：
@@ -806,7 +848,7 @@ git log --oneline -n 5
 - generator 会把 target texture 从当前状态 transition 到 `RenderTarget`，渲染后 transition 到 `ShaderResource`。
 - 新增 `ark_brdf_lut_smoke`，覆盖 invalid desc、sampler override、deferred release、descriptor layout、uniform、barrier、rendering desc、viewport/scissor、pipeline 和 draw。
 - `ark_shader_assets_smoke` 已覆盖新增 shader 文件、编译产物和关键 token；`ark_framework_headers_smoke` 已覆盖新增 public API。
-- 当前 BRDF LUT foundation 已在 Phase 0.42 接入默认 renderer bake path 和 `FrameContext`，但仍未被 `ForwardPass` descriptor layout 或 mesh shader specular IBL 消费。
+- 当前 BRDF LUT foundation 已在 Phase 0.42 接入默认 renderer bake path 和 `FrameContext`，并在 Phase 0.43 被 `ForwardPass` descriptor layout 与 mesh shader specular IBL 消费。
 
 ### Phase 0.42（0.42.0 ~ 0.42.5 已完成并验证）
 
@@ -819,9 +861,20 @@ git log --oneline -n 5
 - specular bake / BRDF LUT bake 失败保持非 fatal warning，默认 sandbox 继续使用 skybox、diffuse IBL、equirectangular fallback 和 tone mapping。
 - `ark_framework_headers_smoke` 已覆盖新增 `FrameContext` 字段；`ForwardPass` descriptor layout 和 `mesh.frag.hlsl` 本阶段保持不变。
 
+### Phase 0.43（0.43.0 ~ 0.43.6 已完成并验证）
+
+- 新增 `docs/phase/phase43.md`，明确本阶段只做 `ForwardPass` specular IBL 最小接入，不做 screenshot/golden validation、quality policy、bloom、auto exposure、shadow 或多光源。
+- `ForwardPass` descriptor layout 新增 binding 18/19，用于 prefiltered specular cubemap sampled image / sampler；新增 binding 20/21，用于 BRDF LUT sampled image / sampler。
+- `ForwardPass` 新增 1x1 `RGBA16Float` fallback specular cubemap 和 1x1 `RGBA16Float` fallback BRDF LUT，保证 descriptor set 在无真实资源时仍完整。
+- `LightingUniform` 新增 `environmentSpecular`，`environment.w` 作为 specular IBL enable flag，`environmentSpecular.x` 保存 max prefiltered mip level。
+- `mesh.frag.hlsl` 新增 `fresnelSchlickRoughness()`、`samplePrefilteredSpecular()`、`sampleBrdfLut()` 和 `evaluateIndirectLighting()`，使用 reflection direction、roughness mip `SampleLevel()` 与 BRDF LUT scale/bias 做 split-sum specular IBL。
+- `ark_forward_pass_pipeline_smoke` 已覆盖 descriptor layout 18-21、fallback specular/BRDF LUT binding、valid specular resources binding、uniform flag 和 max mip。
+- `ark_shader_assets_smoke` 已覆盖 mesh shader 新 binding、split-sum helper、`SampleLevel()`、`reflect()` 和 specular enable token。
+- 当前仍缺 screenshot/golden image validation、roughness/metallic validation fixture、specular quality policy、glTF camera、shadow、多光源、bloom 和 auto exposure。
+
 ## 4. 关键代码阅读顺序
 
-建议按以下顺序审核当前 Phase 0.42 完整闭环：
+建议按以下顺序审核当前 Phase 0.43 完整闭环：
 
 1. `docs/phase/phase21.md`
    - 回看 `TEXCOORD_1` / per-slot UV selection 的前置范围和限制。
@@ -859,8 +912,8 @@ git log --oneline -n 5
    - 确认 cubemap face orientation contract、debug environment、sandbox debug path、非目标和验证记录。
 18. `docs/phase/phase38.md`
    - 确认 RHI texture readback、cubemap pixel validation、非目标和验证记录。
-19. `docs/phase/phase39.md` / `docs/phase/phase40.md` / `docs/phase/phase41.md` / `docs/phase/phase42.md`
-   - 确认 cubemap mip / face-mip view foundation、prefiltered specular environment generation foundation、BRDF LUT foundation、renderer default specular bake path、非目标和验证记录。
+19. `docs/phase/phase39.md` / `docs/phase/phase40.md` / `docs/phase/phase41.md` / `docs/phase/phase42.md` / `docs/phase/phase43.md`
+   - 确认 cubemap mip / face-mip view foundation、prefiltered specular environment generation foundation、BRDF LUT foundation、renderer default specular bake path、ForwardPass specular IBL 接入、非目标和验证记录。
 20. `src/rhi/Buffer.h` / `src/rhi/DeviceContext.h`
    - 看 `MemoryUsage::GpuToCpu`、`Buffer::readData()`、`TextureReadbackDesc` 和 `copyTextureToBuffer()` 的 RHI contract。
 21. `src/rhi/vulkan/VulkanBuffer.h/.cpp` / `src/rhi/vulkan/VulkanCommandContext.h/.cpp`
@@ -926,13 +979,13 @@ git log --oneline -n 5
 51. `src/renderer/RenderQueue.cpp`
    - 看 scene/model draw item 展开、Opaque / Mask / Blend 分桶和 bucket 合并顺序。
 52. `src/renderer/passes/ForwardPass.cpp`
-   - 看 descriptor layout、binding 14/15、binding 16/17、fallback environment、fallback irradiance cube、environment upload、irradiance enabled flag、pipeline variant key、FrameContext attachment format 解耦、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position / environment 读取、per-slot transform 写入和 draw loop。
+   - 看 descriptor layout、binding 14/15、binding 16/17、binding 18/19、binding 20/21、fallback environment、fallback irradiance cube、fallback specular cube、fallback BRDF LUT、environment upload、irradiance/specular enabled flag、max prefiltered mip、pipeline variant key、FrameContext attachment format 解耦、vertex layout、doubleSided cull mode、camera/object/material/lighting uniform、scene lighting / view camera position / environment/specular resources 读取、per-slot transform 写入和 draw loop。
 53. `shaders/mesh.vert.hlsl` / `shaders/mesh.frag.hlsl`
-   - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend、Cook-Torrance direct BRDF、irradiance cubemap ambient 和 equirectangular fallback 路径。
+   - 确认 normal matrix、uv1 传递、per-slot `selectUv()` + `transformUv()`、alpha mask/blend、Cook-Torrance direct BRDF、irradiance cubemap ambient、equirectangular fallback、prefiltered specular roughness mip sampling、BRDF LUT sampling 和 split-sum specular IBL 路径。
 54. `src/rhi/vulkan/VulkanPipelineState.cpp` / `src/rhi/vulkan/VulkanSampler.cpp`
     - 看 blend/cull/depth state 和 sampler address/filter 映射。
 55. `tests/readback_api_smoke.cpp` / `tests/cubemap_orientation_pixel_smoke.cpp` / `tests/cubemap_orientation_contract_smoke.cpp` / `tests/sandbox_camera_controller_smoke.cpp` / `tests/environment_cube_resource_smoke.cpp` / `tests/environment_resource_smoke.cpp` / `tests/texture_loader_smoke.cpp` / `tests/forward_pass_pipeline_smoke.cpp` / `tests/tone_mapping_pass_smoke.cpp` / `tests/render_scene_queue_smoke.cpp` / `tests/model_resource_smoke.cpp` / `tests/gltf_loader_smoke.cpp` / `tests/shader_assets_smoke.cpp` / `tests/framework_headers_smoke.cpp`
-   - 看当前 smoke tests 对 readback API、cubemap orientation pixel validation、cubemap orientation contract、sandbox camera controller、cubemap resource、HDR loader、EnvironmentResource、SceneEnvironment、ForwardPass HDR attachment format、cull state、lighting uniform、ToneMappingPass uniform 数据流、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF shader source、tone mapping shader source 和 public API 的约束。
+   - 看当前 smoke tests 对 readback API、cubemap orientation pixel validation、cubemap orientation contract、sandbox camera controller、cubemap resource、HDR loader、EnvironmentResource、SceneEnvironment、ForwardPass HDR attachment format、cull state、lighting/specular uniform、ForwardPass environment/irradiance/specular descriptors、ToneMappingPass uniform 数据流、queue alpha bucket、sampler、alpha、uv1、texture transform、BRDF/IBL shader source、tone mapping shader source 和 public API 的约束。
 
 ## 5. 必须继续遵守的架构边界
 
@@ -967,6 +1020,7 @@ docs/phase/phase39.md
 docs/phase/phase40.md
 docs/phase/phase41.md
 docs/phase/phase42.md
+docs/phase/phase43.md
 ```
 
 硬性边界：
@@ -1001,7 +1055,7 @@ docs/phase/phase42.md
 - output encoding 当前只应发生在 tone mapping shader；mesh/lighting shader 继续输出 linear HDR。
 - upload / mip generation / deferred release 命令必须记录在 dynamic rendering scope 外。
 - `RGBA32Float` environment upload 当前只支持 tightly packed mip0/layer0 2D equirectangular texture；不要把它理解为 cubemap CPU upload、array texture 或 HDR mip generation 已完成。
-- cubemap RHI/Vulkan 语义、equirectangular -> cubemap conversion、diffuse irradiance generation、ForwardPass diffuse IBL、face orientation debug foundation、最小 GPU readback / pixel validation、face-mip render target view foundation、prefiltered specular generator foundation、BRDF LUT foundation 和默认 renderer specular bake path 已存在，但当前没有 cubemap CPU upload、cubemap mip generation policy 或 ForwardPass specular IBL。
+- cubemap RHI/Vulkan 语义、equirectangular -> cubemap conversion、diffuse irradiance generation、ForwardPass diffuse IBL、face orientation debug foundation、最小 GPU readback / pixel validation、face-mip render target view foundation、prefiltered specular generator foundation、BRDF LUT foundation、默认 renderer specular bake path 和 ForwardPass specular IBL 已存在，但当前没有 cubemap CPU upload、cubemap mip generation policy、screenshot/golden validation 或 specular quality policy。
 - 当前继续使用 Vulkan Dynamic Rendering，不引入传统 `VkRenderPass` / `VkFramebuffer`。
 - 日志输出使用英文。
 - 必要注释使用简洁中文。
@@ -1015,7 +1069,7 @@ P0 / 下一阶段优先：
 - tangent generation 仍基于 `uv0`；如果 normal texture 使用 `texCoord=1`，严格 tangent basis 仍是后续改进项。
 - `KHR_texture_transform` 已支持 textureInfo 上的 offset / scale / rotation / texCoord override，但不支持 animation、`TEXCOORD_2+` 或 per-UV-set tangent basis。
 - `doubleSided=true` 当前只关闭背面剔除，不做 two-sided lighting，也不基于 `gl_FrontFacing` 翻转 normal。
-- 当前 direct lighting 已使用 Cook-Torrance BRDF，并通过 `RGBA16Float` scene color + ToneMappingPass 输出；HDR environment ambient、equirectangular -> cubemap conversion、skybox、diffuse irradiance generation、ForwardPass diffuse IBL、face orientation debug foundation、automated cubemap pixel validation、prefiltered specular generator foundation、BRDF LUT foundation 和默认 renderer specular bake path 已接入，但仍没有 ForwardPass specular IBL、shadow 或多光源。
+- 当前 direct lighting 已使用 Cook-Torrance BRDF，并通过 `RGBA16Float` scene color + ToneMappingPass 输出；HDR environment ambient、equirectangular -> cubemap conversion、skybox、diffuse irradiance generation、ForwardPass diffuse IBL、face orientation debug foundation、automated cubemap pixel validation、prefiltered specular generator foundation、BRDF LUT foundation、默认 renderer specular bake path 和 ForwardPass specular IBL 已接入，但仍没有 screenshot/golden frame validation、roughness/metallic 视觉 fixture、specular quality policy、shadow 或多光源。
 - sandbox 已有 orbit camera controller，但仍不是 editor camera，不支持 glTF camera、camera preset、selection focus、多 viewport 或 action mapping。
 - tone mapping 当前只有手动 `exposure` / `outputGamma` + Reinhard，不支持 auto exposure、ACES 参数化、bloom 或 color grading。
 - 当前只支持一个 directional light 和 ambient color；不支持 point / spot / area light、shadow、glTF camera 或 `KHR_lights_punctual`。
@@ -1043,7 +1097,7 @@ P2：
 - RenderDoc capture / screenshot / pixel smoke。
 - ResourceManager handle 系统。
 - RenderGraph 第一版 pass/resource 声明。
-- 完整 cubemap IBL、bloom、auto exposure。
+- IBL 质量策略、bloom、auto exposure。
 
 ## 7. 最近验证记录
 
@@ -1543,35 +1597,62 @@ DamagedHelmet + local HDR environment smoke passed
 
 本轮完成 renderer default specular bake path：默认 renderer 现在持有并生成 `DefaultSandboxSpecularCube` 和 `DefaultSandboxBrdfLut`，并通过 `FrameContext::prefilteredSpecularCube` / `FrameContext::brdfLut` 传递给后续 pass。它仍没有改 `ForwardPass` descriptor layout，也没有让 mesh shader 消费 specular IBL。
 
+Phase 0.43 收尾在 Windows/MSVC/vcpkg/DXC debug preset 下完成验证：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_forward_pass_pipeline_smoke ark_shader_assets_smoke
+build/msvc-vcpkg/Debug/ark_forward_pass_pipeline_smoke.exe
+build/msvc-vcpkg/Debug/ark_shader_assets_smoke.exe
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+build/msvc-vcpkg/Debug/ark_sandbox.exe
+build/msvc-vcpkg/Debug/ark_sandbox.exe --debug-orientation
+build/msvc-vcpkg/Debug/ark_sandbox.exe assets/models/DamagedHelmet/DamagedHelmet.gltf assets/HDR/warm_restaurant_8k.hdr
+```
+
+结果：
+
+```text
+targeted forward pass / shader assets build passed
+ark_forward_pass_pipeline_smoke passed
+ark_shader_assets_smoke passed
+full build passed
+CTest: 21/21 passed
+default sandbox smoke passed
+debug orientation sandbox smoke passed
+DamagedHelmet + local HDR environment smoke passed
+```
+
+本轮完成 `ForwardPass` specular IBL 最小接入：mesh shader 已消费 default renderer 传入的 prefiltered specular cubemap 和 BRDF LUT，并在缺少真实资源时绑定 fallback descriptor 但通过 `environment.w = 0` 禁用 specular contribution。它仍没有 screenshot/golden image validation、roughness/metallic 视觉 fixture 或 specular quality policy。
+
 ## 8. 推荐下一步
 
-Phase 0.42 已完成 renderer default specular bake path。下一阶段建议接 `ForwardPass` specular IBL，让 mesh shader 消费 prefiltered specular cubemap 和 BRDF LUT：
+Phase 0.43 已完成 `ForwardPass` specular IBL 最小接入。下一阶段建议不要继续扩 descriptor，而是先把验证和质量边界补上：
 
-- 若继续推进 PBR/IBL：增加 `ForwardPass` specular descriptors、fallback resources、roughness mip sampling 和 split-sum specular IBL shader 路径。
-- 若继续推进验证基础：基于 Phase 0.38 readback 扩展 frame color screenshot / golden image / statistical pixel smoke。
+- 若继续推进 PBR/IBL：增加 roughness/metallic material ball fixture，验证 diffuse/specular IBL 在不同材质参数下的能量和视觉趋势。
+- 若继续推进验证基础：基于 Phase 0.38 readback 扩展 frame color screenshot / golden image / statistical pixel smoke，至少覆盖 skybox + DamagedHelmet + specular highlight。
 
-不要直接跳到完整 specular IBL、RenderGraph 或 bindless。
+不要直接跳到 RenderGraph、bindless、完整材质扩展或复杂后处理栈。
 
 优先顺序：
 
-1. ForwardPass specular IBL / roughness mip sampling。
-2. Specular IBL fallback resources and descriptor smoke。
-3. Roughness / metallic validation fixture or material ball grid。
-4. HDR/cubemap mip generation policy。
-5. Screenshot / pixel test infrastructure。
-6. glTF camera / scene camera selection。
-7. bloom、auto exposure、ACES/filmic 或 exposure UI/config 可作为后续独立阶段。
-8. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
-9. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
-10. pipeline / shader / descriptor layout 的 deferred destruction。
+1. Roughness / metallic validation fixture or material ball grid。
+2. Screenshot / frame color readback / golden image or statistical pixel infrastructure。
+3. Specular IBL quality policy：prefilter size、BRDF LUT size、sample count、fallback semantics 和 performance budget。
+4. glTF camera / scene camera selection。
+5. HDR/cubemap mip generation policy。
+6. bloom、auto exposure、ACES/filmic 或 exposure UI/config 可作为后续独立阶段。
+7. 真正的 renderer 资源/场景加载入口，替代内部默认 scene 过渡方案。
+8. 基于 camera 和 bounds 的 Blend bucket back-to-front sorting。
+9. pipeline / shader / descriptor layout 的 deferred destruction。
 
 ## 9. 下一次 Codex 启动提示
 
 ```text
-请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.42：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 已完成；ForwardPass 已按 glTF doubleSided 设置 raster culling；RenderScene / RenderView 已提供 scene lighting、camera position 和 tone mapping settings；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass；Phase 0.29 已新增 HDR loader、RGBA32Float upload、EnvironmentResource 和 RenderScene environment API；Phase 0.30 已把 environment resource 接入 ForwardPass binding 14/15、LightingUniform environment intensity/enabled、fallback environment 和 mesh.frag.hlsl equirectangular ambient sampling；Phase 0.31 已新增 assets/HDR 资源目录策略、RHI cube texture/view 语义、Vulkan cube-compatible image/view mapping 和 EnvironmentCubeResource；Phase 0.32 已新增 EnvironmentCubeResource face render target views、equirectangular-to-cube shaders、EnvironmentCubeConverter、默认 renderer minimal conversion path 和 ark_equirectangular_to_cube_smoke；Phase 0.33 已新增 FrameContext::environmentCube、skybox.vert/frag.hlsl、SkyboxPass、默认/procedural sandbox environment fallback 和 ark_skybox_pass_smoke；Phase 0.34 已新增 irradiance_convolve.vert/frag.hlsl、EnvironmentIrradianceGenerator、默认 renderer 32x32 RGBA16F irradiance bake path 和 ark_environment_irradiance_smoke；Phase 0.35 已新增 FrameContext::irradianceCube、ForwardPass irradiance binding 16/17、fallback irradiance cubemap、LightingUniform environment.z irradiance flag 和 mesh.frag.hlsl TextureCube diffuse irradiance IBL；Phase 0.36 已新增 app/Input.h、Window::getInputSnapshot()、GlfwWindow 输入采集、SandboxCameraController、Application 接入和 ark_sandbox_camera_controller_smoke；Phase 0.37 已新增 CubemapOrientation face contract、SandboxEnvironment procedural/debug environment helpers、Application/Renderer debug flag、ark_sandbox --debug-orientation 和 ark_cubemap_orientation_contract_smoke；Phase 0.38 已新增 MemoryUsage::GpuToCpu、Buffer::readData()、TextureReadbackDesc、DeviceContext::copyTextureToBuffer()、Vulkan readback buffer/image-to-buffer copy、EnvironmentCubeResourceDesc::allowReadback、ark_readback_api_smoke 和 ark_cubemap_orientation_pixel_smoke；Phase 0.39 已新增 EnvironmentCubeResource face-mip render target views、faceMipRenderTargetView()、mipExtent() 和对应 smoke coverage；Phase 0.40 已新增 EnvironmentSpecularPrefilterGenerator、specular_prefilter shaders 和 ark_specular_prefilter_smoke；Phase 0.41 已新增 EnvironmentBrdfLutResource、EnvironmentBrdfLutGenerator、brdf_lut shaders 和 ark_brdf_lut_smoke；Phase 0.42 已新增默认 renderer specular cubemap / BRDF LUT resource lifetime、one-shot bake path 和 FrameContext specular resource plumbing。当前已有最小 GPU readback、automated cubemap pixel validation、cubemap face-mip view foundation、prefiltered specular generator foundation、BRDF LUT foundation 和默认 renderer specular bake path，但仍没有 ForwardPass specular IBL、roughness mip runtime sampling、glTF camera、bloom 或 auto exposure。
+请先阅读 docs/codex_handoff.md，理解 ARKRenderer 当前已完成 Phase 0.43：KHR_texture_transform 最小闭环已经打通到 asset、GltfLoader、MaterialResource、ForwardPass uniform、mesh.frag.hlsl、fixture 和 smoke tests；RenderQueue alpha bucket ordering 已完成；ForwardPass 已按 glTF doubleSided 设置 raster culling；RenderScene / RenderView 已提供 scene lighting、camera position 和 tone mapping settings；mesh.frag.hlsl 已升级为 Cook-Torrance direct BRDF；FrameRenderer 已接入 RGBA16Float HDR scene color 和 ToneMappingPass；Phase 0.29 已新增 HDR loader、RGBA32Float upload、EnvironmentResource 和 RenderScene environment API；Phase 0.30 已把 environment resource 接入 ForwardPass binding 14/15、LightingUniform environment intensity/enabled、fallback environment 和 mesh.frag.hlsl equirectangular ambient sampling；Phase 0.31 已新增 assets/HDR 资源目录策略、RHI cube texture/view 语义、Vulkan cube-compatible image/view mapping 和 EnvironmentCubeResource；Phase 0.32 已新增 EnvironmentCubeResource face render target views、equirectangular-to-cube shaders、EnvironmentCubeConverter、默认 renderer minimal conversion path 和 ark_equirectangular_to_cube_smoke；Phase 0.33 已新增 FrameContext::environmentCube、skybox.vert/frag.hlsl、SkyboxPass、默认/procedural sandbox environment fallback 和 ark_skybox_pass_smoke；Phase 0.34 已新增 irradiance_convolve.vert/frag.hlsl、EnvironmentIrradianceGenerator、默认 renderer 32x32 RGBA16F irradiance bake path 和 ark_environment_irradiance_smoke；Phase 0.35 已新增 FrameContext::irradianceCube、ForwardPass irradiance binding 16/17、fallback irradiance cubemap、LightingUniform environment.z irradiance flag 和 mesh.frag.hlsl TextureCube diffuse irradiance IBL；Phase 0.36 已新增 app/Input.h、Window::getInputSnapshot()、GlfwWindow 输入采集、SandboxCameraController、Application 接入和 ark_sandbox_camera_controller_smoke；Phase 0.37 已新增 CubemapOrientation face contract、SandboxEnvironment procedural/debug environment helpers、Application/Renderer debug flag、ark_sandbox --debug-orientation 和 ark_cubemap_orientation_contract_smoke；Phase 0.38 已新增 MemoryUsage::GpuToCpu、Buffer::readData()、TextureReadbackDesc、DeviceContext::copyTextureToBuffer()、Vulkan readback buffer/image-to-buffer copy、EnvironmentCubeResourceDesc::allowReadback、ark_readback_api_smoke 和 ark_cubemap_orientation_pixel_smoke；Phase 0.39 已新增 EnvironmentCubeResource face-mip render target views、faceMipRenderTargetView()、mipExtent() 和对应 smoke coverage；Phase 0.40 已新增 EnvironmentSpecularPrefilterGenerator、specular_prefilter shaders 和 ark_specular_prefilter_smoke；Phase 0.41 已新增 EnvironmentBrdfLutResource、EnvironmentBrdfLutGenerator、brdf_lut shaders 和 ark_brdf_lut_smoke；Phase 0.42 已新增默认 renderer specular cubemap / BRDF LUT resource lifetime、one-shot bake path 和 FrameContext specular resource plumbing；Phase 0.43 已新增 ForwardPass specular descriptor/fallback path、LightingUniform environmentSpecular、mesh.frag.hlsl split-sum specular IBL 和相关 smoke coverage。当前已有最小 GPU readback、automated cubemap pixel validation、cubemap face-mip view foundation、prefiltered specular generator foundation、BRDF LUT foundation、默认 renderer specular bake path 和 ForwardPass specular IBL，但仍没有 screenshot/golden validation、roughness/metallic validation fixture、specular quality policy、glTF camera、bloom 或 auto exposure。
 
 重点理解当前默认渲染路径：
-Vulkan Dynamic Rendering + Application InputSnapshot + SandboxCameraController + Renderer + RenderScene scene lighting + SceneEnvironment slot + optional one-shot EnvironmentCubeConverter + optional one-shot EnvironmentIrradianceGenerator + optional one-shot EnvironmentSpecularPrefilterGenerator + optional one-shot EnvironmentBrdfLutGenerator + FrameContext::environmentCube + FrameContext::irradianceCube + FrameContext::prefilteredSpecularCube + FrameContext::brdfLut + CubemapOrientation face contract + SandboxEnvironment procedural/debug environment helpers + ark_sandbox --debug-orientation + RenderView camera matrix/camera position + ToneMappingSettings + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + SkyboxPass TextureCube background + ForwardPass doubleSided culling + ForwardPass fallback environment + ForwardPass fallback irradiance cubemap + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + EnvironmentResource + EnvironmentCubeResource face-mip views + EnvironmentSpecularPrefilterGenerator resource foundation and default bake path + EnvironmentBrdfLutResource/Generator resource foundation and default bake path + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + environment texture/sampler descriptors + irradiance cubemap/sampler descriptors + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + diffuse irradiance cubemap ambient + equirectangular environment fallback + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + exposure/Reinhard/output gamma encoding + swapchain backbuffer。
+Vulkan Dynamic Rendering + Application InputSnapshot + SandboxCameraController + Renderer + RenderScene scene lighting + SceneEnvironment slot + optional one-shot EnvironmentCubeConverter + optional one-shot EnvironmentIrradianceGenerator + optional one-shot EnvironmentSpecularPrefilterGenerator + optional one-shot EnvironmentBrdfLutGenerator + FrameContext::environmentCube + FrameContext::irradianceCube + FrameContext::prefilteredSpecularCube + FrameContext::brdfLut + CubemapOrientation face contract + SandboxEnvironment procedural/debug environment helpers + ark_sandbox --debug-orientation + RenderView camera matrix/camera position + ToneMappingSettings + RenderQueue alpha buckets + FrameRenderer two-stage rendering + RGBA16Float scene color + ClearPass + SkyboxPass TextureCube background + ForwardPass doubleSided culling + ForwardPass fallback environment + ForwardPass fallback irradiance cubemap + ForwardPass fallback specular cubemap + ForwardPass fallback BRDF LUT + ModelResource + MeshResource + MaterialResource + TextureResource + TextureCache + EnvironmentResource + EnvironmentCubeResource face-mip views + EnvironmentSpecularPrefilterGenerator resource foundation and default bake path + EnvironmentBrdfLutResource/Generator resource foundation and default bake path + glTF scene/node primitive instances + RenderView camera uniform + per-draw object/material/lighting uniform + environment texture/sampler descriptors + irradiance cubemap/sampler descriptors + prefiltered specular cubemap/sampler descriptors + BRDF LUT/sampler descriptors + normal matrix + sampled images/samplers + GPU mipmap generation + Cook-Torrance direct BRDF + diffuse irradiance cubemap ambient + split-sum specular IBL + equirectangular environment fallback + generated/explicit tangent + glTF sampler + alpha render states + TEXCOORD_1 / per-slot UV selection + KHR_texture_transform per-slot transform + indexed textured multi draw + depth attachment + ToneMappingPass fullscreen triangle + exposure/Reinhard/output gamma encoding + swapchain backbuffer。
 
 然后阅读：
 docs/design/framework.md
@@ -1602,9 +1683,10 @@ docs/phase/phase39.md
 docs/phase/phase40.md
 docs/phase/phase41.md
 docs/phase/phase42.md
+docs/phase/phase43.md
 
-不要重复 Phase 0.5 ~ 0.42 已完成工作。
-不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环，不要重复 Phase 0.28 已完成的 tone mapping settings / color pipeline 收口，不要重复 Phase 0.29 已完成的 HDR loader / RGBA32Float upload / EnvironmentResource / RenderScene environment API，不要重复 Phase 0.30 已完成的最小 equirectangular environment ambient 接入，不要重复 Phase 0.31 已完成的 RHI/Vulkan cubemap resource foundation，不要重复 Phase 0.32 已完成的 equirectangular -> cubemap conversion foundation，不要重复 Phase 0.33 已完成的 SkyboxPass / cubemap debug background foundation，不要重复 Phase 0.34 已完成的 diffuse irradiance cubemap generation foundation，不要重复 Phase 0.35 已完成的 ForwardPass diffuse irradiance IBL，不要重复 Phase 0.36 已完成的 sandbox orbit camera controller，不要重复 Phase 0.37 已完成的 cubemap face orientation debug foundation，不要重复 Phase 0.38 已完成的最小 RHI texture readback / automated cubemap pixel validation，不要重复 Phase 0.39 已完成的 cubemap face-mip view foundation，不要重复 Phase 0.40 已完成的 prefiltered specular environment generator foundation，不要重复 Phase 0.41 已完成的 BRDF LUT foundation，也不要重复 Phase 0.42 已完成的 renderer default specular bake path / FrameContext specular resource plumbing。下一步优先考虑 ForwardPass specular IBL、roughness mip sampling、specular fallback descriptor smoke、screenshot/pixel test infrastructure、bloom/auto exposure、glTF camera 或 renderer 资源/场景加载入口等小步。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
+不要重复 Phase 0.5 ~ 0.43 已完成工作。
+不要重复 Phase 0.22 已完成的 KHR_texture_transform 最小闭环，不要重复 Phase 0.23 已完成的 RenderQueue alpha bucket，不要重复 Phase 0.24 已完成的 doubleSided culling，不要重复 Phase 0.25 已完成的 scene light / camera 数据入口，不要重复 Phase 0.26 已完成的 direct lighting BRDF，不要重复 Phase 0.27 已完成的 HDR scene color / ToneMappingPass 最小闭环，不要重复 Phase 0.28 已完成的 tone mapping settings / color pipeline 收口，不要重复 Phase 0.29 已完成的 HDR loader / RGBA32Float upload / EnvironmentResource / RenderScene environment API，不要重复 Phase 0.30 已完成的最小 equirectangular environment ambient 接入，不要重复 Phase 0.31 已完成的 RHI/Vulkan cubemap resource foundation，不要重复 Phase 0.32 已完成的 equirectangular -> cubemap conversion foundation，不要重复 Phase 0.33 已完成的 SkyboxPass / cubemap debug background foundation，不要重复 Phase 0.34 已完成的 diffuse irradiance cubemap generation foundation，不要重复 Phase 0.35 已完成的 ForwardPass diffuse irradiance IBL，不要重复 Phase 0.36 已完成的 sandbox orbit camera controller，不要重复 Phase 0.37 已完成的 cubemap face orientation debug foundation，不要重复 Phase 0.38 已完成的最小 RHI texture readback / automated cubemap pixel validation，不要重复 Phase 0.39 已完成的 cubemap face-mip view foundation，不要重复 Phase 0.40 已完成的 prefiltered specular environment generator foundation，不要重复 Phase 0.41 已完成的 BRDF LUT foundation，不要重复 Phase 0.42 已完成的 renderer default specular bake path / FrameContext specular resource plumbing，也不要重复 Phase 0.43 已完成的 ForwardPass specular IBL descriptor/fallback/shader 接入。下一步优先考虑 roughness/metallic validation fixture、screenshot/frame color readback/golden validation、specular quality policy、glTF camera、bloom/auto exposure 或 renderer 资源/场景加载入口等小步。不要提前引入完整 RenderGraph、bindless、复杂 glTF extensions 或完整材质扩展，除非用户明确改变目标。
 
 如果实现方向与既有设计文档冲突，先说明并更新设计文档，再修改代码。新增代码保持现有风格：左大括号不换行，namespace 内缩进，日志输出用英文，必要注释用简洁中文。不确定的地方写 TODO 或记录到文档，不要假装完成。
 

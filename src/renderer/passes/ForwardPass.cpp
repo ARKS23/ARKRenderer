@@ -71,9 +71,10 @@ namespace ark {
             glm::vec4 ambientColor;
             glm::vec4 cameraPosition;
             glm::vec4 environment;
+            glm::vec4 environmentSpecular;
         };
 
-        static_assert(sizeof(LightingUniform) == 80);
+        static_assert(sizeof(LightingUniform) == 96);
 
         void addFragmentTextureBindingPair(rhi::DescriptorSetLayoutDesc& desc, u32 imageBinding, u32 samplerBinding) {
             desc.bindings.push_back(rhi::DescriptorBindingDesc{
@@ -121,6 +122,37 @@ namespace ark {
                    irradianceCube->textureView() && irradianceCube->sampler();
         }
 
+        bool isTextureShaderResource(const rhi::Texture* texture) {
+            return texture && texture->getState() == rhi::ResourceState::ShaderResource;
+        }
+
+        bool isPrefilteredSpecularCubeReady(const EnvironmentCubeResource* specularCube) {
+            return specularCube && specularCube->isValid() &&
+                   specularCube->textureView() && specularCube->sampler() &&
+                   isTextureShaderResource(specularCube->texture());
+        }
+
+        bool isBrdfLutReady(const EnvironmentBrdfLutResource* brdfLut) {
+            return brdfLut && brdfLut->isValid() &&
+                   brdfLut->textureView() && brdfLut->sampler() &&
+                   isTextureShaderResource(brdfLut->texture());
+        }
+
+        bool isSpecularIblReady(const FrameContext& frameContext) {
+            const SceneEnvironment* environment = frameContext.scene ? &frameContext.scene->environment() : nullptr;
+            return environment && isSceneEnvironmentReady(*environment) &&
+                   isPrefilteredSpecularCubeReady(frameContext.prefilteredSpecularCube) &&
+                   isBrdfLutReady(frameContext.brdfLut);
+        }
+
+        float maxSpecularMipLevel(const EnvironmentCubeResource* specularCube) {
+            if (!specularCube || specularCube->mipLevels() == 0) {
+                return 0.0f;
+            }
+
+            return static_cast<float>(specularCube->mipLevels() - 1);
+        }
+
         LightingUniform makeLightingUniform(const FrameContext& frameContext) {
             const SceneLighting defaultLighting{};
             const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
@@ -138,7 +170,19 @@ namespace ark {
 
             if (environment && isSceneEnvironmentReady(*environment)) {
                 const float irradianceEnabled = isIrradianceCubeReady(frameContext.irradianceCube) ? 1.0f : 0.0f;
-                uniform.environment = glm::vec4{environment->intensity, 1.0f, irradianceEnabled, 0.0f};
+                const bool specularIblReady = isSpecularIblReady(frameContext);
+                uniform.environment = glm::vec4{
+                    environment->intensity,
+                    1.0f,
+                    irradianceEnabled,
+                    specularIblReady ? 1.0f : 0.0f,
+                };
+                uniform.environmentSpecular = glm::vec4{
+                    specularIblReady ? maxSpecularMipLevel(frameContext.prefilteredSpecularCube) : 0.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                };
             }
 
             return uniform;
@@ -413,6 +457,8 @@ namespace ark {
         });
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 14, 15);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 16, 17);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 18, 19);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 20, 21);
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -499,6 +545,41 @@ namespace ark {
         return m_FallbackIrradianceCube.create(*m_Device, desc);
     }
 
+    bool ForwardPass::ensureFallbackSpecularCube() {
+        if (!m_Device) {
+            ARK_ERROR("ForwardPass requires RenderDevice for fallback specular cubemap");
+            return false;
+        }
+
+        if (m_FallbackSpecularCube.isValid()) {
+            return true;
+        }
+
+        EnvironmentCubeResourceDesc desc{};
+        desc.debugName = "ForwardFallbackSpecularCube";
+        desc.faceExtent = rhi::Extent2D{1, 1};
+        desc.format = rhi::Format::RGBA16Float;
+        desc.mipLevels = 1;
+        return m_FallbackSpecularCube.create(*m_Device, desc);
+    }
+
+    bool ForwardPass::ensureFallbackBrdfLut() {
+        if (!m_Device) {
+            ARK_ERROR("ForwardPass requires RenderDevice for fallback BRDF LUT");
+            return false;
+        }
+
+        if (m_FallbackBrdfLut.isValid()) {
+            return true;
+        }
+
+        EnvironmentBrdfLutResourceDesc desc{};
+        desc.debugName = "ForwardFallbackBrdfLut";
+        desc.extent = rhi::Extent2D{1, 1};
+        desc.format = rhi::Format::RGBA16Float;
+        return m_FallbackBrdfLut.create(*m_Device, desc);
+    }
+
     bool ForwardPass::uploadEnvironmentResources(FrameContext& frameContext) {
         if (!frameContext.context) {
             ARK_ERROR("ForwardPass requires DeviceContext for environment upload");
@@ -508,7 +589,11 @@ namespace ark {
         if (!ensureFallbackEnvironment() ||
             !m_FallbackEnvironment.upload(*frameContext.context) ||
             !ensureFallbackIrradianceCube() ||
-            !transitionToShaderResource(frameContext, m_FallbackIrradianceCube.texture())) {
+            !transitionToShaderResource(frameContext, m_FallbackIrradianceCube.texture()) ||
+            !ensureFallbackSpecularCube() ||
+            !transitionToShaderResource(frameContext, m_FallbackSpecularCube.texture()) ||
+            !ensureFallbackBrdfLut() ||
+            !transitionToShaderResource(frameContext, m_FallbackBrdfLut.texture())) {
             return false;
         }
 
@@ -787,6 +872,34 @@ namespace ark {
         rhi::SamplerDescriptor irradianceSamplerDescriptor{};
         irradianceSamplerDescriptor.sampler = irradiance->sampler();
         descriptors.descriptorSet->updateSampler(17, irradianceSamplerDescriptor);
+
+        EnvironmentCubeResource* specular = resolvePrefilteredSpecularResource(frameContext);
+        if (!specular || !specular->textureView() || !specular->sampler()) {
+            ARK_ERROR("ForwardPass requires a ready specular cubemap for descriptor update");
+            return false;
+        }
+
+        rhi::SampledImageDescriptor specularImageDescriptor{};
+        specularImageDescriptor.view = specular->textureView();
+        descriptors.descriptorSet->updateSampledImage(18, specularImageDescriptor);
+
+        rhi::SamplerDescriptor specularSamplerDescriptor{};
+        specularSamplerDescriptor.sampler = specular->sampler();
+        descriptors.descriptorSet->updateSampler(19, specularSamplerDescriptor);
+
+        EnvironmentBrdfLutResource* brdfLut = resolveBrdfLutResource(frameContext);
+        if (!brdfLut || !brdfLut->textureView() || !brdfLut->sampler()) {
+            ARK_ERROR("ForwardPass requires a ready BRDF LUT for descriptor update");
+            return false;
+        }
+
+        rhi::SampledImageDescriptor brdfLutImageDescriptor{};
+        brdfLutImageDescriptor.view = brdfLut->textureView();
+        descriptors.descriptorSet->updateSampledImage(20, brdfLutImageDescriptor);
+
+        rhi::SamplerDescriptor brdfLutSamplerDescriptor{};
+        brdfLutSamplerDescriptor.sampler = brdfLut->sampler();
+        descriptors.descriptorSet->updateSampler(21, brdfLutSamplerDescriptor);
         return true;
     }
 
@@ -806,6 +919,22 @@ namespace ark {
         }
 
         return &m_FallbackIrradianceCube;
+    }
+
+    EnvironmentCubeResource* ForwardPass::resolvePrefilteredSpecularResource(FrameContext& frameContext) {
+        if (isPrefilteredSpecularCubeReady(frameContext.prefilteredSpecularCube)) {
+            return frameContext.prefilteredSpecularCube;
+        }
+
+        return &m_FallbackSpecularCube;
+    }
+
+    EnvironmentBrdfLutResource* ForwardPass::resolveBrdfLutResource(FrameContext& frameContext) {
+        if (isBrdfLutReady(frameContext.brdfLut)) {
+            return frameContext.brdfLut;
+        }
+
+        return &m_FallbackBrdfLut;
     }
 
     bool ForwardPass::drawMeshItem(FrameContext& frameContext,
