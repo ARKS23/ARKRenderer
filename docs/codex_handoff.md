@@ -1,5 +1,59 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-15, Phase 0.51)
+
+ARKRenderer has completed Phase 0.51: Renderer Quality / Environment Bake Config API.
+
+Key changes:
+- Added `src/renderer/RendererQuality.h/.cpp`.
+- Added `EnvironmentBakeQualityDesc`, `RendererQualityDesc`, and `sanitizeRendererQualityDesc()`.
+- `RendererDesc` now exposes `RendererQualityDesc quality` while keeping existing default model/environment/debug fields compatible.
+- `DefaultRenderer` now stores sanitized quality settings and uses them for default environment cubemap, irradiance cubemap, prefiltered specular cubemap, and BRDF LUT target creation.
+- Default irradiance sample delta, specular prefilter sample count, and BRDF LUT sample count now come from quality config instead of hardcoded `Renderer.cpp` constants.
+- Bake enable flags are respected in target creation, one-shot prepare paths, and `FrameContext` resolve paths; disabled resources stay `nullptr` so existing ForwardPass fallback paths remain active.
+- Default values remain compatible with Phase 0.50:
+  - environment cube 512x512,
+  - irradiance cube 32x32,
+  - specular cube 256x256,
+  - BRDF LUT 256x256,
+  - irradiance sample delta 0.1,
+  - specular sample count 128,
+  - BRDF LUT sample count 1024.
+- Added `ark_renderer_quality_smoke`.
+- `ark_framework_headers_smoke` now covers the renderer quality public API.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_renderer_quality_smoke ark_framework_headers_smoke ark_frame_validation_smoke ark_sandbox
+build\msvc-vcpkg\Debug\ark_renderer_quality_smoke.exe
+build\msvc-vcpkg\Debug\ark_framework_headers_smoke.exe
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke
+ark_sandbox hidden-window smoke with assets\models\material_ball_validation_fixture.gltf
+ark_sandbox hidden-window smoke with --debug-orientation
+```
+
+Results:
+```text
+targeted build passed
+ark_renderer_quality_smoke passed
+ark_framework_headers_smoke passed
+ark_frame_validation_smoke passed with golden diff mean/max/mismatch all 0
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+CTest: 24/24 tests passed
+default sandbox hidden-window smoke passed
+material ball sandbox hidden-window smoke passed
+debug orientation sandbox hidden-window smoke passed
+```
+
+Recommended next step:
+- Phase 0.52 can now use `SceneResource` plus `RendererQualityDesc` as the stable boundary for sandbox/validation scene presets, renderer quality presets, or post-processing expansion such as Bloom / auto exposure / ACES.
+- Keep RenderGraph expansion and complex scene switching deferred unless the next phase explicitly targets those systems.
+
 ## Latest Update (2026-06-15, Phase 0.50)
 
 ARKRenderer has completed Phase 0.50: Public Scene / Resource Loading API Foundation.

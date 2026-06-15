@@ -21,14 +21,6 @@
 
 namespace ark {
     namespace {
-        constexpr rhi::Extent2D DefaultEnvironmentCubeFaceExtent{512, 512};
-        constexpr rhi::Extent2D DefaultIrradianceCubeFaceExtent{32, 32};
-        constexpr rhi::Extent2D DefaultSpecularCubeFaceExtent{256, 256};
-        constexpr rhi::Extent2D DefaultBrdfLutExtent{256, 256};
-        constexpr float DefaultIrradianceSampleDelta = 0.1f;
-        constexpr u32 DefaultSpecularPrefilterSampleCount = 128;
-        constexpr u32 DefaultBrdfLutSampleCount = 1024;
-
         // 第一版只提供默认 swapchain 配置，后续可以把 vsync、format 等暴露到 RendererDesc。
         rhi::SwapChainDesc makeDefaultSwapChainDesc(rhi::Extent2D extent) {
             rhi::SwapChainDesc desc{};
@@ -73,7 +65,8 @@ namespace ark {
         class DefaultRenderer final : public Renderer {
         public:
             explicit DefaultRenderer(const RendererDesc& desc)
-                : m_Extent(desc.extent) {
+                : m_Quality(sanitizeRendererQualityDesc(desc.quality)),
+                  m_Extent(desc.extent) {
                 // Renderer 只组装公共 RHI 描述，具体后端对象由内部工厂创建。
                 rhi::RenderBackendDesc backendDesc{};
                 backendDesc.device.desc.backend = rhi::RenderBackendType::Vulkan;
@@ -259,41 +252,43 @@ namespace ark {
                     return false;
                 }
 
+                const EnvironmentBakeQualityDesc& bake = m_Quality.environmentBake;
+
                 EnvironmentCubeResourceDesc cubeDesc{};
                 cubeDesc.debugName = "DefaultSandboxEnvironmentCube";
-                cubeDesc.faceExtent = DefaultEnvironmentCubeFaceExtent;
+                cubeDesc.faceExtent = bake.environmentCubeFaceExtent;
                 cubeDesc.format = rhi::Format::RGBA16Float;
                 cubeDesc.mipLevels = 1;
-                if (!m_DefaultEnvironmentCube.create(m_Backend->device(), cubeDesc)) {
+                if (bake.enableEnvironmentCube && !m_DefaultEnvironmentCube.create(m_Backend->device(), cubeDesc)) {
                     ARK_WARN("Renderer failed to create default sandbox environment cubemap conversion target");
                     m_DefaultEnvironmentCube.resetImmediate();
                 }
 
                 EnvironmentCubeResourceDesc irradianceDesc{};
                 irradianceDesc.debugName = "DefaultSandboxIrradianceCube";
-                irradianceDesc.faceExtent = DefaultIrradianceCubeFaceExtent;
+                irradianceDesc.faceExtent = bake.irradianceCubeFaceExtent;
                 irradianceDesc.format = rhi::Format::RGBA16Float;
                 irradianceDesc.mipLevels = 1;
-                if (!m_DefaultIrradianceCube.create(m_Backend->device(), irradianceDesc)) {
+                if (bake.enableIrradiance && !m_DefaultIrradianceCube.create(m_Backend->device(), irradianceDesc)) {
                     ARK_WARN("Renderer failed to create default sandbox irradiance cubemap target");
                     m_DefaultIrradianceCube.resetImmediate();
                 }
 
                 EnvironmentCubeResourceDesc specularDesc{};
                 specularDesc.debugName = "DefaultSandboxSpecularCube";
-                specularDesc.faceExtent = DefaultSpecularCubeFaceExtent;
+                specularDesc.faceExtent = bake.specularCubeFaceExtent;
                 specularDesc.format = rhi::Format::RGBA16Float;
-                specularDesc.mipLevels = rhi::calculateMipLevelCount(DefaultSpecularCubeFaceExtent);
-                if (!m_DefaultSpecularCube.create(m_Backend->device(), specularDesc)) {
+                specularDesc.mipLevels = rhi::calculateMipLevelCount(bake.specularCubeFaceExtent);
+                if (bake.enableSpecularPrefilter && !m_DefaultSpecularCube.create(m_Backend->device(), specularDesc)) {
                     ARK_WARN("Renderer failed to create default sandbox specular cubemap target");
                     m_DefaultSpecularCube.resetImmediate();
                 }
 
                 EnvironmentBrdfLutResourceDesc brdfLutDesc{};
                 brdfLutDesc.debugName = "DefaultSandboxBrdfLut";
-                brdfLutDesc.extent = DefaultBrdfLutExtent;
+                brdfLutDesc.extent = bake.brdfLutExtent;
                 brdfLutDesc.format = rhi::Format::RGBA16Float;
-                if (!m_DefaultBrdfLut.create(m_Backend->device(), brdfLutDesc)) {
+                if (bake.enableBrdfLut && !m_DefaultBrdfLut.create(m_Backend->device(), brdfLutDesc)) {
                     ARK_WARN("Renderer failed to create default sandbox BRDF LUT target");
                     m_DefaultBrdfLut.resetImmediate();
                 }
@@ -302,7 +297,9 @@ namespace ark {
             }
 
             void prepareDefaultEnvironmentCube(rhi::DeviceContext& context, RenderScene& renderScene) {
-                if (m_DefaultEnvironmentCubeConversionAttempted || m_DefaultEnvironmentCubeConverted) {
+                if (!m_Quality.environmentBake.enableEnvironmentCube ||
+                    m_DefaultEnvironmentCubeConversionAttempted ||
+                    m_DefaultEnvironmentCubeConverted) {
                     return;
                 }
 
@@ -337,7 +334,9 @@ namespace ark {
             }
 
             void prepareDefaultIrradianceCube(rhi::DeviceContext& context, RenderScene& renderScene) {
-                if (m_DefaultIrradianceCubeGenerationAttempted || m_DefaultIrradianceCubeGenerated) {
+                if (!m_Quality.environmentBake.enableIrradiance ||
+                    m_DefaultIrradianceCubeGenerationAttempted ||
+                    m_DefaultIrradianceCubeGenerated) {
                     return;
                 }
 
@@ -359,7 +358,7 @@ namespace ark {
                 EnvironmentIrradianceGenerationDesc generationDesc{};
                 generationDesc.source = &m_DefaultEnvironmentCube;
                 generationDesc.target = &m_DefaultIrradianceCube;
-                generationDesc.sampleDelta = DefaultIrradianceSampleDelta;
+                generationDesc.sampleDelta = m_Quality.environmentBake.irradianceSampleDelta;
                 generationDesc.debugName = "DefaultSandboxIrradianceGeneration";
                 if (!m_EnvironmentIrradianceGenerator.generate(context, generationDesc)) {
                     ARK_WARN("Renderer failed to generate default sandbox irradiance cubemap; keeping "
@@ -372,7 +371,9 @@ namespace ark {
             }
 
             void prepareDefaultSpecularCube(rhi::DeviceContext& context, RenderScene& renderScene) {
-                if (m_DefaultSpecularCubeGenerationAttempted || m_DefaultSpecularCubeGenerated) {
+                if (!m_Quality.environmentBake.enableSpecularPrefilter ||
+                    m_DefaultSpecularCubeGenerationAttempted ||
+                    m_DefaultSpecularCubeGenerated) {
                     return;
                 }
 
@@ -394,7 +395,7 @@ namespace ark {
                 EnvironmentSpecularPrefilterDesc prefilterDesc{};
                 prefilterDesc.source = &m_DefaultEnvironmentCube;
                 prefilterDesc.target = &m_DefaultSpecularCube;
-                prefilterDesc.sampleCount = DefaultSpecularPrefilterSampleCount;
+                prefilterDesc.sampleCount = m_Quality.environmentBake.specularPrefilterSampleCount;
                 prefilterDesc.debugName = "DefaultSandboxSpecularPrefilter";
                 if (!m_EnvironmentSpecularPrefilterGenerator.generate(context, prefilterDesc)) {
                     ARK_WARN("Renderer failed to generate default sandbox specular cubemap; keeping diffuse IBL path");
@@ -406,7 +407,9 @@ namespace ark {
             }
 
             void prepareDefaultBrdfLut(rhi::DeviceContext& context, RenderScene& renderScene) {
-                if (m_DefaultBrdfLutGenerationAttempted || m_DefaultBrdfLutGenerated) {
+                if (!m_Quality.environmentBake.enableBrdfLut ||
+                    m_DefaultBrdfLutGenerationAttempted ||
+                    m_DefaultBrdfLutGenerated) {
                     return;
                 }
 
@@ -423,7 +426,7 @@ namespace ark {
 
                 EnvironmentBrdfLutGenerationDesc brdfLutDesc{};
                 brdfLutDesc.target = &m_DefaultBrdfLut;
-                brdfLutDesc.sampleCount = DefaultBrdfLutSampleCount;
+                brdfLutDesc.sampleCount = m_Quality.environmentBake.brdfLutSampleCount;
                 brdfLutDesc.debugName = "DefaultSandboxBrdfLutGeneration";
                 if (!m_EnvironmentBrdfLutGenerator.generate(context, brdfLutDesc)) {
                     ARK_WARN("Renderer failed to generate default sandbox BRDF LUT; keeping diffuse IBL path");
@@ -435,6 +438,10 @@ namespace ark {
             }
 
             EnvironmentCubeResource* resolveFrameEnvironmentCube(RenderScene& renderScene) {
+                if (!m_Quality.environmentBake.enableEnvironmentCube) {
+                    return nullptr;
+                }
+
                 EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultEnvironmentCubeConverted &&
@@ -448,6 +455,10 @@ namespace ark {
             }
 
             EnvironmentCubeResource* resolveFrameIrradianceCube(RenderScene& renderScene) {
+                if (!m_Quality.environmentBake.enableIrradiance) {
+                    return nullptr;
+                }
+
                 EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultIrradianceCubeGenerated &&
@@ -461,6 +472,10 @@ namespace ark {
             }
 
             EnvironmentCubeResource* resolveFramePrefilteredSpecularCube(RenderScene& renderScene) {
+                if (!m_Quality.environmentBake.enableSpecularPrefilter) {
+                    return nullptr;
+                }
+
                 EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultSpecularCubeGenerated &&
@@ -474,6 +489,10 @@ namespace ark {
             }
 
             EnvironmentBrdfLutResource* resolveFrameBrdfLut(RenderScene& renderScene) {
+                if (!m_Quality.environmentBake.enableBrdfLut) {
+                    return nullptr;
+                }
+
                 EnvironmentResource* defaultEnvironment = m_DefaultSceneResource.environment();
                 const SceneEnvironment& environment = renderScene.environment();
                 if (m_DefaultBrdfLutGenerated &&
@@ -519,6 +538,7 @@ namespace ark {
             EnvironmentSpecularPrefilterGenerator m_EnvironmentSpecularPrefilterGenerator;
             EnvironmentBrdfLutGenerator m_EnvironmentBrdfLutGenerator;
             RenderQueue m_RenderQueue;
+            RendererQualityDesc m_Quality;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};
             bool m_DefaultEnvironmentCubeConversionAttempted = false;

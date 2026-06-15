@@ -34,6 +34,7 @@
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
+#include "renderer/RendererQuality.h"
 #include "renderer/SandboxEnvironment.h"
 #include "renderer/SceneResource.h"
 #include "renderer/TextureCache.h"
@@ -384,6 +385,14 @@ int main() {
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
     rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
     rendererDesc.useDebugOrientationEnvironment = true;
+    ark::RendererQualityDesc rendererQualityDesc{};
+    rendererQualityDesc.environmentBake.specularPrefilterSampleCount = 256;
+    rendererDesc.quality = rendererQualityDesc;
+    const ark::RendererQualityDesc sanitizedRendererQualityDesc =
+        ark::sanitizeRendererQualityDesc(rendererDesc.quality);
+    if (sanitizedRendererQualityDesc.environmentBake.specularPrefilterSampleCount != 256) {
+        return EXIT_FAILURE;
+    }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
     sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
     sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
@@ -527,6 +536,8 @@ int main() {
     (void)scopedTimer;
     (void)sharedTimer;
     (void)rendererDesc;
+    (void)rendererQualityDesc;
+    (void)sanitizedRendererQualityDesc;
     (void)sceneResourceLoadDesc;
     (void)sceneResourceLoadReport;
     (void)sceneResource;

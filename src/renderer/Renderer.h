@@ -2,6 +2,7 @@
 
 #include "core/FileSystem.h"
 #include "core/Memory.h"
+#include "renderer/RendererQuality.h"
 #include "rhi/RHICommon.h"
 
 namespace ark {
@@ -14,6 +15,7 @@ namespace ark {
         rhi::Extent2D extent{1280, 720};
         Path defaultModelPath;
         Path defaultEnvironmentPath;
+        RendererQualityDesc quality;
         bool useDebugOrientationEnvironment = false;
         bool enableValidation = false;
     };
