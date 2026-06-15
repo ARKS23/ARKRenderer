@@ -1159,6 +1159,108 @@ namespace {
         return true;
     }
 
+    bool validateSpecularIblValidationModelResource() {
+        constexpr std::size_t RowCount = 3;
+        constexpr std::size_t ColumnCount = 5;
+        constexpr std::size_t MaterialCount = RowCount * ColumnCount;
+        const std::array<float, RowCount> metallicValues{0.0f, 0.5f, 1.0f};
+        const std::array<float, ColumnCount> roughnessValues{0.05f, 0.25f, 0.5f, 0.75f, 1.0f};
+
+        const ark::Path modelPath = findModelPath(ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"});
+        if (modelPath.empty()) {
+            std::cerr << "Failed to find specular IBL validation fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
+        if (modelData.empty() || modelData.meshes.size() != MaterialCount ||
+            modelData.materials.size() != MaterialCount || modelData.instances.size() != MaterialCount) {
+            std::cerr << "Unexpected specular IBL validation fixture model data\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Specular IBL validation ModelResource create failed\n";
+            return false;
+        }
+
+        if (modelResource.primitiveCount() != MaterialCount ||
+            modelResource.meshCount() != MaterialCount ||
+            modelResource.materialCount() != MaterialCount ||
+            modelResource.instanceCount() != MaterialCount ||
+            textureCache.size() != 5 ||
+            device.textureCount != 5 ||
+            device.textureViewCount != 5 ||
+            device.samplerCount != 5) {
+            std::cerr << "Specular IBL validation ModelResource counts are invalid\n";
+            return false;
+        }
+
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            const std::size_t row = index / ColumnCount;
+            const std::size_t column = index % ColumnCount;
+            ark::MaterialResource* material = modelResource.primitiveMaterial(index);
+            ark::MeshResource* mesh = modelResource.primitiveMesh(index);
+            if (!material || !mesh) {
+                std::cerr << "Specular IBL validation primitive resources are missing\n";
+                return false;
+            }
+
+            const ark::MaterialFactors& factors = material->factors();
+            if (!near(factors.baseColorFactor[0], 1.0f) ||
+                !near(factors.baseColorFactor[1], 1.0f) ||
+                !near(factors.baseColorFactor[2], 1.0f) ||
+                !near(factors.baseColorFactor[3], 1.0f) ||
+                !near(factors.metallicFactor, metallicValues[row]) ||
+                !near(factors.roughnessFactor, roughnessValues[column])) {
+                std::cerr << "Specular IBL validation material factors were not preserved\n";
+                return false;
+            }
+
+            const ark::MaterialRenderState& renderState = material->renderState();
+            if (renderState.alphaMode != ark::asset::AlphaMode::Opaque ||
+                !near(renderState.alphaCutoff, 0.5f) ||
+                renderState.doubleSided) {
+                std::cerr << "Specular IBL validation material render state is invalid\n";
+                return false;
+            }
+        }
+
+        ark::RenderScene scene{};
+        scene.addModel(modelResource, glm::mat4{1.0f}, "SpecularIblValidationModel");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        if (queue.size() != MaterialCount) {
+            std::cerr << "Specular IBL validation queue size is invalid\n";
+            return false;
+        }
+
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            if (drawItems[index].mesh != modelResource.primitiveMesh(index) ||
+                drawItems[index].material != modelResource.primitiveMaterial(index)) {
+                std::cerr << "Specular IBL validation queue draw item resources are invalid\n";
+                return false;
+            }
+        }
+
+        if (!near(drawItems.front().modelMatrix[3][0], -1.2f) ||
+            !near(drawItems.front().modelMatrix[3][1], 0.6f) ||
+            !near(drawItems.front().modelMatrix[0][0], 0.25f) ||
+            !near(drawItems.back().modelMatrix[3][0], 1.2f) ||
+            !near(drawItems.back().modelMatrix[3][1], -0.6f) ||
+            !near(drawItems.back().modelMatrix[1][1], 0.25f)) {
+            std::cerr << "Specular IBL validation queue transforms are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateAlphaModesModelResource() {
         const ark::Path modelPath = findModelPath(ark::Path{"assets/models/alpha_modes_fixture.gltf"});
         if (modelPath.empty()) {
@@ -1434,6 +1536,7 @@ int main() {
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
                    validateTextureCacheFixtureModelResource() && validateAlphaModesModelResource() &&
+                   validateSpecularIblValidationModelResource() &&
                    validateRenderQueueAlphaBucketsForModelResource() &&
                    validateTexcoord1ModelResource() &&
                    validateTextureTransformModelResource() &&

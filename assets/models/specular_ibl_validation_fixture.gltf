@@ -1,0 +1,91 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "ARKRenderer Phase 0.44 specular IBL validation fixture"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    }
+  ],
+  "nodes": [
+    { "name": "Node_M00_R005", "mesh": 0, "translation": [-1.2, 0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M00_R025", "mesh": 1, "translation": [-0.6, 0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M00_R050", "mesh": 2, "translation": [0.0, 0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M00_R075", "mesh": 3, "translation": [0.6, 0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M00_R100", "mesh": 4, "translation": [1.2, 0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M50_R005", "mesh": 5, "translation": [-1.2, 0.0, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M50_R025", "mesh": 6, "translation": [-0.6, 0.0, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M50_R050", "mesh": 7, "translation": [0.0, 0.0, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M50_R075", "mesh": 8, "translation": [0.6, 0.0, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M50_R100", "mesh": 9, "translation": [1.2, 0.0, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M100_R005", "mesh": 10, "translation": [-1.2, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M100_R025", "mesh": 11, "translation": [-0.6, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M100_R050", "mesh": 12, "translation": [0.0, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M100_R075", "mesh": 13, "translation": [0.6, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] },
+    { "name": "Node_M100_R100", "mesh": 14, "translation": [1.2, -0.6, 0.0], "scale": [0.25, 0.25, 1.0] }
+  ],
+  "meshes": [
+    { "name": "Mesh_M00_R005", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 0, "mode": 4 }] },
+    { "name": "Mesh_M00_R025", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 1, "mode": 4 }] },
+    { "name": "Mesh_M00_R050", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 2, "mode": 4 }] },
+    { "name": "Mesh_M00_R075", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 3, "mode": 4 }] },
+    { "name": "Mesh_M00_R100", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 4, "mode": 4 }] },
+    { "name": "Mesh_M50_R005", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 5, "mode": 4 }] },
+    { "name": "Mesh_M50_R025", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 6, "mode": 4 }] },
+    { "name": "Mesh_M50_R050", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 7, "mode": 4 }] },
+    { "name": "Mesh_M50_R075", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 8, "mode": 4 }] },
+    { "name": "Mesh_M50_R100", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 9, "mode": 4 }] },
+    { "name": "Mesh_M100_R005", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 10, "mode": 4 }] },
+    { "name": "Mesh_M100_R025", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 11, "mode": 4 }] },
+    { "name": "Mesh_M100_R050", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 12, "mode": 4 }] },
+    { "name": "Mesh_M100_R075", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 13, "mode": 4 }] },
+    { "name": "Mesh_M100_R100", "primitives": [{ "attributes": { "POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2 }, "indices": 3, "material": 14, "mode": 4 }] }
+  ],
+  "materials": [
+    { "name": "M00_R005", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.0, "roughnessFactor": 0.05 } },
+    { "name": "M00_R025", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.0, "roughnessFactor": 0.25 } },
+    { "name": "M00_R050", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.0, "roughnessFactor": 0.50 } },
+    { "name": "M00_R075", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.0, "roughnessFactor": 0.75 } },
+    { "name": "M00_R100", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.0, "roughnessFactor": 1.00 } },
+    { "name": "M50_R005", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.5, "roughnessFactor": 0.05 } },
+    { "name": "M50_R025", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.5, "roughnessFactor": 0.25 } },
+    { "name": "M50_R050", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.5, "roughnessFactor": 0.50 } },
+    { "name": "M50_R075", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.5, "roughnessFactor": 0.75 } },
+    { "name": "M50_R100", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 0.5, "roughnessFactor": 1.00 } },
+    { "name": "M100_R005", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 1.0, "roughnessFactor": 0.05 } },
+    { "name": "M100_R025", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 1.0, "roughnessFactor": 0.25 } },
+    { "name": "M100_R050", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 1.0, "roughnessFactor": 0.50 } },
+    { "name": "M100_R075", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 1.0, "roughnessFactor": 0.75 } },
+    { "name": "M100_R100", "pbrMetallicRoughness": { "baseColorFactor": [1.0, 1.0, 1.0, 1.0], "baseColorTexture": { "index": 0 }, "metallicFactor": 1.0, "roughnessFactor": 1.00 } }
+  ],
+  "textures": [
+    {
+      "source": 0
+    }
+  ],
+  "images": [
+    {
+      "uri": "../textures/xiaowei.png"
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "data:application/octet-stream;base64,AACAvwAAgL8AAAAAAACAPwAAgL8AAAAAAACAPwAAgD8AAAAAAACAvwAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAQAAAAIAAAAAAAAAAgAAAAMAAAA=",
+      "byteLength": 152
+    }
+  ],
+  "bufferViews": [
+    { "buffer": 0, "byteOffset": 0, "byteLength": 48 },
+    { "buffer": 0, "byteOffset": 48, "byteLength": 48 },
+    { "buffer": 0, "byteOffset": 96, "byteLength": 32 },
+    { "buffer": 0, "byteOffset": 128, "byteLength": 24 }
+  ],
+  "accessors": [
+    { "bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [-1.0, -1.0, 0.0], "max": [1.0, 1.0, 0.0] },
+    { "bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3" },
+    { "bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2" },
+    { "bufferView": 3, "componentType": 5125, "count": 6, "type": "SCALAR" }
+  ]
+}

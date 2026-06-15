@@ -266,6 +266,93 @@ namespace {
         return true;
     }
 
+    bool validateSpecularIblValidationFixture() {
+        constexpr std::size_t RowCount = 3;
+        constexpr std::size_t ColumnCount = 5;
+        constexpr std::size_t MaterialCount = RowCount * ColumnCount;
+        const std::array<float, RowCount> metallicValues{0.0f, 0.5f, 1.0f};
+        const std::array<float, ColumnCount> roughnessValues{0.05f, 0.25f, 0.5f, 0.75f, 1.0f};
+        const std::array<const char*, MaterialCount> materialNames{
+            "M00_R005",
+            "M00_R025",
+            "M00_R050",
+            "M00_R075",
+            "M00_R100",
+            "M50_R005",
+            "M50_R025",
+            "M50_R050",
+            "M50_R075",
+            "M50_R100",
+            "M100_R005",
+            "M100_R025",
+            "M100_R050",
+            "M100_R075",
+            "M100_R100",
+        };
+
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find specular IBL validation fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() || model.meshes.size() != MaterialCount ||
+            model.materials.size() != MaterialCount || model.instances.size() != MaterialCount) {
+            std::cerr << "Unexpected specular IBL validation fixture shape\n";
+            return false;
+        }
+
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            const std::size_t row = index / ColumnCount;
+            const std::size_t column = index % ColumnCount;
+            const ark::asset::MaterialData& material = model.materials[index];
+            const ark::asset::MeshPrimitiveData& mesh = model.meshes[index];
+            const ark::asset::MeshPrimitiveInstanceData& instance = model.instances[index];
+
+            if (material.debugName != materialNames[index] ||
+                mesh.materialIndex != index || instance.meshIndex != index ||
+                material.alphaMode != ark::asset::AlphaMode::Opaque ||
+                material.doubleSided ||
+                !material.hasBaseColorTexture() ||
+                material.baseColorTexturePath.filename() != "xiaowei.png" ||
+                material.hasNormalTexture() ||
+                material.hasMetallicRoughnessTexture() ||
+                material.hasOcclusionTexture() ||
+                material.hasEmissiveTexture()) {
+                std::cerr << "Unexpected specular IBL validation fixture material or primitive metadata\n";
+                return false;
+            }
+
+            if (!near(material.baseColorFactor[0], 1.0f) ||
+                !near(material.baseColorFactor[1], 1.0f) ||
+                !near(material.baseColorFactor[2], 1.0f) ||
+                !near(material.baseColorFactor[3], 1.0f) ||
+                !near(material.metallicFactor, metallicValues[row]) ||
+                !near(material.roughnessFactor, roughnessValues[column])) {
+                std::cerr << "Unexpected specular IBL validation fixture material factors\n";
+                return false;
+            }
+
+            if (mesh.vertices.size() != 4 || mesh.indices.size() != 6) {
+                std::cerr << "Unexpected specular IBL validation fixture mesh data\n";
+                return false;
+            }
+        }
+
+        if (!near(model.instances.front().localTransform.matrix[12], -1.2f) ||
+            !near(model.instances.front().localTransform.matrix[13], 0.6f) ||
+            !near(model.instances.front().localTransform.matrix[0], 0.25f) ||
+            !near(model.instances.back().localTransform.matrix[12], 1.2f) ||
+            !near(model.instances.back().localTransform.matrix[13], -0.6f) ||
+            !near(model.instances.back().localTransform.matrix[5], 0.25f)) {
+            std::cerr << "Unexpected specular IBL validation fixture transforms\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateTextureCacheFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/texture_cache_fixture.gltf"});
         if (path.empty()) {
@@ -531,6 +618,7 @@ namespace {
 
 int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
+                   validateSpecularIblValidationFixture() &&
                    validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
                    validateAlphaModesFixture() && validateTexcoord1Fixture() &&
                    validateTextureTransformFixture() && validateOptionalDamagedHelmetFixture()

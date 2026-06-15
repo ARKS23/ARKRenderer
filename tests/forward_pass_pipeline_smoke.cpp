@@ -27,6 +27,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -45,6 +46,35 @@ namespace {
     };
 
     static_assert(sizeof(CapturedLightingUniform) == 96);
+
+    struct alignas(16) CapturedMaterialUniform {
+        glm::vec4 baseColorFactor;
+        glm::vec4 emissiveFactor;
+        float metallicFactor = 1.0f;
+        float roughnessFactor = 1.0f;
+        float normalScale = 1.0f;
+        float occlusionStrength = 1.0f;
+        float alphaCutoff = 0.5f;
+        float alphaMode = 0.0f;
+        float baseColorTexCoord = 0.0f;
+        float normalTexCoord = 0.0f;
+        float metallicRoughnessTexCoord = 0.0f;
+        float occlusionTexCoord = 0.0f;
+        float emissiveTexCoord = 0.0f;
+        float padding = 0.0f;
+        glm::vec4 baseColorUvTransform0;
+        glm::vec4 baseColorUvTransform1;
+        glm::vec4 normalUvTransform0;
+        glm::vec4 normalUvTransform1;
+        glm::vec4 metallicRoughnessUvTransform0;
+        glm::vec4 metallicRoughnessUvTransform1;
+        glm::vec4 occlusionUvTransform0;
+        glm::vec4 occlusionUvTransform1;
+        glm::vec4 emissiveUvTransform0;
+        glm::vec4 emissiveUvTransform1;
+    };
+
+    static_assert(sizeof(CapturedMaterialUniform) == 240);
 
     bool near(float a, float b, float epsilon = 0.0001f) {
         return std::fabs(a - b) <= epsilon;
@@ -91,7 +121,9 @@ namespace {
         ark::rhi::GraphicsPipelineDesc pipelineDesc{};
         std::vector<ark::rhi::DescriptorBindingDesc> descriptorBindings;
         CapturedLightingUniform lightingUniform{};
+        std::vector<CapturedMaterialUniform> materialUniforms;
         int lightingUniformUpdates = 0;
+        int materialUniformUpdates = 0;
         int pipelineBinds = 0;
         int descriptorBinds = 0;
         int indexedDraws = 0;
@@ -398,6 +430,14 @@ namespace {
                 ++lightingUniformUpdates;
             }
 
+            if (buffer.getDesc().debugName.rfind("ForwardMaterialUniformBuffer.", 0) == 0 &&
+                size == sizeof(CapturedMaterialUniform)) {
+                CapturedMaterialUniform materialUniform{};
+                std::memcpy(&materialUniform, data, sizeof(CapturedMaterialUniform));
+                materialUniforms.push_back(materialUniform);
+                ++materialUniformUpdates;
+            }
+
             return true;
         }
 
@@ -455,8 +495,10 @@ namespace {
 
         ark::rhi::FrameResource frame{};
         CapturedLightingUniform lastLightingUniform{};
+        std::vector<CapturedMaterialUniform> materialUniforms;
         std::vector<ark::rhi::TextureUploadDesc> textureUploads;
         int lightingUniformUpdates = 0;
+        int materialUniformUpdates = 0;
         int pipelineBinds = 0;
         int descriptorBinds = 0;
         int indexedDraws = 0;
@@ -533,7 +575,9 @@ namespace {
                         ark::TextureCache& textureCache,
                         ark::MaterialResource& materialResource,
                         ark::asset::AlphaMode alphaMode,
-                        bool doubleSided) {
+                        bool doubleSided,
+                        float metallicFactor = 1.0f,
+                        float roughnessFactor = 1.0f) {
         ark::MaterialTextureSet textures{};
         textures.baseColor = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
         textures.normal = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
@@ -551,6 +595,8 @@ namespace {
         material.baseColorTexturePath = "forward_pass_pipeline_dummy.png";
         material.alphaMode = alphaMode;
         material.doubleSided = doubleSided;
+        material.metallicFactor = metallicFactor;
+        material.roughnessFactor = roughnessFactor;
         return materialResource.create(material, textures);
     }
 
@@ -678,7 +724,9 @@ namespace {
             capture.descriptorBindings = device.descriptorSetLayoutDescs.front().bindings;
         }
         capture.lightingUniform = context.lastLightingUniform;
+        capture.materialUniforms = context.materialUniforms;
         capture.lightingUniformUpdates = context.lightingUniformUpdates;
+        capture.materialUniformUpdates = context.materialUniformUpdates;
         capture.pipelineBinds = context.pipelineBinds;
         capture.descriptorBinds = context.descriptorBinds;
         capture.indexedDraws = context.indexedDraws;
@@ -725,6 +773,156 @@ namespace {
                 capture.brdfLutSamplerDesc = brdfLutSampler->getDesc();
             }
         }
+        return true;
+    }
+
+    bool validateForwardPassSpecularIblMaterialGridUniforms() {
+        constexpr std::size_t RowCount = 3;
+        constexpr std::size_t ColumnCount = 5;
+        constexpr std::size_t MaterialCount = RowCount * ColumnCount;
+        constexpr float EnvironmentIntensity = 1.0f;
+        const std::array<float, RowCount> metallicValues{0.0f, 0.5f, 1.0f};
+        const std::array<float, ColumnCount> roughnessValues{0.05f, 0.25f, 0.5f, 0.75f, 1.0f};
+
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        FakeSwapChain swapChain{};
+        ark::TextureCache textureCache{};
+        ark::MeshResource mesh{};
+        std::array<ark::MaterialResource, MaterialCount> materials{};
+        ark::EnvironmentResource environmentResource{};
+        ark::EnvironmentCubeResource irradianceResource{};
+        ark::EnvironmentCubeResource specularResource{};
+        ark::EnvironmentBrdfLutResource brdfLutResource{};
+
+        if (!mesh.create(device, makeTriangle())) {
+            std::cerr << "Failed to create ForwardPass material grid mesh\n";
+            return false;
+        }
+
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            const std::size_t row = index / ColumnCount;
+            const std::size_t column = index % ColumnCount;
+            if (!createMaterial(device,
+                                textureCache,
+                                materials[index],
+                                ark::asset::AlphaMode::Opaque,
+                                false,
+                                metallicValues[row],
+                                roughnessValues[column])) {
+                std::cerr << "Failed to create ForwardPass material grid material\n";
+                return false;
+            }
+        }
+
+        ark::EnvironmentResourceDesc environmentDesc{};
+        environmentDesc.debugName = "ForwardPassMaterialGridEnvironment";
+        if (!environmentResource.create(device, makeHdrEnvironmentImage(), environmentDesc)) {
+            std::cerr << "Failed to create ForwardPass material grid environment\n";
+            return false;
+        }
+
+        ark::EnvironmentCubeResourceDesc irradianceDesc{};
+        irradianceDesc.debugName = "ForwardPassMaterialGridIrradiance";
+        irradianceDesc.faceExtent = ark::rhi::Extent2D{4, 4};
+        irradianceDesc.format = ark::rhi::Format::RGBA16Float;
+        irradianceDesc.mipLevels = 1;
+        if (!irradianceResource.create(device, irradianceDesc)) {
+            std::cerr << "Failed to create ForwardPass material grid irradiance\n";
+            return false;
+        }
+
+        ark::EnvironmentCubeResourceDesc specularDesc{};
+        specularDesc.debugName = "ForwardPassMaterialGridSpecular";
+        specularDesc.faceExtent = ark::rhi::Extent2D{4, 4};
+        specularDesc.format = ark::rhi::Format::RGBA16Float;
+        specularDesc.mipLevels = 3;
+        if (!specularResource.create(device, specularDesc)) {
+            std::cerr << "Failed to create ForwardPass material grid specular resource\n";
+            return false;
+        }
+
+        ark::EnvironmentBrdfLutResourceDesc brdfLutDesc{};
+        brdfLutDesc.debugName = "ForwardPassMaterialGridBrdfLut";
+        brdfLutDesc.extent = ark::rhi::Extent2D{4, 4};
+        brdfLutDesc.format = ark::rhi::Format::RGBA16Float;
+        if (!brdfLutResource.create(device, brdfLutDesc)) {
+            std::cerr << "Failed to create ForwardPass material grid BRDF LUT\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        ark::SceneEnvironment environment{};
+        environment.environment = &environmentResource;
+        environment.intensity = EnvironmentIntensity;
+        scene.setEnvironment(environment);
+
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            const float x = (static_cast<float>(index % ColumnCount) - 2.0f) * 0.6f;
+            const float y = (1.0f - static_cast<float>(index / ColumnCount)) * 0.6f;
+            glm::mat4 transform{1.0f};
+            transform[3][0] = x;
+            transform[3][1] = y;
+            scene.addObject(mesh, materials[index], transform, "ForwardMaterialGridDraw");
+        }
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+
+        ark::RenderView view{};
+        view.setDefaultPerspective(swapChain.getDesc().extent);
+
+        ark::ForwardPass pass{};
+        pass.setup(device);
+
+        context.frame.frameSlot = 0;
+        context.frame.frameIndex = 0;
+
+        ark::FrameContext frameContext{};
+        frameContext.frameIndex = 0;
+        frameContext.scene = &scene;
+        frameContext.view = &view;
+        frameContext.queue = &queue;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.swapChain = &swapChain;
+        frameContext.frameResource = &context.frame;
+        frameContext.extent = swapChain.getDesc().extent;
+        frameContext.irradianceCube = &irradianceResource;
+        frameContext.prefilteredSpecularCube = &specularResource;
+        frameContext.brdfLut = &brdfLutResource;
+
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "ForwardPass material grid smoke failed to execute\n";
+            return false;
+        }
+
+        if (context.indexedDraws != static_cast<int>(MaterialCount) ||
+            context.materialUniformUpdates != static_cast<int>(MaterialCount) ||
+            context.materialUniforms.size() != MaterialCount ||
+            context.lightingUniformUpdates != 1 ||
+            !near(context.lastLightingUniform.environment.w, 1.0f) ||
+            !near(context.lastLightingUniform.environmentSpecular.x, 2.0f)) {
+            std::cerr << "ForwardPass material grid did not record expected draw or specular uniform data\n";
+            return false;
+        }
+
+        for (std::size_t index = 0; index < MaterialCount; ++index) {
+            const std::size_t row = index / ColumnCount;
+            const std::size_t column = index % ColumnCount;
+            const CapturedMaterialUniform& uniform = context.materialUniforms[index];
+            if (!near(uniform.baseColorFactor.x, 1.0f) ||
+                !near(uniform.baseColorFactor.y, 1.0f) ||
+                !near(uniform.baseColorFactor.z, 1.0f) ||
+                !near(uniform.baseColorFactor.w, 1.0f) ||
+                !near(uniform.metallicFactor, metallicValues[row]) ||
+                !near(uniform.roughnessFactor, roughnessValues[column]) ||
+                !near(uniform.alphaMode, static_cast<float>(ark::asset::AlphaMode::Opaque))) {
+                std::cerr << "ForwardPass material grid uniform factors are invalid\n";
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -1097,6 +1295,7 @@ int main() {
                    validateForwardPassEnvironmentDescriptors() &&
                    validateForwardPassSceneEnvironmentUniform() &&
                    validateForwardPassSceneSpecularResources() &&
+                   validateForwardPassSpecularIblMaterialGridUniforms() &&
                    validateForwardPassUsesFrameContextFormats() &&
                    validateDoubleSidedCullModes()
                ? EXIT_SUCCESS
