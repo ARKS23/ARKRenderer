@@ -16,6 +16,7 @@
 #include "renderer/SandboxEnvironment.h"
 #include "renderer/passes/ForwardPass.h"
 #include "renderer/passes/SkyboxPass.h"
+#include "renderer/passes/ToneMappingPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/RenderBackend.h"
@@ -40,9 +41,12 @@
 
 namespace {
     constexpr ark::rhi::Extent2D FrameExtent{256, 144};
-    constexpr ark::u32 FrameBytesPerPixel = 8;
-    constexpr ark::u64 FrameByteSize =
-        static_cast<ark::u64>(FrameExtent.width) * FrameExtent.height * FrameBytesPerPixel;
+    constexpr ark::u32 HdrFrameBytesPerPixel = 8;
+    constexpr ark::u32 LdrFrameBytesPerPixel = 4;
+    constexpr ark::u64 HdrFrameByteSize =
+        static_cast<ark::u64>(FrameExtent.width) * FrameExtent.height * HdrFrameBytesPerPixel;
+    constexpr ark::u64 LdrFrameByteSize =
+        static_cast<ark::u64>(FrameExtent.width) * FrameExtent.height * LdrFrameBytesPerPixel;
 
     class HiddenGlfwWindow final {
     public:
@@ -92,6 +96,19 @@ namespace {
         float maxLuminance = 0.0f;
     };
 
+    struct LdrFrameColorStats {
+        ark::u64 pixelCount = 0;
+        ark::u64 finitePixelCount = 0;
+        ark::u64 nonBlackPixelCount = 0;
+        glm::vec3 minRgb{std::numeric_limits<float>::max()};
+        glm::vec3 maxRgb{std::numeric_limits<float>::lowest()};
+        glm::vec3 meanRgb{0.0f};
+        float meanLuminance = 0.0f;
+        float maxLuminance = 0.0f;
+        float minAlpha = std::numeric_limits<float>::max();
+        float meanAlpha = 0.0f;
+    };
+
     float halfToFloat(ark::u16 value) {
         const ark::u32 sign = static_cast<ark::u32>(value & 0x8000u) << 16u;
         const ark::u32 exponent = (value >> 10u) & 0x1fu;
@@ -133,7 +150,7 @@ namespace {
         double luminanceSum = 0.0;
 
         for (ark::u64 pixelIndex = 0; pixelIndex < stats.pixelCount; ++pixelIndex) {
-            const ark::usize offset = static_cast<ark::usize>(pixelIndex * FrameBytesPerPixel);
+            const ark::usize offset = static_cast<ark::usize>(pixelIndex * HdrFrameBytesPerPixel);
             const float r = halfToFloat(readU16LE(bytes, offset + 0));
             const float g = halfToFloat(readU16LE(bytes, offset + 2));
             const float b = halfToFloat(readU16LE(bytes, offset + 4));
@@ -165,6 +182,52 @@ namespace {
         return stats;
     }
 
+    LdrFrameColorStats computeLdrFrameColorStats(const std::vector<ark::u8>& bytes,
+                                                 ark::rhi::Extent2D extent) {
+        LdrFrameColorStats stats{};
+        stats.pixelCount = static_cast<ark::u64>(extent.width) * extent.height;
+        glm::vec3 sumRgb{0.0f};
+        double luminanceSum = 0.0;
+        double alphaSum = 0.0;
+
+        for (ark::u64 pixelIndex = 0; pixelIndex < stats.pixelCount; ++pixelIndex) {
+            const ark::usize offset = static_cast<ark::usize>(pixelIndex * LdrFrameBytesPerPixel);
+            const float r = static_cast<float>(bytes[offset + 0]) / 255.0f;
+            const float g = static_cast<float>(bytes[offset + 1]) / 255.0f;
+            const float b = static_cast<float>(bytes[offset + 2]) / 255.0f;
+            const float a = static_cast<float>(bytes[offset + 3]) / 255.0f;
+            const glm::vec3 rgb{r, g, b};
+
+            if (std::isfinite(r) && std::isfinite(g) && std::isfinite(b) && std::isfinite(a) &&
+                r >= 0.0f && r <= 1.0f && g >= 0.0f && g <= 1.0f && b >= 0.0f && b <= 1.0f &&
+                a >= 0.0f && a <= 1.0f) {
+                ++stats.finitePixelCount;
+            }
+
+            stats.minRgb = glm::min(stats.minRgb, rgb);
+            stats.maxRgb = glm::max(stats.maxRgb, rgb);
+            stats.minAlpha = std::min(stats.minAlpha, a);
+            sumRgb += rgb;
+            alphaSum += a;
+
+            const float luminance = glm::dot(rgb, glm::vec3{0.2126f, 0.7152f, 0.0722f});
+            if (luminance > 1.0e-4f) {
+                ++stats.nonBlackPixelCount;
+            }
+            stats.maxLuminance = std::max(stats.maxLuminance, luminance);
+            luminanceSum += luminance;
+        }
+
+        if (stats.pixelCount > 0) {
+            const float invPixelCount = 1.0f / static_cast<float>(stats.pixelCount);
+            stats.meanRgb = sumRgb * invPixelCount;
+            stats.meanLuminance = static_cast<float>(luminanceSum / static_cast<double>(stats.pixelCount));
+            stats.meanAlpha = static_cast<float>(alphaSum / static_cast<double>(stats.pixelCount));
+        }
+
+        return stats;
+    }
+
     void printStats(const FrameColorStats& stats) {
         const double nonBlackRatio = stats.pixelCount == 0
                                          ? 0.0
@@ -178,6 +241,23 @@ namespace {
                   << " maxRgb=(" << stats.maxRgb.r << ", " << stats.maxRgb.g << ", " << stats.maxRgb.b << ")"
                   << " meanLum=" << stats.meanLuminance
                   << " maxLum=" << stats.maxLuminance << '\n';
+    }
+
+    void printLdrStats(const LdrFrameColorStats& stats) {
+        const double nonBlackRatio = stats.pixelCount == 0
+                                         ? 0.0
+                                         : static_cast<double>(stats.nonBlackPixelCount) /
+                                               static_cast<double>(stats.pixelCount);
+        std::cerr << "LDR frame stats: pixels=" << stats.pixelCount
+                  << " finite=" << stats.finitePixelCount
+                  << " nonBlackRatio=" << nonBlackRatio
+                  << " meanRgb=(" << stats.meanRgb.r << ", " << stats.meanRgb.g << ", " << stats.meanRgb.b << ")"
+                  << " minRgb=(" << stats.minRgb.r << ", " << stats.minRgb.g << ", " << stats.minRgb.b << ")"
+                  << " maxRgb=(" << stats.maxRgb.r << ", " << stats.maxRgb.g << ", " << stats.maxRgb.b << ")"
+                  << " meanLum=" << stats.meanLuminance
+                  << " maxLum=" << stats.maxLuminance
+                  << " minAlpha=" << stats.minAlpha
+                  << " meanAlpha=" << stats.meanAlpha << '\n';
     }
 
     bool validateStats(const FrameColorStats& stats) {
@@ -212,6 +292,44 @@ namespace {
         return true;
     }
 
+    bool validateLdrStats(const LdrFrameColorStats& stats) {
+        if (stats.pixelCount == 0 || stats.finitePixelCount != stats.pixelCount) {
+            std::cerr << "LDR frame validation read invalid pixels\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        const double nonBlackRatio =
+            static_cast<double>(stats.nonBlackPixelCount) / static_cast<double>(stats.pixelCount);
+        if (nonBlackRatio < 0.05) {
+            std::cerr << "LDR frame validation output is too close to black\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        if (stats.maxLuminance < 0.01f || stats.meanLuminance <= 0.001f ||
+            stats.meanLuminance > 0.98f) {
+            std::cerr << "LDR frame validation luminance is outside the expected smoke range\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        const glm::vec3 channelRange = stats.maxRgb - stats.minRgb;
+        if (std::max({channelRange.r, channelRange.g, channelRange.b}) < 0.01f) {
+            std::cerr << "LDR frame validation output has insufficient color variation\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        if (stats.minAlpha < 0.99f || stats.meanAlpha < 0.99f) {
+            std::cerr << "LDR frame validation alpha is not opaque\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        return true;
+    }
+
     ark::Scope<ark::rhi::Texture> createSceneColorTexture(ark::rhi::RenderDevice& device) {
         ark::rhi::TextureDesc desc{};
         desc.extent = FrameExtent;
@@ -219,6 +337,14 @@ namespace {
         desc.usage = ark::rhi::TextureUsage::RenderTarget |
                      ark::rhi::TextureUsage::ShaderResource |
                      ark::rhi::TextureUsage::TransferSrc;
+        return device.createTexture(desc);
+    }
+
+    ark::Scope<ark::rhi::Texture> createLdrColorTexture(ark::rhi::RenderDevice& device) {
+        ark::rhi::TextureDesc desc{};
+        desc.extent = FrameExtent;
+        desc.format = ark::rhi::Format::RGBA8Unorm;
+        desc.usage = ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::TransferSrc;
         return device.createTexture(desc);
     }
 
@@ -230,10 +356,12 @@ namespace {
         return device.createTexture(desc);
     }
 
-    ark::Scope<ark::rhi::Buffer> createReadbackBuffer(ark::rhi::RenderDevice& device) {
+    ark::Scope<ark::rhi::Buffer> createReadbackBuffer(ark::rhi::RenderDevice& device,
+                                                      const char* debugName,
+                                                      ark::u64 byteSize) {
         ark::rhi::BufferDesc desc{};
-        desc.debugName = "FrameValidationReadbackBuffer";
-        desc.size = FrameByteSize;
+        desc.debugName = debugName;
+        desc.size = byteSize;
         desc.usage = ark::rhi::BufferUsage::TransferDst;
         desc.memoryUsage = ark::rhi::MemoryUsage::GpuToCpu;
         return device.createBuffer(desc);
@@ -269,6 +397,8 @@ namespace {
     bool renderValidationFrame(ark::rhi::RenderDevice& device,
                                ark::rhi::DeviceContext& context,
                                ark::rhi::FrameResource& frame,
+                               ark::SkyboxPass& skyboxPass,
+                               ark::ForwardPass& forwardPass,
                                ark::rhi::Texture& sceneColor,
                                ark::rhi::TextureView& sceneColorView,
                                ark::rhi::Texture& depth,
@@ -278,11 +408,6 @@ namespace {
                                ark::ModelResource& model,
                                const ark::asset::ModelData& modelData,
                                const char* sceneModelName) {
-        ark::SkyboxPass skyboxPass{};
-        ark::ForwardPass forwardPass{};
-        skyboxPass.setup(device);
-        forwardPass.setup(device);
-
         ark::RenderScene scene{};
         scene.setEnvironment(ark::SceneEnvironment{
             .environment = &environment,
@@ -378,6 +503,70 @@ namespace {
         return true;
     }
 
+    bool renderToneMappedLdrFrame(ark::rhi::RenderDevice& device,
+                                  ark::rhi::DeviceContext& context,
+                                  ark::rhi::FrameResource& frame,
+                                  ark::ToneMappingPass& toneMappingPass,
+                                  ark::rhi::TextureView& sceneColorView,
+                                  ark::rhi::Texture& ldrColor,
+                                  ark::rhi::TextureView& ldrColorView) {
+        ark::FrameContext frameContext{};
+        frameContext.frameIndex = frame.frameIndex;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.frameResource = &frame;
+        frameContext.sceneColorView = &sceneColorView;
+        frameContext.extent = FrameExtent;
+        frameContext.colorFormat = ark::rhi::Format::RGBA8Unorm;
+        frameContext.depthFormat = ark::rhi::Format::Unknown;
+        frameContext.clearColor = ark::rhi::ClearColor{0.0f, 0.0f, 0.0f, 1.0f};
+
+        if (!toneMappingPass.prepare(frameContext)) {
+            std::cerr << "Tone-mapped frame validation pass prepare failed\n";
+            return false;
+        }
+
+        const std::array<ark::rhi::ResourceBarrier, 1> toLdrRenderTarget{{
+            ark::rhi::ResourceBarrier{
+                .texture = &ldrColor,
+                .before = ldrColor.getState(),
+                .after = ark::rhi::ResourceState::RenderTarget,
+            },
+        }};
+        context.pipelineBarrier(toLdrRenderTarget);
+
+        ark::rhi::RenderingDesc renderingDesc{};
+        renderingDesc.extent = FrameExtent;
+        renderingDesc.colorAttachment.view = &ldrColorView;
+        renderingDesc.colorAttachment.loadOp = ark::rhi::LoadOp::Clear;
+        renderingDesc.colorAttachment.storeOp = ark::rhi::StoreOp::Store;
+        renderingDesc.colorAttachment.clearColor = frameContext.clearColor;
+
+        if (!context.beginRendering(renderingDesc)) {
+            std::cerr << "Tone-mapped frame validation beginRendering failed\n";
+            return false;
+        }
+
+        ark::rhi::Viewport viewport{};
+        viewport.width = static_cast<float>(FrameExtent.width);
+        viewport.height = static_cast<float>(FrameExtent.height);
+        context.setViewport(viewport);
+
+        ark::rhi::ScissorRect scissor{};
+        scissor.width = FrameExtent.width;
+        scissor.height = FrameExtent.height;
+        context.setScissorRect(scissor);
+
+        if (!toneMappingPass.execute(frameContext)) {
+            context.endRendering();
+            std::cerr << "Tone-mapped frame validation pass execute failed\n";
+            return false;
+        }
+
+        context.endRendering();
+        return true;
+    }
+
     bool validateFixtureFrameColorReadback(const ark::Path& fixtureRelativePath,
                                            const char* fixtureName,
                                            const char* sceneModelName) {
@@ -399,9 +588,13 @@ namespace {
         ark::rhi::DeviceContext& context = backend->context();
 
         ark::Scope<ark::rhi::Texture> sceneColor = createSceneColorTexture(device);
+        ark::Scope<ark::rhi::Texture> ldrColor = createLdrColorTexture(device);
         ark::Scope<ark::rhi::Texture> depth = createDepthTexture(device);
-        ark::Scope<ark::rhi::Buffer> readbackBuffer = createReadbackBuffer(device);
-        if (!sceneColor || !depth || !readbackBuffer) {
+        ark::Scope<ark::rhi::Buffer> hdrReadbackBuffer =
+            createReadbackBuffer(device, "FrameValidationHdrReadbackBuffer", HdrFrameByteSize);
+        ark::Scope<ark::rhi::Buffer> ldrReadbackBuffer =
+            createReadbackBuffer(device, "FrameValidationLdrReadbackBuffer", LdrFrameByteSize);
+        if (!sceneColor || !ldrColor || !depth || !hdrReadbackBuffer || !ldrReadbackBuffer) {
             std::cerr << "Failed to create frame validation resources\n";
             return false;
         }
@@ -411,10 +604,15 @@ namespace {
         ark::Scope<ark::rhi::TextureView> sceneColorView =
             device.createTextureView(*sceneColor, sceneColorViewDesc);
 
+        ark::rhi::TextureViewDesc ldrColorViewDesc{};
+        ldrColorViewDesc.format = ark::rhi::Format::RGBA8Unorm;
+        ark::Scope<ark::rhi::TextureView> ldrColorView =
+            device.createTextureView(*ldrColor, ldrColorViewDesc);
+
         ark::rhi::TextureViewDesc depthViewDesc{};
         depthViewDesc.format = ark::rhi::Format::D32Float;
         ark::Scope<ark::rhi::TextureView> depthView = device.createTextureView(*depth, depthViewDesc);
-        if (!sceneColorView || !depthView) {
+        if (!sceneColorView || !ldrColorView || !depthView) {
             std::cerr << "Failed to create frame validation texture views\n";
             return false;
         }
@@ -460,6 +658,13 @@ namespace {
         ark::EnvironmentCubeConverter converter{};
         converter.setup(device);
 
+        ark::SkyboxPass skyboxPass{};
+        ark::ForwardPass forwardPass{};
+        ark::ToneMappingPass toneMappingPass{};
+        skyboxPass.setup(device);
+        forwardPass.setup(device);
+        toneMappingPass.setup(device);
+
         ark::rhi::FrameResource& frame = context.beginFrame();
         if (!context.begin(frame)) {
             std::cerr << "Failed to begin frame validation command recording\n";
@@ -483,6 +688,8 @@ namespace {
         if (!renderValidationFrame(device,
                                    context,
                                    frame,
+                                   skyboxPass,
+                                   forwardPass,
                                    *sceneColor,
                                    *sceneColorView,
                                    *depth,
@@ -495,22 +702,60 @@ namespace {
             return false;
         }
 
-        const std::array<ark::rhi::ResourceBarrier, 1> toCopySrc{{
+        const std::array<ark::rhi::ResourceBarrier, 1> sceneColorToCopySrc{{
             ark::rhi::ResourceBarrier{
                 .texture = sceneColor.get(),
                 .before = sceneColor->getState(),
                 .after = ark::rhi::ResourceState::CopySrc,
             },
         }};
-        context.pipelineBarrier(toCopySrc);
+        context.pipelineBarrier(sceneColorToCopySrc);
 
-        ark::rhi::TextureReadbackDesc readbackDesc{};
-        readbackDesc.texture = sceneColor.get();
-        readbackDesc.destinationBuffer = readbackBuffer.get();
-        readbackDesc.extent = FrameExtent;
-        readbackDesc.bytesPerPixel = FrameBytesPerPixel;
-        if (!context.copyTextureToBuffer(readbackDesc)) {
+        ark::rhi::TextureReadbackDesc hdrReadbackDesc{};
+        hdrReadbackDesc.texture = sceneColor.get();
+        hdrReadbackDesc.destinationBuffer = hdrReadbackBuffer.get();
+        hdrReadbackDesc.extent = FrameExtent;
+        hdrReadbackDesc.bytesPerPixel = HdrFrameBytesPerPixel;
+        if (!context.copyTextureToBuffer(hdrReadbackDesc)) {
             std::cerr << "Failed to copy frame validation scene color to readback buffer\n";
+            return false;
+        }
+
+        const std::array<ark::rhi::ResourceBarrier, 1> sceneColorToShaderResource{{
+            ark::rhi::ResourceBarrier{
+                .texture = sceneColor.get(),
+                .before = sceneColor->getState(),
+                .after = ark::rhi::ResourceState::ShaderResource,
+            },
+        }};
+        context.pipelineBarrier(sceneColorToShaderResource);
+
+        if (!renderToneMappedLdrFrame(device,
+                                      context,
+                                      frame,
+                                      toneMappingPass,
+                                      *sceneColorView,
+                                      *ldrColor,
+                                      *ldrColorView)) {
+            return false;
+        }
+
+        const std::array<ark::rhi::ResourceBarrier, 1> ldrColorToCopySrc{{
+            ark::rhi::ResourceBarrier{
+                .texture = ldrColor.get(),
+                .before = ldrColor->getState(),
+                .after = ark::rhi::ResourceState::CopySrc,
+            },
+        }};
+        context.pipelineBarrier(ldrColorToCopySrc);
+
+        ark::rhi::TextureReadbackDesc ldrReadbackDesc{};
+        ldrReadbackDesc.texture = ldrColor.get();
+        ldrReadbackDesc.destinationBuffer = ldrReadbackBuffer.get();
+        ldrReadbackDesc.extent = FrameExtent;
+        ldrReadbackDesc.bytesPerPixel = LdrFrameBytesPerPixel;
+        if (!context.copyTextureToBuffer(ldrReadbackDesc)) {
+            std::cerr << "Failed to copy frame validation LDR color to readback buffer\n";
             return false;
         }
 
@@ -525,14 +770,21 @@ namespace {
 
         device.waitIdle();
 
-        std::vector<ark::u8> bytes(static_cast<ark::usize>(FrameByteSize));
-        if (!readbackBuffer->readData(bytes.data(), FrameByteSize)) {
-            std::cerr << "Failed to read frame validation bytes\n";
+        std::vector<ark::u8> hdrBytes(static_cast<ark::usize>(HdrFrameByteSize));
+        if (!hdrReadbackBuffer->readData(hdrBytes.data(), HdrFrameByteSize)) {
+            std::cerr << "Failed to read HDR frame validation bytes\n";
             return false;
         }
 
-        const FrameColorStats stats = computeFrameColorStats(bytes, FrameExtent);
-        return validateStats(stats);
+        std::vector<ark::u8> ldrBytes(static_cast<ark::usize>(LdrFrameByteSize));
+        if (!ldrReadbackBuffer->readData(ldrBytes.data(), LdrFrameByteSize)) {
+            std::cerr << "Failed to read LDR frame validation bytes\n";
+            return false;
+        }
+
+        const FrameColorStats hdrStats = computeFrameColorStats(hdrBytes, FrameExtent);
+        const LdrFrameColorStats ldrStats = computeLdrFrameColorStats(ldrBytes, FrameExtent);
+        return validateStats(hdrStats) && validateLdrStats(ldrStats);
     }
 
     bool validateFrameColorReadback() {
