@@ -204,8 +204,12 @@ namespace {
             if (desc.defaultModelPath.filename() != "sponza.gltf" ||
                 desc.defaultAdditionalModels.size() != 1 ||
                 desc.defaultAdditionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-                desc.camera.distance < 1000.0f ||
-                desc.camera.farPlane < 5000.0f) {
+                desc.camera.distance < 10.0f ||
+                desc.camera.distance > 40.0f ||
+                desc.camera.target.y < 1.0f ||
+                desc.camera.target.y > 4.0f ||
+                desc.camera.farPlane < 100.0f ||
+                desc.camera.farPlane > 300.0f) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }

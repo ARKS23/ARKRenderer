@@ -44,8 +44,8 @@ namespace ark {
                 scene.modelPath = SponzaFixturePath;
                 scene.additionalModels.push_back(SceneAdditionalModelDesc{
                     DamagedHelmetFixturePath,
-                    glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 190.0f, 0.0f}) *
-                        glm::scale(glm::mat4{1.0f}, glm::vec3{160.0f}),
+                    glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 1.45f, 0.3f}) *
+                        glm::scale(glm::mat4{1.0f}, glm::vec3{1.2f}),
                     "DefaultSandboxDamagedHelmet",
                 });
                 break;

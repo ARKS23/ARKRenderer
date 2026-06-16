@@ -390,8 +390,8 @@ namespace {
         desc.modelName = "SponzaCompositeSceneResource";
         desc.additionalModels.push_back(ark::SceneAdditionalModelDesc{
             "assets/models/DamagedHelmet/DamagedHelmet.gltf",
-            glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 190.0f, 0.0f}) *
-                glm::scale(glm::mat4{1.0f}, glm::vec3{160.0f}),
+            glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 1.45f, 0.3f}) *
+                glm::scale(glm::mat4{1.0f}, glm::vec3{1.2f}),
             "SponzaCompositeHelmet",
         });
 
@@ -417,7 +417,9 @@ namespace {
         }
 
         const glm::mat4& helmetTransform = sceneResource.scene().models()[1].transform;
-        if (helmetTransform[3][1] < 180.0f || helmetTransform[0][0] < 150.0f) {
+        if (helmetTransform[3][1] < 1.4f || helmetTransform[3][1] > 1.5f ||
+            helmetTransform[3][2] < 0.25f || helmetTransform[3][2] > 0.35f ||
+            helmetTransform[0][0] < 1.1f || helmetTransform[0][0] > 1.3f) {
             std::cerr << "Composite helmet transform is invalid\n";
             return false;
         }
