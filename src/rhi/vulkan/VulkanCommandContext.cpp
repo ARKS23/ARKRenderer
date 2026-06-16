@@ -423,18 +423,21 @@ namespace ark::rhi::vulkan {
         // RHI 的 RenderingDesc 在这里翻译为 Vulkan dynamic rendering 的附件描述。
         // 当前只接入一个 color attachment；depth/stencil 会在后续阶段扩展。
         VulkanTextureView* colorView = dynamic_cast<VulkanTextureView*>(desc.colorAttachment.view);
-        if (!colorView || colorView->getHandle() == VK_NULL_HANDLE) {
-            ARK_ERROR("VulkanCommandContext::beginRendering requires Vulkan color attachment view");
-            return false;
-        }
-
+        const bool hasColorAttachment = desc.colorAttachment.view != nullptr;
         VkRenderingAttachmentInfo colorAttachment{};
-        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        colorAttachment.imageView = colorView->getHandle();
-        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        colorAttachment.loadOp = toVkLoadOp(desc.colorAttachment.loadOp);
-        colorAttachment.storeOp = toVkStoreOp(desc.colorAttachment.storeOp);
-        colorAttachment.clearValue = toVkClearValue(desc.colorAttachment.clearColor);
+        if (hasColorAttachment) {
+            if (!colorView || colorView->getHandle() == VK_NULL_HANDLE) {
+                ARK_ERROR("VulkanCommandContext::beginRendering requires Vulkan color attachment view");
+                return false;
+            }
+
+            colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            colorAttachment.imageView = colorView->getHandle();
+            colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachment.loadOp = toVkLoadOp(desc.colorAttachment.loadOp);
+            colorAttachment.storeOp = toVkStoreOp(desc.colorAttachment.storeOp);
+            colorAttachment.clearValue = toVkClearValue(desc.colorAttachment.clearColor);
+        }
 
         VkRenderingAttachmentInfo depthAttachment{};
         if (desc.depthStencilAttachment.view) {
@@ -458,8 +461,8 @@ namespace ark::rhi::vulkan {
         renderingInfo.renderArea.offset = VkOffset2D{0, 0};
         renderingInfo.renderArea.extent = VkExtent2D{desc.extent.width, desc.extent.height};
         renderingInfo.layerCount = 1;
-        renderingInfo.colorAttachmentCount = 1;
-        renderingInfo.pColorAttachments = &colorAttachment;
+        renderingInfo.colorAttachmentCount = hasColorAttachment ? 1u : 0u;
+        renderingInfo.pColorAttachments = hasColorAttachment ? &colorAttachment : nullptr;
         if (desc.depthStencilAttachment.view) {
             // stencil attachment 暂不参与默认 D32Float 路径；D24S8 后续再按格式拆分接入。
             renderingInfo.pDepthAttachment = &depthAttachment;

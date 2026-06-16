@@ -7,6 +7,7 @@
 #include "renderer/passes/BloomPass.h"
 #include "renderer/passes/ClearPass.h"
 #include "renderer/passes/ForwardPass.h"
+#include "renderer/passes/ShadowPass.h"
 #include "renderer/passes/SkyboxPass.h"
 #include "renderer/passes/ToneMappingPass.h"
 #include "rhi/DeviceContext.h"
@@ -25,7 +26,8 @@ namespace ark {
         class DefaultFrameRenderer final : public FrameRenderer {
         public:
             DefaultFrameRenderer()
-                : m_ClearPass(makeScope<ClearPass>()), m_ForwardPass(makeScope<ForwardPass>()),
+                : m_ShadowPass(makeScope<ShadowPass>()), m_ClearPass(makeScope<ClearPass>()),
+                  m_ForwardPass(makeScope<ForwardPass>()),
                   m_SkyboxPass(makeScope<SkyboxPass>()), m_BloomPass(makeScope<BloomPass>()),
                   m_ToneMappingPass(makeScope<ToneMappingPass>()),
                   m_ScenePasses{m_ClearPass.get(), m_SkyboxPass.get(), m_ForwardPass.get()},
@@ -36,6 +38,7 @@ namespace ark {
                 m_Device = &device;
 
                 // pass 私有 GPU 资源在 setup 阶段创建，避免每帧重复创建 buffer / shader / pipeline。
+                m_ShadowPass->setup(device);
                 for (RenderPass* pass : m_ScenePasses) {
                     pass->setup(device);
                 }
@@ -63,6 +66,10 @@ namespace ark {
                     return false;
                 }
                 rhi::Texture* sceneColor = m_SceneColor.get();
+
+                if (!m_ShadowPass->prepare(frameContext) || !m_ShadowPass->execute(frameContext)) {
+                    return false;
+                }
 
                 // Scene pass 写入 HDR scene color，tone mapping pass 再把它映射到 swapchain backbuffer。
                 const std::array<rhi::ResourceBarrier, 2> toRenderTarget{{
@@ -241,6 +248,7 @@ namespace ark {
             }
 
             rhi::RenderDevice* m_Device = nullptr;
+            Scope<ShadowPass> m_ShadowPass;
             Scope<ClearPass> m_ClearPass;
             Scope<ForwardPass> m_ForwardPass;
             Scope<SkyboxPass> m_SkyboxPass;

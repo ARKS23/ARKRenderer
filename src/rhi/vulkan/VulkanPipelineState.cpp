@@ -150,8 +150,11 @@ namespace ark::rhi::vulkan {
         m_PipelineLayout = layout->getHandle();
 
         const VkFormat colorFormat = toVkFormat(m_Desc.colorFormat);
-        if (colorFormat == VK_FORMAT_UNDEFINED) {
-            throw std::runtime_error("GraphicsPipelineDesc requires color format");
+        const VkFormat depthFormat = toVkFormat(m_Desc.depthFormat);
+        const bool hasColorAttachment = colorFormat != VK_FORMAT_UNDEFINED;
+        const bool hasDepthAttachment = depthFormat != VK_FORMAT_UNDEFINED;
+        if (!hasColorAttachment && !hasDepthAttachment) {
+            throw std::runtime_error("GraphicsPipelineDesc requires color or depth format");
         }
 
         std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{};
@@ -236,8 +239,8 @@ namespace ark::rhi::vulkan {
 
         VkPipelineColorBlendStateCreateInfo colorBlendState{};
         colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlendState.attachmentCount = 1;
-        colorBlendState.pAttachments = &colorBlendAttachment;
+        colorBlendState.attachmentCount = hasColorAttachment ? 1u : 0u;
+        colorBlendState.pAttachments = hasColorAttachment ? &colorBlendAttachment : nullptr;
 
         const std::array<VkDynamicState, 2> dynamicStates{
             VK_DYNAMIC_STATE_VIEWPORT,
@@ -248,11 +251,10 @@ namespace ark::rhi::vulkan {
         dynamicState.dynamicStateCount = static_cast<u32>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
-        const VkFormat depthFormat = toVkFormat(m_Desc.depthFormat);
         VkPipelineRenderingCreateInfo renderingCreateInfo{};
         renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-        renderingCreateInfo.colorAttachmentCount = 1;
-        renderingCreateInfo.pColorAttachmentFormats = &colorFormat;
+        renderingCreateInfo.colorAttachmentCount = hasColorAttachment ? 1u : 0u;
+        renderingCreateInfo.pColorAttachmentFormats = hasColorAttachment ? &colorFormat : nullptr;
         renderingCreateInfo.depthAttachmentFormat = depthFormat;
 
         VkGraphicsPipelineCreateInfo pipelineCreateInfo{};

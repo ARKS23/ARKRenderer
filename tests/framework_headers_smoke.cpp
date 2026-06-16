@@ -110,6 +110,9 @@ int main() {
     applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
     applicationDesc.rendererQuality.environmentBake.brdfLutSampleCount = 512;
     applicationDesc.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
+    applicationDesc.shadows.enabled = true;
+    applicationDesc.shadows.strength = 0.5f;
+    applicationDesc.shadows.mapExtent = 2048;
     applicationDesc.useDebugOrientationEnvironment = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
@@ -409,6 +412,11 @@ int main() {
         applicationDesc.postProcessing.bloom.intensity != 0.06f) {
         return EXIT_FAILURE;
     }
+    if (!applicationDesc.shadows.enabled ||
+        applicationDesc.shadows.strength != 0.5f ||
+        applicationDesc.shadows.mapExtent != 2048) {
+        return EXIT_FAILURE;
+    }
     ark::RendererPresetDesc rendererPresetDesc{};
     rendererPresetDesc.scene = ark::RendererScenePreset::MaterialBall;
     rendererPresetDesc.quality = ark::RendererQualityPreset::Low;
@@ -456,6 +464,22 @@ int main() {
     }
     if (bloomSandboxApplicationDesc.defaultModelPath.filename() !=
         "bloom_validation_fixture.gltf") {
+        return EXIT_FAILURE;
+    }
+    constexpr std::array<std::string_view, 5> shadowArguments{
+        "--preset",
+        "shadow-validation",
+        "--shadow-strength=0.4",
+        "--shadow-bounds",
+        "24.0",
+    };
+    const ark::ApplicationDesc shadowSandboxApplicationDesc =
+        ark::makeSandboxApplicationDesc(shadowArguments);
+    if (shadowSandboxApplicationDesc.defaultModelPath.filename() != "sponza.gltf" ||
+        !shadowSandboxApplicationDesc.useDebugOrientationEnvironment ||
+        !shadowSandboxApplicationDesc.shadows.enabled ||
+        shadowSandboxApplicationDesc.shadows.strength != 0.4f ||
+        shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 24.0f) {
         return EXIT_FAILURE;
     }
     constexpr std::array<std::string_view, 2> toneMappingArguments{
@@ -529,9 +553,19 @@ int main() {
     toneMappingSettings.outputGamma = 2.2f;
     toneMappingSettings.operatorType = ark::ToneMappingOperator::ACES;
     renderView.setToneMappingSettings(toneMappingSettings);
+    ark::ShadowSettings shadowSettings{};
+    shadowSettings.enabled = true;
+    shadowSettings.strength = 0.75f;
+    shadowSettings.bias = 0.002f;
+    shadowSettings.mapExtent = 512;
+    renderView.setShadowSettings(shadowSettings);
     if (renderView.toneMappingSettings().exposure != 1.25f ||
         renderView.toneMappingSettings().outputGamma != 2.2f ||
         renderView.toneMappingSettings().operatorType != ark::ToneMappingOperator::ACES ||
+        !renderView.shadowSettings().enabled ||
+        renderView.shadowSettings().strength != 0.75f ||
+        renderView.shadowSettings().bias != 0.002f ||
+        renderView.shadowSettings().mapExtent != 512 ||
         ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {
         return EXIT_FAILURE;
     }

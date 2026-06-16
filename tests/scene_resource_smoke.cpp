@@ -341,13 +341,51 @@ namespace {
 
         return true;
     }
+
+    bool validateSponzaTextureFailureFallbackSceneLoad() {
+        FakeRenderDevice device{};
+
+        ark::SceneResourceLoadDesc desc{};
+        desc.modelPath = "assets/models/sponza/sponza.gltf";
+        desc.modelFallback = ark::SceneModelFallbackPolicy::None;
+        desc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::ProceduralOnly;
+        desc.modelName = "SponzaFallbackSceneResource";
+
+        ark::SceneResource sceneResource{};
+        if (!sceneResource.load(device, desc)) {
+            std::cerr << "SceneResource failed to load Sponza through texture fallback path\n";
+            return false;
+        }
+
+        const ark::SceneResourceLoadReport& report = sceneResource.report();
+        if (!report.modelLoaded ||
+            report.modelSource != ark::SceneModelSource::RequestedPath ||
+            report.resolvedModelPath.filename() != "sponza.gltf" ||
+            sceneResource.scene().size() != 1 ||
+            !sceneResource.model() ||
+            sceneResource.model()->primitiveCount() == 0 ||
+            sceneResource.model()->materialCount() == 0) {
+            std::cerr << "Sponza fallback SceneResource report or model state is invalid\n";
+            return false;
+        }
+
+        ark::RenderQueue queue{};
+        queue.build(sceneResource.scene());
+        if (queue.size() == 0) {
+            std::cerr << "Sponza fallback SceneResource produced an empty render queue\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
     return validateExplicitModelAndProceduralEnvironment() &&
                    validateMissingExplicitModelFallsBack() &&
                    validateDebugOrientationEnvironment() &&
-                   validateMissingEnvironmentFallback()
+                   validateMissingEnvironmentFallback() &&
+                   validateSponzaTextureFailureFallbackSceneLoad()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

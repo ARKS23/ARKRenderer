@@ -5,6 +5,7 @@
 #include "renderer/PostProcessingSettings.h"
 #include "rhi/RHICommon.h"
 
+#include <algorithm>
 #include <cmath>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
@@ -23,6 +24,17 @@ namespace ark {
         float exposure = 1.0f;
         float outputGamma = 2.2f;
         ToneMappingOperator operatorType = ToneMappingOperator::Reinhard;
+    };
+
+    struct ShadowSettings {
+        bool enabled = false;
+        float strength = 0.7f;
+        float bias = 0.0015f;
+        u32 mapExtent = 1024;
+        float orthographicHalfExtent = 8.0f;
+        float nearPlane = 0.1f;
+        float farPlane = 64.0f;
+        float lightDistance = 16.0f;
     };
 
     ToneMappingOperator parseToneMappingOperator(
@@ -110,6 +122,14 @@ namespace ark {
             m_PostProcessingSettings = sanitizePostProcessingSettings(settings);
         }
 
+        const ShadowSettings& shadowSettings() const {
+            return m_ShadowSettings;
+        }
+
+        void setShadowSettings(const ShadowSettings& settings) {
+            m_ShadowSettings = sanitizeShadowSettings(settings);
+        }
+
     private:
         static bool isFinitePositive(float value) {
             return std::isfinite(value) && value > 0.0f;
@@ -133,10 +153,26 @@ namespace ark {
             return matrix;
         }
 
+        static ShadowSettings sanitizeShadowSettings(const ShadowSettings& settings) {
+            ShadowSettings sanitized = settings;
+            sanitized.strength = std::clamp(sanitized.strength, 0.0f, 1.0f);
+            sanitized.bias = std::clamp(sanitized.bias, 0.0f, 0.05f);
+            sanitized.mapExtent = std::clamp(sanitized.mapExtent, 128u, 4096u);
+            sanitized.orthographicHalfExtent = std::clamp(sanitized.orthographicHalfExtent, 1.0f, 128.0f);
+            sanitized.nearPlane = std::clamp(sanitized.nearPlane, 0.01f, 512.0f);
+            sanitized.farPlane = std::clamp(sanitized.farPlane, sanitized.nearPlane + 0.01f, 1024.0f);
+            sanitized.lightDistance = std::clamp(sanitized.lightDistance, 1.0f, 512.0f);
+            if (sanitized.strength <= 0.0f) {
+                sanitized.enabled = false;
+            }
+            return sanitized;
+        }
+
         glm::mat4 m_View{1.0f};
         glm::mat4 m_Projection{1.0f};
         glm::vec3 m_CameraPosition{0.0f};
         ToneMappingSettings m_ToneMappingSettings;
         PostProcessingSettings m_PostProcessingSettings;
+        ShadowSettings m_ShadowSettings;
     };
 } // namespace ark

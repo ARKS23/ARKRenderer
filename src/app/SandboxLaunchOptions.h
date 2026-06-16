@@ -13,6 +13,7 @@ namespace ark {
         RendererPresetDesc preset;
         ToneMappingSettings toneMapping;
         PostProcessingSettings postProcessing;
+        ShadowSettings shadows;
         bool useDebugOrientationEnvironment = false;
         Path modelPathOverride;
         Path environmentPathOverride;
@@ -25,6 +26,10 @@ namespace ark {
         bool missingBloomSoftKneeValue = false;
         bool missingBloomMipCountValue = false;
         bool missingToneMappingValue = false;
+        bool missingShadowStrengthValue = false;
+        bool missingShadowBiasValue = false;
+        bool missingShadowExtentValue = false;
+        bool missingShadowBoundsValue = false;
     };
 
     SandboxLaunchOptions parseSandboxLaunchOptions(std::span<const std::string_view> arguments);

@@ -77,7 +77,16 @@ namespace ark {
                 textureDesc.sampler = toRhiSamplerDesc(slot.sampler, debugName);
                 textureDesc.hasSamplerOverride = true;
             }
-            return textureCache.getOrCreate(device, textureDesc);
+
+            TextureResource* texture = textureCache.getOrCreate(device, textureDesc);
+            if (texture) {
+                return texture;
+            }
+
+            ARK_WARN("ModelResource texture load failed, using slot fallback: path={}, slot={}",
+                     path.string(),
+                     debugName);
+            return textureCache.getOrCreateFallback(device, fallbackKind);
         }
 
         std::string makeMaterialTextureDebugName(const asset::MaterialData& material,

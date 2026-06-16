@@ -23,8 +23,11 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <span>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -1634,6 +1637,61 @@ namespace {
 
         return true;
     }
+
+    bool validateModelResourceTextureLoadFailureFallback() {
+        const ark::Path badTexturePath = ark::Path{"ark_model_resource_bad_texture.ktx"};
+        {
+            std::ofstream output{badTexturePath, std::ios::binary};
+            output << "not a decodable texture";
+        }
+
+        ark::asset::MaterialData material{};
+        material.debugName = "BadTextureFallbackMaterial";
+        material.baseColorTexturePath = badTexturePath;
+        material.normalTexturePath = badTexturePath;
+        material.metallicRoughnessTexturePath = badTexturePath;
+        material.occlusionTexturePath = badTexturePath;
+        material.emissiveTexturePath = badTexturePath;
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "BadTextureFallbackModel";
+        modelData.materials.push_back(material);
+        modelData.meshes.push_back(makeTriangle("BadTextureFallbackTriangle", 0, 0.0f));
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        const bool created = modelResource.create(device, textureCache, modelData);
+
+        std::error_code removeError;
+        std::filesystem::remove(badTexturePath, removeError);
+
+        if (!created) {
+            std::cerr << "ModelResource should fall back when texture decoding fails\n";
+            return false;
+        }
+
+        if (modelResource.primitiveCount() != 1 || modelResource.materialCount() != 1 ||
+            textureCache.size() != 5 || device.textureCount != 5 || device.textureViewCount != 5 ||
+            device.samplerCount != 5) {
+            std::cerr << "Texture load failure fallback resource counts are invalid\n";
+            return false;
+        }
+
+        const ark::MaterialTextureSet& textures = modelResource.primitiveMaterial(0)->textures();
+        if (!textures.baseColor || !textures.normal || !textures.metallicRoughness ||
+            !textures.occlusion || !textures.emissive ||
+            textures.baseColor->format() != ark::rhi::Format::RGBA8Srgb ||
+            textures.normal->format() != ark::rhi::Format::RGBA8Unorm ||
+            textures.metallicRoughness->format() != ark::rhi::Format::RGBA8Unorm ||
+            textures.occlusion->format() != ark::rhi::Format::RGBA8Unorm ||
+            textures.emissive->format() != ark::rhi::Format::RGBA8Srgb) {
+            std::cerr << "Texture load failure fallback slots are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -1649,7 +1707,8 @@ int main() {
                    validateRenderQueueAlphaBucketsForModelResource() &&
                    validateTexcoord1ModelResource() &&
                    validateTextureTransformModelResource() &&
-                   validateModelResourceSamplerOverride()
+                   validateModelResourceSamplerOverride() &&
+                   validateModelResourceTextureLoadFailureFallback()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

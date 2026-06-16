@@ -51,6 +51,7 @@ namespace ark {
         RenderView view;
         view.setToneMappingSettings(m_Desc.toneMapping);
         view.setPostProcessingSettings(m_Desc.postProcessing);
+        view.setShadowSettings(m_Desc.shadows);
         SandboxCameraController cameraController;
         rhi::Extent2D currentExtent = rendererDesc.extent;
         cameraController.setViewportExtent(currentExtent);
@@ -70,6 +71,7 @@ namespace ark {
             cameraController.writeTo(view);
             view.setToneMappingSettings(m_Desc.toneMapping);
             view.setPostProcessingSettings(m_Desc.postProcessing);
+            view.setShadowSettings(m_Desc.shadows);
             m_Renderer->render(scene, view);
         }
 

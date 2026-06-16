@@ -77,6 +77,12 @@ namespace {
             !containsText(shaderSource, "Texture2D<float4> g_BrdfLut") ||
             !containsText(shaderSource, "[[vk::binding(21, 0)]]") ||
             !containsText(shaderSource, "SamplerState g_BrdfLutSampler") ||
+            !containsText(shaderSource, "[[vk::binding(22, 0)]]") ||
+            !containsText(shaderSource, "Texture2D<float> g_ShadowMap") ||
+            !containsText(shaderSource, "[[vk::binding(23, 0)]]") ||
+            !containsText(shaderSource, "SamplerState g_ShadowSampler") ||
+            !containsText(shaderSource, "lightViewProjection") ||
+            !containsText(shaderSource, "sampleShadowVisibility") ||
             !containsText(shaderSource, "normalize(normal)") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
@@ -116,7 +122,8 @@ namespace {
             !containsText(shaderSource, "g_Lighting.environment") ||
             !containsText(shaderSource, "g_Lighting.environment.z") ||
             !containsText(shaderSource, "g_Lighting.environment.w") ||
-            !containsText(shaderSource, "environmentSpecular")) {
+            !containsText(shaderSource, "environmentSpecular") ||
+            !containsText(shaderSource, "shadowVisibility")) {
             std::cerr << "Mesh fragment shader does not expose expected BRDF, alpha and UV selection path\n";
             return false;
         }
@@ -203,6 +210,52 @@ namespace {
             !containsText(shaderSource, "pow") ||
             !containsText(shaderSource, "Sample")) {
             std::cerr << "Tone mapping fragment shader does not expose expected HDR sampling path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateShadowVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("shadow.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find shadow vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read shadow vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct ShadowUniform") ||
+            !containsText(shaderSource, "lightViewProjection") ||
+            !containsText(shaderSource, "float4x4 model") ||
+            !containsText(shaderSource, "[[vk::binding(0, 0)]]") ||
+            !containsText(shaderSource, "mul(g_Shadow.lightViewProjection")) {
+            std::cerr << "Shadow vertex shader does not expose expected depth transform path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateShadowFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("shadow.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find shadow fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read shadow fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "void main()")) {
+            std::cerr << "Shadow fragment shader should be an empty depth-only stage\n";
             return false;
         }
 
@@ -581,6 +634,8 @@ int main() {
     const bool texturedCubeFragmentShaderValid = validateCompiledShader("textured_cube.frag.spv");
     const bool meshVertexShaderValid = validateCompiledShader("mesh.vert.spv");
     const bool meshFragmentShaderValid = validateCompiledShader("mesh.frag.spv");
+    const bool shadowVertexShaderValid = validateCompiledShader("shadow.vert.spv");
+    const bool shadowFragmentShaderValid = validateCompiledShader("shadow.frag.spv");
     const bool toneMappingVertexShaderValid = validateCompiledShader("tonemap.vert.spv");
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
     const bool bloomFragmentShaderValid = validateCompiledShader("bloom.frag.spv");
@@ -597,7 +652,8 @@ int main() {
 
     return vertexShaderValid && fragmentShaderValid && cubeVertexShaderValid && cubeFragmentShaderValid &&
                    texturedCubeVertexShaderValid && texturedCubeFragmentShaderValid && meshVertexShaderValid &&
-                   meshFragmentShaderValid && toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
+                   meshFragmentShaderValid && shadowVertexShaderValid && shadowFragmentShaderValid &&
+                   toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
                    bloomFragmentShaderValid &&
                    brdfLutVertexShaderValid && brdfLutFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
@@ -605,6 +661,7 @@ int main() {
                    specularPrefilterVertexShaderValid && specularPrefilterFragmentShaderValid &&
                    skyboxVertexShaderValid && skyboxFragmentShaderValid &&
                    validateMeshVertexShaderSource() && validateMeshFragmentShaderSource() &&
+                   validateShadowVertexShaderSource() && validateShadowFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
                    validateBloomFragmentShaderSource() &&
                    validateBrdfLutVertexShaderSource() && validateBrdfLutFragmentShaderSource() &&

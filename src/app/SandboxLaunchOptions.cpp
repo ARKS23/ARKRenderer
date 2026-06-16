@@ -94,6 +94,11 @@ namespace ark {
                 continue;
             }
 
+            if (argument == "--shadows" || argument == "--shadow") {
+                options.shadows.enabled = true;
+                continue;
+            }
+
             if (argument == "--preset") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
@@ -237,6 +242,79 @@ namespace ark {
                 continue;
             }
 
+            if (argument == "--shadow-strength") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.shadows.enabled = true;
+                    applyFloatOption(value, options.shadows.strength);
+                } else {
+                    options.missingShadowStrengthValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view shadowStrengthPrefix = "--shadow-strength=";
+            if (hasPrefix(argument, shadowStrengthPrefix)) {
+                options.shadows.enabled = true;
+                applyFloatOption(argument.substr(shadowStrengthPrefix.size()), options.shadows.strength);
+                continue;
+            }
+
+            if (argument == "--shadow-bias") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.shadows.enabled = true;
+                    applyFloatOption(value, options.shadows.bias);
+                } else {
+                    options.missingShadowBiasValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view shadowBiasPrefix = "--shadow-bias=";
+            if (hasPrefix(argument, shadowBiasPrefix)) {
+                options.shadows.enabled = true;
+                applyFloatOption(argument.substr(shadowBiasPrefix.size()), options.shadows.bias);
+                continue;
+            }
+
+            if (argument == "--shadow-extent") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.shadows.enabled = true;
+                    applyU32Option(value, options.shadows.mapExtent);
+                } else {
+                    options.missingShadowExtentValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view shadowExtentPrefix = "--shadow-extent=";
+            if (hasPrefix(argument, shadowExtentPrefix)) {
+                options.shadows.enabled = true;
+                applyU32Option(argument.substr(shadowExtentPrefix.size()), options.shadows.mapExtent);
+                continue;
+            }
+
+            if (argument == "--shadow-bounds") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.shadows.enabled = true;
+                    applyFloatOption(value, options.shadows.orthographicHalfExtent);
+                } else {
+                    options.missingShadowBoundsValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view shadowBoundsPrefix = "--shadow-bounds=";
+            if (hasPrefix(argument, shadowBoundsPrefix)) {
+                options.shadows.enabled = true;
+                applyFloatOption(argument.substr(shadowBoundsPrefix.size()),
+                                 options.shadows.orthographicHalfExtent);
+                continue;
+            }
+
             constexpr std::string_view bloomMipsPrefix = "--bloom-mips=";
             if (hasPrefix(argument, bloomMipsPrefix)) {
                 options.postProcessing.bloom.enabled = true;
@@ -283,6 +361,17 @@ namespace ark {
         desc.rendererQuality = resolved.quality;
         desc.toneMapping = options.toneMapping;
         desc.postProcessing = sanitizePostProcessingSettings(options.postProcessing);
+        desc.shadows = options.shadows;
+        if (options.preset.scene == RendererScenePreset::ShadowValidation) {
+            desc.shadows.enabled = true;
+            desc.shadows.strength = desc.shadows.strength <= 0.0f ? 0.7f : desc.shadows.strength;
+            if (desc.shadows.orthographicHalfExtent < 12.0f) {
+                desc.shadows.orthographicHalfExtent = 12.0f;
+            }
+            if (desc.shadows.lightDistance < 24.0f) {
+                desc.shadows.lightDistance = 24.0f;
+            }
+        }
         desc.useDebugOrientationEnvironment =
             resolved.scene.environmentFallback == SceneEnvironmentFallbackPolicy::DebugOrientation;
         return desc;

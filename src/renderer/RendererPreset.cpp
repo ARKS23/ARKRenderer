@@ -12,6 +12,8 @@ namespace ark {
             "assets/models/specular_ibl_validation_fixture.gltf";
         constexpr const char* BloomValidationFixturePath =
             "assets/models/bloom_validation_fixture.gltf";
+        constexpr const char* SponzaFixturePath =
+            "assets/models/sponza/sponza.gltf";
 
         std::string normalizePresetName(std::string_view name) {
             std::string normalized{name};
@@ -54,6 +56,19 @@ namespace ark {
                 scene.sceneName = "BloomValidationScene";
                 scene.modelName = "BloomValidationModel";
                 scene.environmentName = "BloomValidationEnvironment";
+                break;
+            case RendererScenePreset::Sponza:
+                scene.modelPath = SponzaFixturePath;
+                scene.sceneName = "SponzaScene";
+                scene.modelName = "SponzaModel";
+                scene.environmentName = "SponzaEnvironment";
+                break;
+            case RendererScenePreset::ShadowValidation:
+                scene.modelPath = SponzaFixturePath;
+                scene.sceneName = "ShadowValidationScene";
+                scene.modelName = "ShadowValidationModel";
+                scene.environmentName = "ShadowValidationEnvironment";
+                scene.environmentFallback = SceneEnvironmentFallbackPolicy::DebugOrientation;
                 break;
             case RendererScenePreset::DebugOrientation:
                 scene.environmentFallback = SceneEnvironmentFallbackPolicy::DebugOrientation;
@@ -119,6 +134,16 @@ namespace ark {
             normalized == "emissive-bloom" ||
             normalized == "emissivebloom") {
             return RendererScenePreset::BloomValidation;
+        }
+
+        if (normalized == "sponza" || normalized == "sponza-validation") {
+            return RendererScenePreset::Sponza;
+        }
+
+        if (normalized == "shadow-validation" ||
+            normalized == "shadow" ||
+            normalized == "shadows") {
+            return RendererScenePreset::ShadowValidation;
         }
 
         if (normalized == "debug-orientation" || normalized == "debug") {

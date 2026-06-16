@@ -43,9 +43,11 @@ namespace {
         glm::vec4 cameraPosition;
         glm::vec4 environment;
         glm::vec4 environmentSpecular;
+        glm::mat4 lightViewProjection;
+        glm::vec4 shadow;
     };
 
-    static_assert(sizeof(CapturedLightingUniform) == 96);
+    static_assert(sizeof(CapturedLightingUniform) == 176);
 
     struct alignas(16) CapturedMaterialUniform {
         glm::vec4 baseColorFactor;
@@ -136,6 +138,8 @@ namespace {
         bool specularSamplerBound = false;
         bool brdfLutImageBound = false;
         bool brdfLutSamplerBound = false;
+        bool shadowImageBound = false;
+        bool shadowSamplerBound = false;
         ark::rhi::TextureDesc environmentTextureDesc{};
         ark::rhi::SamplerDesc environmentSamplerDesc{};
         ark::rhi::TextureDesc irradianceTextureDesc{};
@@ -144,6 +148,8 @@ namespace {
         ark::rhi::SamplerDesc specularSamplerDesc{};
         ark::rhi::TextureDesc brdfLutTextureDesc{};
         ark::rhi::SamplerDesc brdfLutSamplerDesc{};
+        ark::rhi::TextureDesc shadowTextureDesc{};
+        ark::rhi::SamplerDesc shadowSamplerDesc{};
     };
 
     class FakeBuffer final : public ark::rhi::Buffer {
@@ -280,6 +286,9 @@ namespace {
             if (binding == 20) {
                 brdfLutImageView = image.view;
             }
+            if (binding == 22) {
+                shadowImageView = image.view;
+            }
         }
 
         void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor& sampler) override {
@@ -296,6 +305,9 @@ namespace {
             if (binding == 21) {
                 brdfLutSampler = sampler.sampler;
             }
+            if (binding == 23) {
+                shadowSampler = sampler.sampler;
+            }
         }
 
         std::vector<ark::u32> uniformBindings;
@@ -309,6 +321,8 @@ namespace {
         ark::rhi::Sampler* specularSampler = nullptr;
         ark::rhi::TextureView* brdfLutImageView = nullptr;
         ark::rhi::Sampler* brdfLutSampler = nullptr;
+        ark::rhi::TextureView* shadowImageView = nullptr;
+        ark::rhi::Sampler* shadowSampler = nullptr;
     };
 
     class FakeFence final : public ark::rhi::Fence {
@@ -740,6 +754,8 @@ namespace {
             ark::rhi::Sampler* specularSampler = device.descriptorSets.front()->specularSampler;
             ark::rhi::TextureView* brdfLutImageView = device.descriptorSets.front()->brdfLutImageView;
             ark::rhi::Sampler* brdfLutSampler = device.descriptorSets.front()->brdfLutSampler;
+            ark::rhi::TextureView* shadowImageView = device.descriptorSets.front()->shadowImageView;
+            ark::rhi::Sampler* shadowSampler = device.descriptorSets.front()->shadowSampler;
             capture.environmentImageBound = environmentImageView != nullptr;
             capture.environmentSamplerBound = environmentSampler != nullptr;
             capture.irradianceImageBound = irradianceImageView != nullptr;
@@ -748,6 +764,8 @@ namespace {
             capture.specularSamplerBound = specularSampler != nullptr;
             capture.brdfLutImageBound = brdfLutImageView != nullptr;
             capture.brdfLutSamplerBound = brdfLutSampler != nullptr;
+            capture.shadowImageBound = shadowImageView != nullptr;
+            capture.shadowSamplerBound = shadowSampler != nullptr;
             if (environmentImageView && environmentImageView->getTexture()) {
                 capture.environmentTextureDesc = environmentImageView->getTexture()->getDesc();
             }
@@ -771,6 +789,12 @@ namespace {
             }
             if (brdfLutSampler) {
                 capture.brdfLutSamplerDesc = brdfLutSampler->getDesc();
+            }
+            if (shadowImageView && shadowImageView->getTexture()) {
+                capture.shadowTextureDesc = shadowImageView->getTexture()->getDesc();
+            }
+            if (shadowSampler) {
+                capture.shadowSamplerDesc = shadowSampler->getDesc();
             }
         }
         return true;
@@ -1103,6 +1127,14 @@ namespace {
             !containsBinding(capture.descriptorBindings,
                              21,
                              ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             22,
+                             ark::rhi::DescriptorType::SampledImage,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             23,
+                             ark::rhi::DescriptorType::Sampler,
                              ark::rhi::ShaderStageFlags::Fragment)) {
             std::cerr << "ForwardPass descriptor layout does not expose environment IBL bindings\n";
             return false;
@@ -1112,6 +1144,7 @@ namespace {
             !capture.irradianceImageBound || !capture.irradianceSamplerBound ||
             !capture.specularImageBound || !capture.specularSamplerBound ||
             !capture.brdfLutImageBound || !capture.brdfLutSamplerBound ||
+            !capture.shadowImageBound || !capture.shadowSamplerBound ||
             capture.textureUploadCount == 0) {
             std::cerr << "ForwardPass did not bind or upload fallback environment descriptors\n";
             return false;
@@ -1153,11 +1186,27 @@ namespace {
             return false;
         }
 
+        if (capture.shadowTextureDesc.type != ark::rhi::TextureType::Texture2D ||
+            capture.shadowTextureDesc.format != ark::rhi::Format::D32Float ||
+            capture.shadowTextureDesc.extent.width != 1 ||
+            capture.shadowTextureDesc.extent.height != 1 ||
+            capture.shadowTextureDesc.arrayLayers != 1 ||
+            capture.shadowTextureDesc.mipLevels != 1 ||
+            !ark::rhi::hasTextureUsage(capture.shadowTextureDesc.usage,
+                                       ark::rhi::TextureUsage::DepthStencil) ||
+            !ark::rhi::hasTextureUsage(capture.shadowTextureDesc.usage,
+                                       ark::rhi::TextureUsage::ShaderResource)) {
+            std::cerr << "ForwardPass fallback shadow map is invalid\n";
+            return false;
+        }
+
         if (!near(capture.lightingUniform.environment.x, 0.0f) ||
             !near(capture.lightingUniform.environment.y, 0.0f) ||
             !near(capture.lightingUniform.environment.z, 0.0f) ||
             !near(capture.lightingUniform.environment.w, 0.0f) ||
-            !near(capture.lightingUniform.environmentSpecular.x, 0.0f)) {
+            !near(capture.lightingUniform.environmentSpecular.x, 0.0f) ||
+            !near(capture.lightingUniform.shadow.x, 0.0f) ||
+            !near(capture.lightingUniform.shadow.y, 0.0015f)) {
             std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
             return false;
         }

@@ -17,6 +17,7 @@ namespace ark {
         RendererQualityDesc rendererQuality;
         ToneMappingSettings toneMapping;
         PostProcessingSettings postProcessing;
+        ShadowSettings shadows;
         bool useDebugOrientationEnvironment = false;
     };
 

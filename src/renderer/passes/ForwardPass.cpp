@@ -72,9 +72,11 @@ namespace ark {
             glm::vec4 cameraPosition;
             glm::vec4 environment;
             glm::vec4 environmentSpecular;
+            glm::mat4 lightViewProjection;
+            glm::vec4 shadow;
         };
 
-        static_assert(sizeof(LightingUniform) == 96);
+        static_assert(sizeof(LightingUniform) == 176);
 
         void addFragmentTextureBindingPair(rhi::DescriptorSetLayoutDesc& desc, u32 imageBinding, u32 samplerBinding) {
             desc.bindings.push_back(rhi::DescriptorBindingDesc{
@@ -163,6 +165,11 @@ namespace ark {
             uniform.lightColor = glm::vec4{lighting.mainLight.color, 1.0f};
             uniform.ambientColor = glm::vec4{lighting.ambientColor, 1.0f};
             uniform.cameraPosition = glm::vec4{0.0f, 0.0f, -4.0f, 1.0f};
+            uniform.lightViewProjection = frameContext.lightViewProjection;
+            uniform.shadow = glm::vec4{frameContext.shadowStrength,
+                                       frameContext.shadowBias,
+                                       0.0f,
+                                       0.0f};
 
             if (frameContext.view) {
                 uniform.cameraPosition = glm::vec4{frameContext.view->cameraPosition(), 1.0f};
@@ -459,6 +466,7 @@ namespace ark {
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 16, 17);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 18, 19);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 20, 21);
+        addFragmentTextureBindingPair(descriptorSetLayoutDesc, 22, 23);
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -593,7 +601,9 @@ namespace ark {
             !ensureFallbackSpecularCube() ||
             !transitionToShaderResource(frameContext, m_FallbackSpecularCube.texture()) ||
             !ensureFallbackBrdfLut() ||
-            !transitionToShaderResource(frameContext, m_FallbackBrdfLut.texture())) {
+            !transitionToShaderResource(frameContext, m_FallbackBrdfLut.texture()) ||
+            !ensureFallbackShadowMap() ||
+            !transitionToShaderResource(frameContext, m_FallbackShadowMap.get())) {
             return false;
         }
 
@@ -609,6 +619,44 @@ namespace ark {
         }
 
         return sceneEnvironment->environment->upload(*frameContext.context);
+    }
+
+    bool ForwardPass::ensureFallbackShadowMap() {
+        if (!m_Device) {
+            ARK_ERROR("ForwardPass requires RenderDevice for fallback shadow map");
+            return false;
+        }
+
+        if (m_FallbackShadowMap && m_FallbackShadowMapView && m_FallbackShadowSampler) {
+            return true;
+        }
+
+        rhi::TextureDesc textureDesc{};
+        textureDesc.extent = rhi::Extent2D{1, 1};
+        textureDesc.format = rhi::Format::D32Float;
+        textureDesc.usage = rhi::TextureUsage::DepthStencil | rhi::TextureUsage::ShaderResource;
+        m_FallbackShadowMap = m_Device->createTexture(textureDesc);
+        if (!m_FallbackShadowMap) {
+            return false;
+        }
+
+        rhi::TextureViewDesc viewDesc{};
+        viewDesc.format = rhi::Format::D32Float;
+        m_FallbackShadowMapView = m_Device->createTextureView(*m_FallbackShadowMap, viewDesc);
+        if (!m_FallbackShadowMapView) {
+            return false;
+        }
+
+        rhi::SamplerDesc samplerDesc{};
+        samplerDesc.debugName = "ForwardFallbackShadowSampler";
+        samplerDesc.minFilter = rhi::FilterMode::Linear;
+        samplerDesc.magFilter = rhi::FilterMode::Linear;
+        samplerDesc.mipFilter = rhi::FilterMode::Nearest;
+        samplerDesc.addressU = rhi::AddressMode::ClampToEdge;
+        samplerDesc.addressV = rhi::AddressMode::ClampToEdge;
+        samplerDesc.addressW = rhi::AddressMode::ClampToEdge;
+        m_FallbackShadowSampler = m_Device->createSampler(samplerDesc);
+        return m_FallbackShadowSampler != nullptr;
     }
 
     bool ForwardPass::createPipelineResources() {
@@ -900,6 +948,21 @@ namespace ark {
         rhi::SamplerDescriptor brdfLutSamplerDescriptor{};
         brdfLutSamplerDescriptor.sampler = brdfLut->sampler();
         descriptors.descriptorSet->updateSampler(21, brdfLutSamplerDescriptor);
+
+        rhi::TextureView* shadowMapView = resolveShadowMapView(frameContext);
+        rhi::Sampler* shadowSampler = resolveShadowSampler(frameContext);
+        if (!shadowMapView || !shadowSampler) {
+            ARK_ERROR("ForwardPass requires a shadow map fallback descriptor");
+            return false;
+        }
+
+        rhi::SampledImageDescriptor shadowImageDescriptor{};
+        shadowImageDescriptor.view = shadowMapView;
+        descriptors.descriptorSet->updateSampledImage(22, shadowImageDescriptor);
+
+        rhi::SamplerDescriptor shadowSamplerDescriptor{};
+        shadowSamplerDescriptor.sampler = shadowSampler;
+        descriptors.descriptorSet->updateSampler(23, shadowSamplerDescriptor);
         return true;
     }
 
@@ -935,6 +998,14 @@ namespace ark {
         }
 
         return &m_FallbackBrdfLut;
+    }
+
+    rhi::TextureView* ForwardPass::resolveShadowMapView(FrameContext& frameContext) {
+        return frameContext.shadowMapView ? frameContext.shadowMapView : m_FallbackShadowMapView.get();
+    }
+
+    rhi::Sampler* ForwardPass::resolveShadowSampler(FrameContext& frameContext) {
+        return frameContext.shadowSampler ? frameContext.shadowSampler : m_FallbackShadowSampler.get();
     }
 
     bool ForwardPass::drawMeshItem(FrameContext& frameContext,

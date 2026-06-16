@@ -42,6 +42,7 @@ namespace ark {
         bool ensureFallbackIrradianceCube();
         bool ensureFallbackSpecularCube();
         bool ensureFallbackBrdfLut();
+        bool ensureFallbackShadowMap();
         bool uploadEnvironmentResources(FrameContext& frameContext);
         usize drawItemCount(const FrameContext& frameContext) const;
         bool ensureDrawDescriptorResources(u32 frameSlot, usize drawCount);
@@ -64,6 +65,8 @@ namespace ark {
         EnvironmentCubeResource* resolveIrradianceResource(FrameContext& frameContext);
         EnvironmentCubeResource* resolvePrefilteredSpecularResource(FrameContext& frameContext);
         EnvironmentBrdfLutResource* resolveBrdfLutResource(FrameContext& frameContext);
+        rhi::TextureView* resolveShadowMapView(FrameContext& frameContext);
+        rhi::Sampler* resolveShadowSampler(FrameContext& frameContext);
         bool drawMeshItem(FrameContext& frameContext,
                           u32 frameSlot,
                           usize drawIndex,
@@ -110,5 +113,8 @@ namespace ark {
         EnvironmentCubeResource m_FallbackIrradianceCube;
         EnvironmentCubeResource m_FallbackSpecularCube;
         EnvironmentBrdfLutResource m_FallbackBrdfLut;
+        Scope<rhi::Texture> m_FallbackShadowMap;
+        Scope<rhi::TextureView> m_FallbackShadowMapView;
+        Scope<rhi::Sampler> m_FallbackShadowSampler;
     };
 } // namespace ark

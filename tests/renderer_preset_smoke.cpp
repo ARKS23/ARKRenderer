@@ -90,6 +90,28 @@ namespace {
             return false;
         }
 
+        preset.scene = ark::RendererScenePreset::Sponza;
+        resolved = ark::resolveRendererPreset(preset);
+        if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
+            resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
+            resolved.scene.environmentFallback !=
+                ark::SceneEnvironmentFallbackPolicy::DefaultHdrThenProcedural ||
+            resolved.scene.sceneName != "SponzaScene") {
+            std::cerr << "Sponza scene preset is invalid\n";
+            return false;
+        }
+
+        preset.scene = ark::RendererScenePreset::ShadowValidation;
+        resolved = ark::resolveRendererPreset(preset);
+        if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
+            resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
+            resolved.scene.environmentFallback !=
+                ark::SceneEnvironmentFallbackPolicy::DebugOrientation ||
+            resolved.scene.sceneName != "ShadowValidationScene") {
+            std::cerr << "Shadow validation scene preset is invalid\n";
+            return false;
+        }
+
         preset.scene = ark::RendererScenePreset::DebugOrientation;
         resolved = ark::resolveRendererPreset(preset);
         if (!resolved.scene.modelPath.empty() ||
@@ -154,6 +176,10 @@ namespace {
                 ark::RendererScenePreset::BloomValidation ||
             ark::parseRendererScenePreset("EMISSIVE_BLOOM") !=
                 ark::RendererScenePreset::BloomValidation ||
+            ark::parseRendererScenePreset("sponza-validation") !=
+                ark::RendererScenePreset::Sponza ||
+            ark::parseRendererScenePreset("shadows") !=
+                ark::RendererScenePreset::ShadowValidation ||
             ark::parseRendererScenePreset("unknown",
                                           ark::RendererScenePreset::DebugOrientation) !=
                 ark::RendererScenePreset::DebugOrientation ||
@@ -227,6 +253,49 @@ namespace {
         }
 
         {
+            constexpr std::array<std::string_view, 7> args{
+                "--preset",
+                "shadow-validation",
+                "--shadow-strength=0.45",
+                "--shadow-bias",
+                "0.004",
+                "--shadow-extent",
+                "2048",
+            };
+            const ark::SandboxLaunchOptions options =
+                ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
+            const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
+            if (desc.defaultModelPath.filename() != "sponza.gltf" ||
+                !desc.useDebugOrientationEnvironment ||
+                !desc.shadows.enabled ||
+                !near(desc.shadows.strength, 0.45f) ||
+                !near(desc.shadows.bias, 0.004f) ||
+                desc.shadows.mapExtent != 2048 ||
+                desc.shadows.orthographicHalfExtent < 12.0f ||
+                desc.shadows.lightDistance < 24.0f) {
+                std::cerr << "Sandbox shadow validation preset application desc is invalid\n";
+                return false;
+            }
+        }
+
+        {
+            constexpr std::array<std::string_view, 3> args{
+                "--preset=sponza",
+                "--shadows",
+                "--shadow-bounds=20.0",
+            };
+            const ark::ApplicationDesc desc =
+                ark::makeSandboxApplicationDesc(std::span<const std::string_view>{args});
+            if (desc.defaultModelPath.filename() != "sponza.gltf" ||
+                desc.useDebugOrientationEnvironment ||
+                !desc.shadows.enabled ||
+                !near(desc.shadows.orthographicHalfExtent, 20.0f)) {
+                std::cerr << "Sandbox Sponza shadow options are invalid\n";
+                return false;
+            }
+        }
+
+        {
             constexpr std::array<std::string_view, 4> args{
                 "--preset",
                 "--quality",
@@ -242,6 +311,24 @@ namespace {
                 !desc.defaultModelPath.empty() ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox missing option value fallback behavior is invalid\n";
+                return false;
+            }
+        }
+
+        {
+            constexpr std::array<std::string_view, 4> args{
+                "--shadow-strength",
+                "--shadow-bias",
+                "--shadow-extent",
+                "--shadow-bounds",
+            };
+            const ark::SandboxLaunchOptions options =
+                ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
+            if (!options.missingShadowStrengthValue ||
+                !options.missingShadowBiasValue ||
+                !options.missingShadowExtentValue ||
+                !options.missingShadowBoundsValue) {
+                std::cerr << "Sandbox missing shadow option value fallback behavior is invalid\n";
                 return false;
             }
         }

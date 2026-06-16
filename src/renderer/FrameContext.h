@@ -3,10 +3,13 @@
 #include "core/Types.h"
 #include "rhi/RHICommon.h"
 
+#include <glm/mat4x4.hpp>
+
 namespace ark::rhi {
     class DeviceContext;
     struct FrameResource;
     class RenderDevice;
+    class Sampler;
     class SwapChain;
     class TextureView;
 } // namespace ark::rhi
@@ -38,10 +41,15 @@ namespace ark {
         EnvironmentCubeResource* irradianceCube = nullptr;
         EnvironmentCubeResource* prefilteredSpecularCube = nullptr;
         EnvironmentBrdfLutResource* brdfLut = nullptr;
+        rhi::TextureView* shadowMapView = nullptr;
+        rhi::Sampler* shadowSampler = nullptr;
 
         rhi::Extent2D extent{};
         rhi::Format colorFormat = rhi::Format::Unknown;
         rhi::Format depthFormat = rhi::Format::Unknown;
         rhi::ClearColor clearColor{};
+        glm::mat4 lightViewProjection{1.0f};
+        float shadowStrength = 0.0f;
+        float shadowBias = 0.0015f;
     };
 } // namespace ark

@@ -1,5 +1,53 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-16, Phase 0.58)
+
+ARKRenderer has completed Phase 0.58: Directional Shadow Map Foundation.
+
+Key changes:
+- `ModelResource` now falls back per texture slot when a referenced texture file fails to load. This lets Sponza `.ktx` texture references degrade to existing fallback textures instead of failing the whole model resource.
+- Added `RendererScenePreset::Sponza` and `RendererScenePreset::ShadowValidation`.
+- `shadow-validation` uses the Sponza model, debug-orientation environment fallback, and enables sandbox shadows automatically.
+- Added `ShadowSettings` to `RenderView` / `ApplicationDesc` and sandbox CLI support:
+  - `--shadows` / `--shadow`
+  - `--shadow-strength`
+  - `--shadow-bias`
+  - `--shadow-extent`
+  - `--shadow-bounds`
+- Added `shaders/shadow.vert.hlsl` and `shaders/shadow.frag.hlsl`, compiled as `shadow.vert.spv` and `shadow.frag.spv`.
+- Implemented `ShadowPass` with a D32 depth-only shadow target, per-frame shadow uniform, depth-only pipeline, shadow map sampler, and RenderQueue draw path.
+- `FrameRenderer` now runs `ShadowPass` before the scene pass so `ForwardPass` can sample the generated shadow map.
+- `ForwardPass` now binds shadow map/sampler descriptors at bindings 22/23 and extends `LightingUniform` with light view-projection plus shadow settings.
+- `mesh.frag.hlsl` samples the shadow map and applies shadow visibility to direct lighting only; IBL, ambient, and emissive remain unaffected.
+- Vulkan dynamic rendering and graphics pipeline creation now allow depth-only rendering with no color attachment.
+- Added `ark_shadow_pass_smoke` and extended model/scene/preset/framework/forward/shader smoke tests for the fallback and shadow paths.
+- Root `README.md` is Chinese and includes Sponza/shadow sandbox examples.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_shadow_pass_smoke ark_shader_assets_smoke ark_forward_pass_pipeline_smoke ark_model_resource_smoke ark_scene_resource_smoke ark_renderer_preset_smoke ark_framework_headers_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(shadow_pass|shader_assets|forward_pass_pipeline|model_resource|scene_resource|renderer_preset|framework_headers)_smoke" --output-on-failure
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+git diff --check
+ark_sandbox hidden-window smoke for default, sponza, shadow-validation, and bloom-validation --bloom --tone-mapping aces
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 7/7
+full build passed
+full CTest passed: 29/29
+git diff --check: only line-ending warnings, no whitespace errors
+sandbox hidden-window smoke passed for default, sponza, shadow-validation, and bloom-validation --bloom --tone-mapping aces
+```
+
+Notes:
+- Sponza geometry now loads through the fallback material path, but visual material quality is not final because `.ktx` images are not decoded yet.
+- Shadows are opt-in for regular sandbox runs and automatically enabled for `--preset shadow-validation`.
+- The first shadow implementation uses fixed orthographic bounds and a single directional light; scene-bounds fitting, CSM, PCF quality tiers, alpha-tested caster refinement, and KTX/KTX2 support remain future work.
+
 ## Latest Update (2026-06-16, Phase 0.57)
 
 ARKRenderer has completed Phase 0.57: Transparent Sorting / Blend Bucket Back-to-Front.

@@ -11,6 +11,8 @@ namespace ark {
         MaterialBall,
         SpecularValidation,
         BloomValidation,
+        Sponza,
+        ShadowValidation,
         DebugOrientation,
     };
 

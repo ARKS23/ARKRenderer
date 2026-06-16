@@ -61,6 +61,12 @@ Texture2D<float4> g_BrdfLut;
 [[vk::binding(21, 0)]]
 SamplerState g_BrdfLutSampler;
 
+[[vk::binding(22, 0)]]
+Texture2D<float> g_ShadowMap;
+
+[[vk::binding(23, 0)]]
+SamplerState g_ShadowSampler;
+
 struct MaterialUniform {
     float4 baseColorFactor;
     float4 emissiveFactor;
@@ -102,6 +108,8 @@ struct LightingUniform {
     float4 cameraPosition;
     float4 environment;
     float4 environmentSpecular;
+    float4x4 lightViewProjection;
+    float4 shadow;
 };
 
 [[vk::binding(13, 0)]]
@@ -279,6 +287,30 @@ float3 evaluateIndirectLighting(float3 n,
     return diffuseIbl * kd + specularIbl;
 }
 
+float sampleShadowVisibility(float3 worldPosition, float nDotL) {
+    if (g_Lighting.shadow.x <= 0.0f || nDotL <= 0.0f) {
+        return 1.0f;
+    }
+
+    const float4 shadowClip = mul(g_Lighting.lightViewProjection, float4(worldPosition, 1.0f));
+    if (shadowClip.w <= 0.0f) {
+        return 1.0f;
+    }
+
+    const float3 shadowNdc = shadowClip.xyz / shadowClip.w;
+    const float2 shadowUv = shadowNdc.xy * 0.5f + 0.5f;
+    if (shadowUv.x < 0.0f || shadowUv.x > 1.0f ||
+        shadowUv.y < 0.0f || shadowUv.y > 1.0f ||
+        shadowNdc.z < 0.0f || shadowNdc.z > 1.0f) {
+        return 1.0f;
+    }
+
+    const float sampledDepth = g_ShadowMap.Sample(g_ShadowSampler, shadowUv).r;
+    const float bias = max(g_Lighting.shadow.y * (1.0f - nDotL), g_Lighting.shadow.y * 0.25f);
+    const float lit = (shadowNdc.z - bias) <= sampledDepth ? 1.0f : 0.0f;
+    return lerp(1.0f, lit, saturate(g_Lighting.shadow.x));
+}
+
 float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 n = normalize(inputs.worldNormal);
     const float3 l = normalize(-g_Lighting.lightDirection.xyz);
@@ -305,7 +337,8 @@ float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 diffuse = kd * albedo / PI;
 
     const float3 indirect = evaluateIndirectLighting(n, v, albedo, metallic, roughness, f0);
-    const float3 direct = g_Lighting.lightColor.rgb * nDotL * (diffuse + specular);
+    const float shadowVisibility = sampleShadowVisibility(worldPosition, nDotL);
+    const float3 direct = g_Lighting.lightColor.rgb * nDotL * (diffuse + specular) * shadowVisibility;
     return (indirect + direct) * inputs.occlusion + inputs.emissive;
 }
 
