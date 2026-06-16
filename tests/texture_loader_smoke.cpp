@@ -112,12 +112,56 @@ namespace {
 
         return true;
     }
+
+    std::filesystem::path findAssetPath(const std::filesystem::path& relative) {
+        const std::array<std::filesystem::path, 3> candidates{
+            relative,
+            std::filesystem::path{"../"} / relative,
+            std::filesystem::path{"../../"} / relative,
+        };
+
+        return ark::findFirstExistingPath(candidates);
+    }
+
+    bool validateKtxRgba8(const std::filesystem::path& path, ark::u32 expectedWidth, ark::u32 expectedHeight) {
+        const ark::asset::ImageData image = ark::asset::loadImageKtx(path);
+        if (image.empty()) {
+            std::cerr << "Failed to load KTX test image\n";
+            return false;
+        }
+
+        if (image.width != expectedWidth || image.height != expectedHeight) {
+            std::cerr << "Unexpected KTX image dimensions\n";
+            return false;
+        }
+
+        if (image.format != ark::asset::ImageFormat::Rgba8Unorm || image.bytesPerPixel != 4) {
+            std::cerr << "Unexpected KTX image format\n";
+            return false;
+        }
+
+        if (image.pixels.size() != static_cast<std::size_t>(expectedWidth) * expectedHeight * 4) {
+            std::cerr << "Unexpected KTX byte size\n";
+            return false;
+        }
+
+        const ark::asset::ImageData imageFromClass = ark::asset::TextureLoader::loadKtx(path);
+        if (imageFromClass.empty() || imageFromClass.byteSize() != image.byteSize()) {
+            std::cerr << "TextureLoader KTX class wrapper failed\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
     const std::filesystem::path tempDir = std::filesystem::temp_directory_path();
     const std::filesystem::path ldrPath = tempDir / "ark_texture_loader_smoke.ppm";
     const std::filesystem::path hdrPath = tempDir / "ark_texture_loader_smoke.hdr";
+    const std::filesystem::path ktxWhitePath = findAssetPath(std::filesystem::path{"assets/models/sponza/white.ktx"});
+    const std::filesystem::path ktxSponzaPath =
+        findAssetPath(std::filesystem::path{"assets/models/sponza/10381718147657362067.ktx"});
     const std::filesystem::path missingPath = tempDir / "ark_texture_loader_missing.png";
 
     std::filesystem::remove(ldrPath);
@@ -143,12 +187,18 @@ int main() {
     const bool ldrValid = ldrWritten && validateLdrRgba8(ldrPath);
     const bool hdrRejected = hdrWritten && validateHdrRejected(hdrPath);
     const bool hdrValid = hdrWritten && validateHdrRgba32F(hdrPath);
+    const bool ktxWhiteValid = !ktxWhitePath.empty() && validateKtxRgba8(ktxWhitePath, 4, 4);
+    const bool ktxSponzaValid = !ktxSponzaPath.empty() && validateKtxRgba8(ktxSponzaPath, 1024, 1024);
+    const ark::asset::ImageData autoKtxImage = ark::asset::loadImageAuto(ktxWhitePath);
+    const bool autoKtxValid = autoKtxImage.width == 4 && autoKtxImage.height == 4;
     const bool ldrRejectedByHdrLoader = ark::asset::loadImageHdrRgba32F(ldrPath).empty();
     const bool missingRejected = ark::asset::loadImageRgba8(missingPath).empty();
 
     std::filesystem::remove(ldrPath);
     std::filesystem::remove(hdrPath);
 
-    return ldrValid && hdrRejected && hdrValid && ldrRejectedByHdrLoader && missingRejected ? EXIT_SUCCESS
-                                                                                            : EXIT_FAILURE;
+    return ldrValid && hdrRejected && hdrValid && ktxWhiteValid && ktxSponzaValid && autoKtxValid &&
+                   ldrRejectedByHdrLoader && missingRejected
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

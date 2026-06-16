@@ -34,6 +34,7 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(Stb REQUIRED)
+find_package(Ktx CONFIG REQUIRED)
 
 # tinygltf 在 vcpkg 中是 header-only 包，不提供 tinygltfConfig.cmake。
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
@@ -118,6 +119,8 @@ set(ARK_RENDERER_THIRD_PARTY_LIBS
     spdlog::spdlog
     fmt::fmt
     imgui::imgui)
+
+list(APPEND ARK_RENDERER_THIRD_PARTY_LIBS KTX::ktx)
 
 if(ARK_DXC_SUPPORTED)
     list(APPEND ARK_RENDERER_THIRD_PARTY_LIBS Microsoft::DirectXShaderCompiler)

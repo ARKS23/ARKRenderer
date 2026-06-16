@@ -7,14 +7,14 @@
 #include <vector>
 
 namespace ark::asset {
-    // CPU 侧图片格式描述；GPU 格式映射由 renderer/RHI 后续阶段处理。
+    // CPU-side decoded image format. GPU format selection stays in renderer/RHI.
     enum class ImageFormat {
         Unknown,
         Rgba8Unorm,
         Rgba32Float,
     };
 
-    // 只保存解码后的 CPU 像素数据，不拥有或创建任何 GPU/RHI 资源。
+    // Decoded CPU pixel payload only. It does not own or create GPU/RHI resources.
     struct ImageData {
         u32 width = 0;
         u32 height = 0;
@@ -36,12 +36,14 @@ namespace ark::asset {
     public:
         TextureLoader() = default;
 
-        // LDR RGBA8 便捷入口，语义等同于 loadImageRgba8()。
         static ImageData loadRgba8(const Path& path);
         static ImageData loadHdrRgba32F(const Path& path);
+        static ImageData loadKtx(const Path& path);
+        static ImageData loadAuto(const Path& path);
     };
 
-    // Phase 0.7 只提供 LDR RGBA8 路径；HDR 输入必须显式失败，避免动态范围被静默压缩。
     ImageData loadImageRgba8(const Path& path);
     ImageData loadImageHdrRgba32F(const Path& path);
+    ImageData loadImageKtx(const Path& path);
+    ImageData loadImageAuto(const Path& path);
 } // namespace ark::asset

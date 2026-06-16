@@ -398,6 +398,17 @@ namespace {
         return ark::findFirstExistingPath(candidates);
     }
 
+    ark::Path findSponzaKtxPath() {
+        const ark::Path relative = ark::Path{"assets/models/sponza/white.ktx"};
+        const std::array<ark::Path, 3> candidates{
+            relative,
+            ark::Path{"../"} / relative,
+            ark::Path{"../../"} / relative,
+        };
+
+        return ark::findFirstExistingPath(candidates);
+    }
+
     ark::Path findModelPath(const ark::Path& relative) {
         const std::array<ark::Path, 3> candidates{
             relative,
@@ -1173,6 +1184,38 @@ namespace {
         return true;
     }
 
+    bool validateTextureCacheKtxPath() {
+        const ark::Path texturePath = findSponzaKtxPath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find Sponza KTX texture asset\n";
+            return false;
+        }
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::TextureResourceDesc desc{};
+        desc.path = texturePath;
+        desc.colorSpace = ark::TextureColorSpace::Srgb;
+        desc.debugName = "KtxTextureCache";
+
+        ark::TextureResource* texture = textureCache.getOrCreate(device, desc);
+        if (!texture || textureCache.size() != 1 || device.textureCount != 1 || device.textureViewCount != 1 ||
+            device.samplerCount != 1) {
+            std::cerr << "TextureCache did not create KTX texture resource\n";
+            return false;
+        }
+
+        if (texture->format() != ark::rhi::Format::RGBA8Srgb ||
+            device.lastTextureDesc.extent.width != 4 ||
+            device.lastTextureDesc.extent.height != 4 ||
+            texture->mipLevels() != 3) {
+            std::cerr << "TextureCache KTX texture desc is invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateSpecularIblValidationModelResource() {
         constexpr std::size_t RowCount = 3;
         constexpr std::size_t ColumnCount = 5;
@@ -1717,6 +1760,7 @@ namespace {
 int main() {
     return validateTextureResourceDeferredRelease() && validateTextureResourceMipDesc() &&
                    validateTextureCacheDeferredClear() && validateTextureCacheSamplerKey() &&
+                   validateTextureCacheKtxPath() &&
                    validateTextureCacheFallbacks() &&
                    validateMaterialResourceTextureSlots() && validateMeshResourceDeferredRelease() &&
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&

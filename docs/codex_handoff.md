@@ -1,5 +1,38 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-16, Phase 0.60)
+
+ARKRenderer has completed Phase 0.60: KTX/KTX2 Texture Loader / Sponza Material Recovery.
+
+Key changes:
+- Added vcpkg `ktx` dependency and linked `KTX::ktx` into `ark_renderer`.
+- `TextureLoader` now exposes KTX and auto-dispatch load paths.
+- `TextureCache` now routes `.ktx` / `.ktx2` files through the KTX loader.
+- Sponza `.ktx` diffuse/baseColor textures now load as real textures instead of always falling back.
+- `ark_texture_loader_smoke`, `ark_model_resource_smoke`, and `ark_scene_resource_smoke` now cover the KTX path.
+
+Validation completed:
+```powershell
+cmake --preset msvc-vcpkg
+cmake --build --preset msvc-vcpkg-debug --target ark_dependency_smoke ark_texture_loader_smoke ark_scene_resource_smoke ark_model_resource_smoke
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(dependency|texture_loader|scene_resource|model_resource)_smoke" --output-on-failure
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed
+full build passed
+full CTest passed: 29/29
+```
+
+Notes:
+- The first KTX pass supports non-compressed KTX1 RGBA8 / SRGB8_ALPHA8 style textures and reads the base mip only.
+- Unsupported KTX/KTX2/compressed formats still fall back through the existing per-slot fallback path.
+- Sponza is now much closer to a real visual validation scene, but the remaining gap is compressed KTX2/BasisU and a more formal screenshot baseline.
+
 ## Latest Update (2026-06-16, Phase 0.59)
 
 ARKRenderer has completed Phase 0.59: Complex Scene Shadow Visibility Closure.

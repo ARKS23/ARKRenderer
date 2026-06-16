@@ -215,6 +215,16 @@ namespace {
         ark::rhi::RenderDeviceCaps m_Caps{};
     };
 
+    bool hasTextureExtent(const FakeRenderDevice& device, ark::u32 width, ark::u32 height) {
+        for (const ark::rhi::TextureDesc& desc : device.textureDescs) {
+            if (desc.extent.width == width && desc.extent.height == height) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool validateExplicitModelAndProceduralEnvironment() {
         FakeRenderDevice device{};
 
@@ -343,7 +353,7 @@ namespace {
         return true;
     }
 
-    bool validateSponzaTextureFailureFallbackSceneLoad() {
+    bool validateSponzaKtxSceneLoad() {
         FakeRenderDevice device{};
 
         ark::SceneResourceLoadDesc desc{};
@@ -354,7 +364,7 @@ namespace {
 
         ark::SceneResource sceneResource{};
         if (!sceneResource.load(device, desc)) {
-            std::cerr << "SceneResource failed to load Sponza through texture fallback path\n";
+            std::cerr << "SceneResource failed to load Sponza through KTX path\n";
             return false;
         }
 
@@ -366,14 +376,19 @@ namespace {
             !sceneResource.model() ||
             sceneResource.model()->primitiveCount() == 0 ||
             sceneResource.model()->materialCount() == 0) {
-            std::cerr << "Sponza fallback SceneResource report or model state is invalid\n";
+            std::cerr << "Sponza KTX SceneResource report or model state is invalid\n";
+            return false;
+        }
+
+        if (!hasTextureExtent(device, 1024, 1024)) {
+            std::cerr << "Sponza KTX textures did not create a real 1024x1024 texture\n";
             return false;
         }
 
         ark::RenderQueue queue{};
         queue.build(sceneResource.scene());
         if (queue.size() == 0) {
-            std::cerr << "Sponza fallback SceneResource produced an empty render queue\n";
+            std::cerr << "Sponza KTX SceneResource produced an empty render queue\n";
             return false;
         }
 
@@ -454,7 +469,7 @@ int main() {
                    validateMissingExplicitModelFallsBack() &&
                    validateDebugOrientationEnvironment() &&
                    validateMissingEnvironmentFallback() &&
-                   validateSponzaTextureFailureFallbackSceneLoad() &&
+                   validateSponzaKtxSceneLoad() &&
                    validateSponzaHelmetCompositeSceneLoad()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

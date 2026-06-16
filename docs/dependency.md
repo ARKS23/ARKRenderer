@@ -58,3 +58,17 @@ tests/dependency_smoke.cpp
 | `VMA_STATIC_VULKAN_FUNCTIONS=0` | 禁用 VMA 静态 Vulkan 函数绑定 |
 | `VMA_DYNAMIC_VULKAN_FUNCTIONS=0` | 禁用 VMA 内部动态 Vulkan 函数绑定，改由 `vmaImportVulkanFunctionsFromVolk()` 从 volk 导入函数表 |
 | `ARK_HAS_DXC` | 当前平台支持 DXC 时为 `1`，否则为 `0` |
+
+## KTX / KTX2
+
+Phase 0.60 起新增 KTX-Software / libktx 依赖：
+
+```text
+vcpkg package: ktx
+CMake package: find_package(Ktx CONFIG REQUIRED)
+Expected target: KTX::ktx
+```
+
+该依赖用于读取 KTX/KTX2 纹理容器，优先服务于 `assets/models/sponza/` 中的 `.ktx` 贴图恢复。项目仍通过自身 RHI / `TextureResource` 上传纹理，不直接使用 libktx 的 Vulkan upload helper 创建后端资源。
+
+当前第一版只把非压缩 RGBA8 / SRGB8_ALPHA8 类 KTX 纹理解码为 CPU-side RGBA8 base mip，后续 mip 仍由 GPU 生成；BasisU、压缩格式、supercompression 转码和原始 mip chain 上传留到后续阶段。

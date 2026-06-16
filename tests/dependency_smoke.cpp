@@ -11,6 +11,7 @@
 #include <fmt/core.h>
 #include <glm/glm.hpp>
 #include <imgui.h>
+#include <ktx.h>
 #include <spdlog/spdlog.h>
 #include <spirv_reflect.h>
 #include <stb_image.h>
@@ -51,6 +52,20 @@ int main() {
     vkb::InstanceBuilder instanceBuilder;
     SpvReflectShaderModule shaderModule{};
     tinygltf::Model model;
+    const ktx_uint8_t invalidKtxData[1] = {};
+    ktxTexture* ktxTexture = nullptr;
+    const KTX_error_code ktxStatus =
+        ktxTexture_CreateFromMemory(invalidKtxData,
+                                    sizeof(invalidKtxData),
+                                    KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+                                    &ktxTexture);
+    if (ktxTexture) {
+        ktxTexture_Destroy(ktxTexture);
+    }
+    if (ktxStatus == KTX_SUCCESS) {
+        std::cerr << "Unexpectedly decoded invalid KTX data\n";
+        return EXIT_FAILURE;
+    }
 
     ImGui::CreateContext();
     ImGui::GetIO().DisplaySize = ImVec2{640.0F, 480.0F};
@@ -67,8 +82,15 @@ int main() {
     glfwGetVersion(&glfwMajor, &glfwMinor, &glfwRevision);
 
     const std::string report =
-        fmt::format("ARKRenderer dependencies OK | Vulkan header {} | GLFW {}.{}.{} | ImGui {} | STB {} | glm.z {}",
-                    VK_HEADER_VERSION, glfwMajor, glfwMinor, glfwRevision, IMGUI_VERSION, STBI_VERSION, sampleVector.z);
+        fmt::format("ARKRenderer dependencies OK | Vulkan header {} | GLFW {}.{}.{} | ImGui {} | STB {} | KTX {} | glm.z {}",
+                    VK_HEADER_VERSION,
+                    glfwMajor,
+                    glfwMinor,
+                    glfwRevision,
+                    IMGUI_VERSION,
+                    STBI_VERSION,
+                    ktxErrorString(ktxStatus),
+                    sampleVector.z);
 
     spdlog::info("{}", report);
     std::cout << report << '\n';

@@ -23,6 +23,7 @@
       ]
     },
     "stb",
+    "ktx",
     {
       "name": "directx-dxc",
       "platform": "(windows & !arm32 & !uwp & !xbox) | (linux & x64)"

@@ -129,7 +129,7 @@ namespace ark {
             return existing->second.get();
         }
 
-        asset::ImageData image = asset::loadImageRgba8(desc.path);
+        asset::ImageData image = asset::loadImageAuto(desc.path);
         if (image.empty()) {
             ARK_ERROR("TextureCache failed to load image: {}", desc.path.string());
             return nullptr;
