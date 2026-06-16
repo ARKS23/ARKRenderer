@@ -15,8 +15,10 @@ namespace ark::rhi {
 namespace ark {
     enum class FallbackTextureKind {
         White,
+        MissingBaseColor,
         FlatNormal,
         MetallicRoughnessDefault,
+        MissingMetallicRoughness,
         OcclusionDefault,
         Black,
     };

@@ -265,8 +265,9 @@ namespace ark {
             m_Scene.setEnvironment(environment);
         }
 
-        ARK_INFO("SceneResource loaded modelSource={}, environmentSource={}",
+        ARK_INFO("SceneResource loaded modelSource={}, loadedModels={}, environmentSource={}",
                  toString(m_Report.modelSource),
+                 m_Report.loadedModelCount,
                  toString(m_Report.environmentSource));
         return true;
     }

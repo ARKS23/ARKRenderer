@@ -655,27 +655,34 @@ namespace {
 
         ark::TextureResource* white = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
         ark::TextureResource* whiteAgain = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
+        ark::TextureResource* missingBaseColor =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MissingBaseColor);
         ark::TextureResource* normal =
             textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
         ark::TextureResource* metallicRoughness =
             textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MetallicRoughnessDefault);
+        ark::TextureResource* missingMetallicRoughness =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MissingMetallicRoughness);
         ark::TextureResource* occlusion =
             textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::OcclusionDefault);
         ark::TextureResource* emissive = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::Black);
 
-        if (!white || !normal || !metallicRoughness || !occlusion || !emissive || white != whiteAgain) {
+        if (!white || !missingBaseColor || !normal || !metallicRoughness || !missingMetallicRoughness ||
+            !occlusion || !emissive || white != whiteAgain) {
             std::cerr << "TextureCache fallback texture reuse failed\n";
             return false;
         }
 
-        if (textureCache.size() != 5 || device.bufferCount != 5 || device.textureCount != 5 ||
-            device.textureViewCount != 5 || device.samplerCount != 5) {
+        if (textureCache.size() != 7 || device.bufferCount != 7 || device.textureCount != 7 ||
+            device.textureViewCount != 7 || device.samplerCount != 7) {
             std::cerr << "TextureCache fallback resource counts are invalid\n";
             return false;
         }
 
         if (white->colorSpace() != ark::TextureColorSpace::Srgb ||
             white->format() != ark::rhi::Format::RGBA8Srgb ||
+            missingBaseColor->colorSpace() != ark::TextureColorSpace::Srgb ||
+            missingBaseColor->format() != ark::rhi::Format::RGBA8Srgb ||
             emissive->colorSpace() != ark::TextureColorSpace::Srgb ||
             emissive->format() != ark::rhi::Format::RGBA8Srgb) {
             std::cerr << "TextureCache fallback color texture format is invalid\n";
@@ -686,14 +693,18 @@ namespace {
             normal->format() != ark::rhi::Format::RGBA8Unorm ||
             metallicRoughness->colorSpace() != ark::TextureColorSpace::Linear ||
             metallicRoughness->format() != ark::rhi::Format::RGBA8Unorm ||
+            missingMetallicRoughness->colorSpace() != ark::TextureColorSpace::Linear ||
+            missingMetallicRoughness->format() != ark::rhi::Format::RGBA8Unorm ||
             occlusion->colorSpace() != ark::TextureColorSpace::Linear ||
             occlusion->format() != ark::rhi::Format::RGBA8Unorm) {
             std::cerr << "TextureCache fallback data texture format is invalid\n";
             return false;
         }
 
-        if (white->mipLevels() != 1 || normal->mipLevels() != 1 || metallicRoughness->mipLevels() != 1 ||
-            occlusion->mipLevels() != 1 || emissive->mipLevels() != 1) {
+        if (white->mipLevels() != 1 || missingBaseColor->mipLevels() != 1 ||
+            normal->mipLevels() != 1 || metallicRoughness->mipLevels() != 1 ||
+            missingMetallicRoughness->mipLevels() != 1 || occlusion->mipLevels() != 1 ||
+            emissive->mipLevels() != 1) {
             std::cerr << "TextureCache fallback mip level count is invalid\n";
             return false;
         }
@@ -1687,6 +1698,15 @@ namespace {
             textures.occlusion->format() != ark::rhi::Format::RGBA8Unorm ||
             textures.emissive->format() != ark::rhi::Format::RGBA8Srgb) {
             std::cerr << "Texture load failure fallback slots are invalid\n";
+            return false;
+        }
+
+        if (textures.baseColor !=
+                textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MissingBaseColor) ||
+            textures.metallicRoughness !=
+                textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MissingMetallicRoughness) ||
+            textureCache.size() != 5) {
+            std::cerr << "Texture load failure did not use visible material fallbacks\n";
             return false;
         }
 

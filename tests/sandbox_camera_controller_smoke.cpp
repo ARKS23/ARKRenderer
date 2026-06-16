@@ -144,10 +144,10 @@ namespace {
 
     bool validateLargeSceneCamera() {
         ark::SandboxCameraControllerDesc desc{};
-        desc.target = glm::vec3{0.0f, 450.0f, 0.0f};
-        desc.distance = 2800.0f;
-        desc.yaw = glm::radians(28.0f);
-        desc.pitch = glm::radians(-12.0f);
+        desc.target = glm::vec3{0.0f, 180.0f, 0.0f};
+        desc.distance = 1200.0f;
+        desc.yaw = glm::radians(12.0f);
+        desc.pitch = glm::radians(-7.0f);
         desc.nearPlane = 1.0f;
         desc.farPlane = 6000.0f;
 
@@ -156,8 +156,8 @@ namespace {
 
         ark::RenderView view{};
         controller.writeTo(view);
-        if (!near(controller.distance(), 2800.0f) ||
-            !near(controller.target().y, 450.0f) ||
+        if (!near(controller.distance(), 1200.0f) ||
+            !near(controller.target().y, 180.0f) ||
             view.cameraPosition().y <= desc.target.y) {
             std::cerr << "Sandbox large scene camera state is invalid\n";
             return false;

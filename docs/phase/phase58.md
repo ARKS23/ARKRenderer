@@ -131,7 +131,8 @@ slot fallback 策略：
 - emissive：`Black`
 
 注意：
-- 对 baseColor 来说，这会让 KTX Sponza 变成偏白/材质缺失的大场景，但几何、阴影、相机和 draw queue 可验证。
+- 对 baseColor 来说，真实贴图加载失败时使用中性暖灰 `MissingBaseColor`，避免 KTX Sponza 在 HDR 背景下退成纯白不可读。
+- 对 metallicRoughness 来说，真实贴图加载失败时使用非金属高粗糙 `MissingMetallicRoughness`，避免大场景因为 MR 白图变成高金属反射天空。
 - 对 normal / MR / AO / emissive 来说，已有 fallback 语义正好适合作为缺失贴图默认值。
 - fallback 应记录 warning，方便区分“加载成功”和“材质降级”。
 - 后续真正做 KTX/KTX2 loader 时，应让 Sponza 走真实材质路径，而不是长期依赖 fallback。
@@ -306,7 +307,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\sponza\sponza.gltf
 - 相机 orbit / pan / zoom 能找到合适观察位置。
 - 后续 shadow map fixed bounds 是否足够覆盖中庭区域。
 
-当前默认 sandbox 已通过代码侧 multi-model scene path 把 DamagedHelmet 作为第二个模型放入 Sponza 中庭附近；纯 Sponza 仍可通过 `--preset sponza` 查看，显式传入模型路径时不会自动追加默认 Helmet。后续如果需要更稳定的截图/golden 基准，仍建议新增专门 fixture，而不是直接手改原始 Sponza：
+当前默认 sandbox 已通过代码侧 multi-model scene path 把 DamagedHelmet 作为第二个模型放入 Sponza 中庭附近；默认相机也拉近到中庭验证视角，便于直接检查 Sponza + Helmet 的组合画面。纯 Sponza 仍可通过 `--preset sponza` 查看，显式传入模型路径时不会自动追加默认 Helmet。后续如果需要更稳定的截图/golden 基准，仍建议新增专门 fixture，而不是直接手改原始 Sponza：
 
 ```text
 assets/models/sponza_helmet_validation_fixture.gltf
@@ -496,7 +497,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe --preset shadow-validation --shadows
 - ShadowPass 能渲染 directional shadow map。
 - ForwardPass 能读取 shadow map 并影响 direct lighting。
 - `.ktx` 等当前不可解码贴图加载失败时，ModelResource 能按 slot fallback，不导致整个模型加载失败。
-- Sponza 能作为 fallback material 大场景进入 sandbox smoke，默认 sandbox 能加载 Sponza + DamagedHelmet 组合场景。
+- Sponza 能作为可视 fallback material 大场景进入 sandbox smoke，默认 sandbox 能加载 Sponza + DamagedHelmet 组合场景，并通过 `loadedModels=2` 日志确认。
 - shadow 默认策略明确，不意外改变默认 golden。
 - sandbox 有明确命令可以观察阴影。
 - 相关 smoke tests 通过。

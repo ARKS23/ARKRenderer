@@ -56,6 +56,23 @@ namespace ark {
             return samplerDesc;
         }
 
+        FallbackTextureKind failedLoadFallbackKind(FallbackTextureKind fallbackKind) {
+            switch (fallbackKind) {
+            case FallbackTextureKind::White:
+                return FallbackTextureKind::MissingBaseColor;
+            case FallbackTextureKind::MetallicRoughnessDefault:
+                return FallbackTextureKind::MissingMetallicRoughness;
+            case FallbackTextureKind::MissingBaseColor:
+            case FallbackTextureKind::MissingMetallicRoughness:
+            case FallbackTextureKind::FlatNormal:
+            case FallbackTextureKind::OcclusionDefault:
+            case FallbackTextureKind::Black:
+                return fallbackKind;
+            }
+
+            return fallbackKind;
+        }
+
         TextureResource* acquireTexture(rhi::RenderDevice& device,
                                         TextureCache& textureCache,
                                         const asset::MaterialTextureSlotData& slot,
@@ -86,7 +103,7 @@ namespace ark {
             ARK_WARN("ModelResource texture load failed, using slot fallback: path={}, slot={}",
                      path.string(),
                      debugName);
-            return textureCache.getOrCreateFallback(device, fallbackKind);
+            return textureCache.getOrCreateFallback(device, failedLoadFallbackKind(fallbackKind));
         }
 
         std::string makeMaterialTextureDebugName(const asset::MaterialData& material,

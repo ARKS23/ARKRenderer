@@ -37,10 +37,14 @@ namespace ark {
             switch (kind) {
             case FallbackTextureKind::White:
                 return "White";
+            case FallbackTextureKind::MissingBaseColor:
+                return "MissingBaseColor";
             case FallbackTextureKind::FlatNormal:
                 return "FlatNormal";
             case FallbackTextureKind::MetallicRoughnessDefault:
                 return "MetallicRoughnessDefault";
+            case FallbackTextureKind::MissingMetallicRoughness:
+                return "MissingMetallicRoughness";
             case FallbackTextureKind::OcclusionDefault:
                 return "OcclusionDefault";
             case FallbackTextureKind::Black:
@@ -53,10 +57,12 @@ namespace ark {
         TextureColorSpace fallbackColorSpace(FallbackTextureKind kind) {
             switch (kind) {
             case FallbackTextureKind::White:
+            case FallbackTextureKind::MissingBaseColor:
             case FallbackTextureKind::Black:
                 return TextureColorSpace::Srgb;
             case FallbackTextureKind::FlatNormal:
             case FallbackTextureKind::MetallicRoughnessDefault:
+            case FallbackTextureKind::MissingMetallicRoughness:
             case FallbackTextureKind::OcclusionDefault:
                 return TextureColorSpace::Linear;
             }
@@ -67,9 +73,14 @@ namespace ark {
         std::array<u8, 4> fallbackPixel(FallbackTextureKind kind) {
             switch (kind) {
             case FallbackTextureKind::White:
-            case FallbackTextureKind::MetallicRoughnessDefault:
             case FallbackTextureKind::OcclusionDefault:
                 return {255, 255, 255, 255};
+            case FallbackTextureKind::MissingBaseColor:
+                return {170, 160, 145, 255};
+            case FallbackTextureKind::MetallicRoughnessDefault:
+                return {255, 255, 255, 255};
+            case FallbackTextureKind::MissingMetallicRoughness:
+                return {0, 230, 0, 255};
             case FallbackTextureKind::FlatNormal:
                 return {128, 128, 255, 255};
             case FallbackTextureKind::Black:

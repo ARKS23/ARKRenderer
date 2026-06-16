@@ -240,8 +240,9 @@ namespace ark {
 
                 // 默认 sandbox scene 由 renderer 持有 GPU model，避免 app 层直接管理 RHI 生命周期。
                 const SceneResourceLoadReport& report = m_DefaultSceneResource.report();
-                ARK_INFO("Renderer default scene loaded: modelSource={}, environmentSource={}",
+                ARK_INFO("Renderer default scene loaded: modelSource={}, loadedModels={}, environmentSource={}",
                          toString(report.modelSource),
+                         report.loadedModelCount,
                          toString(report.environmentSource));
 
                 return createDefaultEnvironmentBakeTargets();

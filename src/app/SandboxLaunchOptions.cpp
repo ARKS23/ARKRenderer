@@ -78,10 +78,10 @@ namespace ark {
             case RendererScenePreset::Default:
             case RendererScenePreset::Sponza:
             case RendererScenePreset::ShadowValidation:
-                camera.target = glm::vec3{0.0f, 450.0f, 0.0f};
-                camera.distance = 2800.0f;
-                camera.yaw = glm::radians(28.0f);
-                camera.pitch = glm::radians(-12.0f);
+                camera.target = glm::vec3{0.0f, 180.0f, 0.0f};
+                camera.distance = 1200.0f;
+                camera.yaw = glm::radians(12.0f);
+                camera.pitch = glm::radians(-7.0f);
                 camera.nearPlane = 1.0f;
                 camera.farPlane = 6000.0f;
                 break;
