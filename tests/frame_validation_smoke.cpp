@@ -16,6 +16,7 @@
 #include "renderer/RenderView.h"
 #include "renderer/SandboxEnvironment.h"
 #include "renderer/passes/ForwardPass.h"
+#include "renderer/passes/BloomPass.h"
 #include "renderer/passes/SkyboxPass.h"
 #include "renderer/passes/ToneMappingPass.h"
 #include "rhi/Buffer.h"
@@ -133,6 +134,24 @@ namespace {
         float meanAbsError = 0.0f;
         float maxChannelError = 0.0f;
         float mismatchedPixelRatio = 0.0f;
+    };
+
+    struct FrameValidationCaseDesc {
+        ark::Path fixtureRelativePath;
+        const char* fixtureName = "";
+        const char* fixtureId = "";
+        const char* sceneModelName = "";
+        ark::ToneMappingSettings toneMapping;
+        ark::PostProcessingSettings postProcessing;
+        bool compareGolden = true;
+        bool writeArtifact = true;
+    };
+
+    struct FrameValidationResult {
+        std::vector<ark::u8> hdrBytes;
+        std::vector<ark::u8> ldrBytes;
+        FrameColorStats hdrStats;
+        LdrFrameColorStats ldrStats;
     };
 
     bool isCMakeConfigDirectoryName(std::string_view name) {
@@ -481,8 +500,8 @@ namespace {
         return stats;
     }
 
-    void printImageDiffStats(const char* fixtureId, const ImageDiffStats& stats) {
-        std::cerr << "Golden diff stats for " << fixtureId
+    void printImageDiffStats(const char* label, const ImageDiffStats& stats) {
+        std::cerr << "Image diff stats for " << label
                   << ": pixels=" << stats.pixelCount
                   << " meanAbsError=" << stats.meanAbsError
                   << " maxChannelError=" << stats.maxChannelError
@@ -584,16 +603,24 @@ namespace {
         return true;
     }
 
-    bool writeArtifactAndValidateGolden(const std::vector<ark::u8>& ldrBytes,
-                                        ark::rhi::Extent2D extent,
-                                        const ark::Path& fixturePath,
-                                        const char* fixtureId,
-                                        const FrameValidationOptions& options) {
+    bool writeFrameArtifact(const std::vector<ark::u8>& ldrBytes,
+                            ark::rhi::Extent2D extent,
+                            const char* fixtureId,
+                            const FrameValidationOptions& options) {
         const ark::Path artifactPath = options.artifactRoot / (std::string{fixtureId} + ".png");
         if (!writeRgba8Png(ldrBytes, extent, artifactPath)) {
             return false;
         }
+
         std::cerr << "Wrote frame validation artifact: " << artifactPath.string() << '\n';
+        return true;
+    }
+
+    bool validateGolden(const std::vector<ark::u8>& ldrBytes,
+                        ark::rhi::Extent2D extent,
+                        const ark::Path& fixturePath,
+                        const char* fixtureId,
+                        const FrameValidationOptions& options) {
 
         const ark::Path goldenPath = goldenPathForFixture(fixturePath, fixtureId);
         if (options.updateGolden) {
@@ -690,8 +717,8 @@ namespace {
                                ark::EnvironmentCubeResource& skyboxCube,
                                ark::EnvironmentResource& environment,
                                ark::ModelResource& model,
-                               const ark::asset::ModelData& modelData,
-                               const char* sceneModelName) {
+                               const char* sceneModelName,
+                               ark::RenderView& view) {
         ark::RenderScene scene{};
         scene.setEnvironment(ark::SceneEnvironment{
             .environment = &environment,
@@ -708,12 +735,6 @@ namespace {
         queue.build(scene);
         if (queue.empty()) {
             std::cerr << "Frame validation render queue is empty\n";
-            return false;
-        }
-
-        ark::RenderView view{};
-        if (!applyFirstSceneCamera(view, modelData, FrameExtent)) {
-            std::cerr << "Frame validation fixture does not provide a usable perspective scene camera\n";
             return false;
         }
 
@@ -787,10 +808,38 @@ namespace {
         return true;
     }
 
+    bool renderBloomFrame(ark::rhi::RenderDevice& device,
+                          ark::rhi::DeviceContext& context,
+                          ark::rhi::FrameResource& frame,
+                          ark::BloomPass& bloomPass,
+                          ark::RenderView& view,
+                          ark::rhi::TextureView*& sceneColorView) {
+        ark::FrameContext frameContext{};
+        frameContext.frameIndex = frame.frameIndex;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.frameResource = &frame;
+        frameContext.view = &view;
+        frameContext.sceneColorView = sceneColorView;
+        frameContext.extent = FrameExtent;
+        frameContext.colorFormat = ark::rhi::Format::RGBA16Float;
+        frameContext.depthFormat = ark::rhi::Format::Unknown;
+        frameContext.clearColor = ark::rhi::ClearColor{0.0f, 0.0f, 0.0f, 1.0f};
+
+        if (!bloomPass.prepare(frameContext) || !bloomPass.execute(frameContext)) {
+            std::cerr << "Bloom frame validation pass failed\n";
+            return false;
+        }
+
+        sceneColorView = frameContext.sceneColorView;
+        return sceneColorView != nullptr;
+    }
+
     bool renderToneMappedLdrFrame(ark::rhi::RenderDevice& device,
                                   ark::rhi::DeviceContext& context,
                                   ark::rhi::FrameResource& frame,
                                   ark::ToneMappingPass& toneMappingPass,
+                                  ark::RenderView& view,
                                   ark::rhi::TextureView& sceneColorView,
                                   ark::rhi::Texture& ldrColor,
                                   ark::rhi::TextureView& ldrColorView) {
@@ -799,6 +848,7 @@ namespace {
         frameContext.device = &device;
         frameContext.context = &context;
         frameContext.frameResource = &frame;
+        frameContext.view = &view;
         frameContext.sceneColorView = &sceneColorView;
         frameContext.extent = FrameExtent;
         frameContext.colorFormat = ark::rhi::Format::RGBA8Unorm;
@@ -851,11 +901,9 @@ namespace {
         return true;
     }
 
-    bool validateFixtureFrameColorReadback(const ark::Path& fixtureRelativePath,
-                                           const char* fixtureName,
-                                           const char* fixtureId,
-                                           const char* sceneModelName,
-                                           const FrameValidationOptions& options) {
+    bool runFrameValidationCase(const FrameValidationCaseDesc& desc,
+                                const FrameValidationOptions& options,
+                                FrameValidationResult& result) {
         HiddenGlfwWindow window{};
 
         ark::rhi::RenderBackendDesc backendDesc{};
@@ -903,21 +951,21 @@ namespace {
             return false;
         }
 
-        const ark::Path modelPath = findFixturePath(fixtureRelativePath);
+        const ark::Path modelPath = findFixturePath(desc.fixtureRelativePath);
         if (modelPath.empty()) {
-            std::cerr << "Failed to find " << fixtureName << '\n';
+            std::cerr << "Failed to find " << desc.fixtureName << '\n';
             return false;
         }
 
         const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
         if (modelData.empty()) {
-            std::cerr << "Failed to load " << fixtureName << '\n';
+            std::cerr << "Failed to load " << desc.fixtureName << '\n';
             return false;
         }
 
         ark::ModelResource model{};
         if (!model.create(device, modelData)) {
-            std::cerr << "Failed to create " << fixtureName << " model resource\n";
+            std::cerr << "Failed to create " << desc.fixtureName << " model resource\n";
             return false;
         }
 
@@ -946,9 +994,11 @@ namespace {
 
         ark::SkyboxPass skyboxPass{};
         ark::ForwardPass forwardPass{};
+        ark::BloomPass bloomPass{};
         ark::ToneMappingPass toneMappingPass{};
         skyboxPass.setup(device);
         forwardPass.setup(device);
+        bloomPass.setup(device);
         toneMappingPass.setup(device);
 
         ark::rhi::FrameResource& frame = context.beginFrame();
@@ -971,6 +1021,14 @@ namespace {
             return false;
         }
 
+        ark::RenderView view{};
+        if (!applyFirstSceneCamera(view, modelData, FrameExtent)) {
+            std::cerr << "Frame validation fixture does not provide a usable perspective scene camera\n";
+            return false;
+        }
+        view.setToneMappingSettings(desc.toneMapping);
+        view.setPostProcessingSettings(desc.postProcessing);
+
         if (!renderValidationFrame(device,
                                    context,
                                    frame,
@@ -983,8 +1041,8 @@ namespace {
                                    skyboxCube,
                                    environment,
                                    model,
-                                   modelData,
-                                   sceneModelName)) {
+                                   desc.sceneModelName,
+                                   view)) {
             return false;
         }
 
@@ -1016,11 +1074,17 @@ namespace {
         }};
         context.pipelineBarrier(sceneColorToShaderResource);
 
+        ark::rhi::TextureView* postSceneColorView = sceneColorView.get();
+        if (!renderBloomFrame(device, context, frame, bloomPass, view, postSceneColorView)) {
+            return false;
+        }
+
         if (!renderToneMappedLdrFrame(device,
                                       context,
                                       frame,
                                       toneMappingPass,
-                                      *sceneColorView,
+                                      view,
+                                      *postSceneColorView,
                                       *ldrColor,
                                       *ldrColorView)) {
             return false;
@@ -1056,39 +1120,157 @@ namespace {
 
         device.waitIdle();
 
-        std::vector<ark::u8> hdrBytes(static_cast<ark::usize>(HdrFrameByteSize));
-        if (!hdrReadbackBuffer->readData(hdrBytes.data(), HdrFrameByteSize)) {
+        result.hdrBytes.resize(static_cast<ark::usize>(HdrFrameByteSize));
+        if (!hdrReadbackBuffer->readData(result.hdrBytes.data(), HdrFrameByteSize)) {
             std::cerr << "Failed to read HDR frame validation bytes\n";
             return false;
         }
 
-        std::vector<ark::u8> ldrBytes(static_cast<ark::usize>(LdrFrameByteSize));
-        if (!ldrReadbackBuffer->readData(ldrBytes.data(), LdrFrameByteSize)) {
+        result.ldrBytes.resize(static_cast<ark::usize>(LdrFrameByteSize));
+        if (!ldrReadbackBuffer->readData(result.ldrBytes.data(), LdrFrameByteSize)) {
             std::cerr << "Failed to read LDR frame validation bytes\n";
             return false;
         }
 
-        const FrameColorStats hdrStats = computeFrameColorStats(hdrBytes, FrameExtent);
-        const LdrFrameColorStats ldrStats = computeLdrFrameColorStats(ldrBytes, FrameExtent);
-        const bool statsValid = validateStats(hdrStats) && validateLdrStats(ldrStats);
-        const bool goldenValid =
-            writeArtifactAndValidateGolden(ldrBytes, FrameExtent, modelPath, fixtureId, options);
-        return statsValid && goldenValid;
+        result.hdrStats = computeFrameColorStats(result.hdrBytes, FrameExtent);
+        result.ldrStats = computeLdrFrameColorStats(result.ldrBytes, FrameExtent);
+        if (!validateStats(result.hdrStats) || !validateLdrStats(result.ldrStats)) {
+            return false;
+        }
+
+        if (desc.writeArtifact && !writeFrameArtifact(result.ldrBytes, FrameExtent, desc.fixtureId, options)) {
+            return false;
+        }
+
+        if (desc.compareGolden &&
+            !validateGolden(result.ldrBytes, FrameExtent, modelPath, desc.fixtureId, options)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateFrameCase(const FrameValidationCaseDesc& desc, const FrameValidationOptions& options) {
+        FrameValidationResult result{};
+        return runFrameValidationCase(desc, options, result);
+    }
+
+    ark::PostProcessingSettings makeValidationBloomSettings() {
+        ark::PostProcessingSettings settings{};
+        settings.bloom.enabled = true;
+        settings.bloom.intensity = 0.12f;
+        settings.bloom.scatter = 0.72f;
+        settings.bloom.threshold = 0.65f;
+        settings.bloom.softKnee = 0.55f;
+        settings.bloom.maxMipCount = 6;
+        return settings;
+    }
+
+    FrameValidationCaseDesc makeBloomValidationCase(const char* fixtureId) {
+        FrameValidationCaseDesc desc{};
+        desc.fixtureRelativePath = ark::Path{"assets/models/bloom_validation_fixture.gltf"};
+        desc.fixtureName = "bloom validation fixture";
+        desc.fixtureId = fixtureId;
+        desc.sceneModelName = "FrameValidationBloomFixture";
+        desc.compareGolden = false;
+        return desc;
+    }
+
+    bool validateImageDiffAbove(const char* label,
+                                const std::vector<ark::u8>& lhs,
+                                const std::vector<ark::u8>& rhs,
+                                float minMeanAbsError,
+                                float minMismatchRatio) {
+        const ImageDiffStats diffStats = computeImageDiffStats(lhs, rhs, FrameExtent);
+        printImageDiffStats(label, diffStats);
+        if (diffStats.meanAbsError < minMeanAbsError ||
+            diffStats.mismatchedPixelRatio < minMismatchRatio) {
+            std::cerr << "Frame validation image diff was too small for " << label << '\n';
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateBloomVisualDiff(const FrameValidationOptions& options) {
+        FrameValidationCaseDesc bloomOff = makeBloomValidationCase("bloom_validation_reinhard_bloom_off");
+        FrameValidationCaseDesc bloomOn = makeBloomValidationCase("bloom_validation_reinhard_bloom_on");
+        bloomOn.postProcessing = makeValidationBloomSettings();
+
+        FrameValidationResult offResult{};
+        FrameValidationResult onResult{};
+        if (!runFrameValidationCase(bloomOff, options, offResult) ||
+            !runFrameValidationCase(bloomOn, options, onResult)) {
+            return false;
+        }
+
+        const float meanLuminanceDelta =
+            onResult.ldrStats.meanLuminance - offResult.ldrStats.meanLuminance;
+        if (meanLuminanceDelta < 0.0005f ||
+            onResult.ldrStats.maxLuminance + 0.0001f < offResult.ldrStats.maxLuminance) {
+            std::cerr << "Bloom validation luminance delta is too small: meanDelta="
+                      << meanLuminanceDelta
+                      << " offMax=" << offResult.ldrStats.maxLuminance
+                      << " onMax=" << onResult.ldrStats.maxLuminance << '\n';
+            return false;
+        }
+
+        return validateImageDiffAbove("bloom_validation_bloom_on_vs_off",
+                                      offResult.ldrBytes,
+                                      onResult.ldrBytes,
+                                      0.0015f,
+                                      0.008f);
+    }
+
+    bool validateToneMappingVisualDiff(const FrameValidationOptions& options) {
+        FrameValidationCaseDesc reinhard = makeBloomValidationCase("bloom_validation_reinhard_bloom_on");
+        FrameValidationCaseDesc aces = makeBloomValidationCase("bloom_validation_aces_bloom_on");
+        FrameValidationCaseDesc linear = makeBloomValidationCase("bloom_validation_linear_bloom_on");
+        reinhard.writeArtifact = false;
+        reinhard.postProcessing = makeValidationBloomSettings();
+        aces.postProcessing = makeValidationBloomSettings();
+        linear.postProcessing = makeValidationBloomSettings();
+        aces.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
+        linear.toneMapping.operatorType = ark::ToneMappingOperator::Linear;
+
+        FrameValidationResult reinhardResult{};
+        FrameValidationResult acesResult{};
+        FrameValidationResult linearResult{};
+        if (!runFrameValidationCase(reinhard, options, reinhardResult) ||
+            !runFrameValidationCase(aces, options, acesResult) ||
+            !runFrameValidationCase(linear, options, linearResult)) {
+            return false;
+        }
+
+        return validateImageDiffAbove("tone_mapping_aces_vs_reinhard",
+                                      reinhardResult.ldrBytes,
+                                      acesResult.ldrBytes,
+                                      0.001f,
+                                      0.005f) &&
+               validateImageDiffAbove("tone_mapping_linear_vs_reinhard",
+                                      reinhardResult.ldrBytes,
+                                      linearResult.ldrBytes,
+                                      0.002f,
+                                      0.005f);
     }
 
     bool validateFrameColorReadback(const FrameValidationOptions& options) {
-        return validateFixtureFrameColorReadback(
-                   ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"},
-                   "specular IBL validation fixture",
-                   "specular_ibl_validation_fixture",
-                   "FrameValidationSpecularFixture",
-                   options) &&
-               validateFixtureFrameColorReadback(
-                   ark::Path{"assets/models/material_ball_validation_fixture.gltf"},
-                   "material ball validation fixture",
-                   "material_ball_validation_fixture",
-                   "FrameValidationMaterialBallFixture",
-                   options);
+        FrameValidationCaseDesc specular{};
+        specular.fixtureRelativePath = ark::Path{"assets/models/specular_ibl_validation_fixture.gltf"};
+        specular.fixtureName = "specular IBL validation fixture";
+        specular.fixtureId = "specular_ibl_validation_fixture";
+        specular.sceneModelName = "FrameValidationSpecularFixture";
+
+        FrameValidationCaseDesc materialBall{};
+        materialBall.fixtureRelativePath = ark::Path{"assets/models/material_ball_validation_fixture.gltf"};
+        materialBall.fixtureName = "material ball validation fixture";
+        materialBall.fixtureId = "material_ball_validation_fixture";
+        materialBall.sceneModelName = "FrameValidationMaterialBallFixture";
+
+        return validateFrameCase(specular, options) &&
+               validateFrameCase(materialBall, options) &&
+               validateBloomVisualDiff(options) &&
+               validateToneMappingVisualDiff(options);
     }
 } // namespace
 

@@ -1,5 +1,38 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-16, Phase 0.56)
+
+ARKRenderer has completed Phase 0.56: Bloom / ToneMapping Visual Validation Closure.
+
+Key changes:
+- `ark_frame_validation_smoke` now uses configurable frame validation case descriptors.
+- Frame validation cases can pass `ToneMappingSettings` and `PostProcessingSettings` into the real offscreen render path.
+- Added `bloom-validation` Bloom disabled/enabled LDR statistical diff coverage.
+- Added `bloom-validation` Reinhard / ACES / Linear tone mapping LDR statistical diff coverage.
+- Bloom and tone mapping validation artifacts are written to the existing frame validation artifact directory.
+- Existing material ball and specular IBL golden baselines remain unchanged.
+- Default sandbox behavior, Bloom default disabled state, and default Reinhard tone mapping remain unchanged.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_frame_validation_smoke ark_bloom_pass_smoke ark_tone_mapping_pass_smoke ark_shader_assets_smoke ark_post_processing_settings_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(frame_validation|bloom_pass|tone_mapping_pass|shader_assets|post_processing_settings)_smoke" --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for bloom-validation with Bloom and tone-mapping variants
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 5/5
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+full CTest passed: 28/28
+sandbox hidden-window smoke passed for bloom-validation, bloom-validation --bloom, bloom-validation --bloom --tone-mapping aces, and bloom-validation --bloom --tone-mapping linear
+```
+
 ## Latest Update (2026-06-15, Phase 0.55)
 
 ARKRenderer has completed Phase 0.55: Tone Mapping Operator Presets.
