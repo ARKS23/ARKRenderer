@@ -3,7 +3,10 @@
 #include "core/FileSystem.h"
 #include "core/Memory.h"
 #include "renderer/RendererQuality.h"
+#include "renderer/SceneResource.h"
 #include "rhi/RHICommon.h"
+
+#include <vector>
 
 namespace ark {
     class RenderScene;
@@ -14,6 +17,7 @@ namespace ark {
         rhi::NativeWindowHandle nativeWindow;
         rhi::Extent2D extent{1280, 720};
         Path defaultModelPath;
+        std::vector<SceneAdditionalModelDesc> defaultAdditionalModels;
         Path defaultEnvironmentPath;
         RendererQualityDesc quality;
         bool useDebugOrientationEnvironment = false;

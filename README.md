@@ -9,7 +9,7 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 - HDR 环境、equirectangular-to-cubemap、Skybox、Diffuse IBL、Specular IBL 和 BRDF LUT。
 - Directional shadow map 基础路径，sandbox 可通过 preset/参数开启。
 - HDR scene color、Physically Based Bloom、ToneMapping 和 frame validation smoke tests。
-- sandbox 轨道相机、scene preset、quality preset、默认模型和资源 fallback。
+- sandbox 轨道相机、scene preset、quality preset、默认 Sponza + DamagedHelmet 组合场景和资源 fallback。
 
 ## 构建
 
@@ -34,6 +34,8 @@ ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
 build\msvc-vcpkg\Debug\ark_sandbox.exe
 ```
 
+默认启动会加载 Sponza 大场景，并把 DamagedHelmet 作为第二个模型放在中庭附近，用于观察阴影、Bloom、ToneMapping、IBL 和复杂场景组合。
+
 常用 sandbox 参数：
 
 ```powershell
@@ -48,6 +50,8 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\material_ball_validation_fi
 ```
 
 说明：当前 Sponza 的贴图是 `.ktx`，项目还没有 KTX/KTX2 解码器，因此会走 texture load failure fallback。它适合先验证几何、场景规模、阴影和相机路径，不代表最终材质质量。
+
+`--preset sponza` 会显示纯 Sponza；显式传入模型路径时不会自动追加默认 DamagedHelmet。
 
 ## 文档
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <glm/ext/matrix_transform.hpp>
 #include <string>
 
 namespace ark {
@@ -14,6 +15,8 @@ namespace ark {
             "assets/models/bloom_validation_fixture.gltf";
         constexpr const char* SponzaFixturePath =
             "assets/models/sponza/sponza.gltf";
+        constexpr const char* DamagedHelmetFixturePath =
+            "assets/models/DamagedHelmet/DamagedHelmet.gltf";
 
         std::string normalizePresetName(std::string_view name) {
             std::string normalized{name};
@@ -38,6 +41,13 @@ namespace ark {
 
             switch (preset) {
             case RendererScenePreset::Default:
+                scene.modelPath = SponzaFixturePath;
+                scene.additionalModels.push_back(SceneAdditionalModelDesc{
+                    DamagedHelmetFixturePath,
+                    glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 95.0f, 0.0f}) *
+                        glm::scale(glm::mat4{1.0f}, glm::vec3{80.0f}),
+                    "DefaultSandboxDamagedHelmet",
+                });
                 break;
             case RendererScenePreset::MaterialBall:
                 scene.modelPath = MaterialBallFixturePath;

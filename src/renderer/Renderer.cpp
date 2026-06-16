@@ -223,6 +223,7 @@ namespace ark {
                 SceneResourceLoadDesc loadDesc{};
                 loadDesc.modelPath = desc.defaultModelPath;
                 loadDesc.modelFallback = SceneModelFallbackPolicy::DefaultSandboxModel;
+                loadDesc.additionalModels = desc.defaultAdditionalModels;
                 loadDesc.environmentPath = desc.defaultEnvironmentPath;
                 loadDesc.environmentFallback = desc.useDebugOrientationEnvironment
                                                    ? SceneEnvironmentFallbackPolicy::DebugOrientation

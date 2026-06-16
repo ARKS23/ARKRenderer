@@ -38,6 +38,7 @@ namespace ark {
         rendererDesc.nativeWindow = m_Window->getNativeWindowHandle();
         rendererDesc.extent = m_Window->getExtent();
         rendererDesc.defaultModelPath = m_Desc.defaultModelPath;
+        rendererDesc.defaultAdditionalModels = m_Desc.defaultAdditionalModels;
         rendererDesc.defaultEnvironmentPath = m_Desc.defaultEnvironmentPath;
         rendererDesc.quality = m_Desc.rendererQuality;
         rendererDesc.useDebugOrientationEnvironment = m_Desc.useDebugOrientationEnvironment;
@@ -52,7 +53,7 @@ namespace ark {
         view.setToneMappingSettings(m_Desc.toneMapping);
         view.setPostProcessingSettings(m_Desc.postProcessing);
         view.setShadowSettings(m_Desc.shadows);
-        SandboxCameraController cameraController;
+        SandboxCameraController cameraController{m_Desc.camera};
         rhi::Extent2D currentExtent = rendererDesc.extent;
         cameraController.setViewportExtent(currentExtent);
         cameraController.writeTo(view);

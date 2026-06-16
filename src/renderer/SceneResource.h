@@ -2,11 +2,14 @@
 
 #include "asset/MeshData.h"
 #include "core/FileSystem.h"
+#include "core/Memory.h"
 #include "renderer/EnvironmentResource.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderScene.h"
 
+#include <span>
 #include <string>
+#include <vector>
 
 namespace ark::rhi {
     class RenderDevice;
@@ -39,9 +42,16 @@ namespace ark {
         DebugOrientation,
     };
 
+    struct SceneAdditionalModelDesc {
+        Path modelPath;
+        glm::mat4 transform{1.0f};
+        std::string modelName = "AdditionalModel";
+    };
+
     struct SceneResourceLoadDesc {
         Path modelPath;
         SceneModelFallbackPolicy modelFallback = SceneModelFallbackPolicy::DefaultSandboxModel;
+        std::vector<SceneAdditionalModelDesc> additionalModels;
 
         Path environmentPath;
         SceneEnvironmentFallbackPolicy environmentFallback =
@@ -57,9 +67,11 @@ namespace ark {
         bool modelLoaded = false;
         bool environmentLoaded = false;
         Path resolvedModelPath;
+        std::vector<Path> resolvedAdditionalModelPaths;
         Path resolvedEnvironmentPath;
         SceneModelSource modelSource = SceneModelSource::None;
         SceneEnvironmentSource environmentSource = SceneEnvironmentSource::None;
+        usize loadedModelCount = 0;
     };
 
     class SceneResource final {
@@ -81,12 +93,28 @@ namespace ark {
             return m_ModelData;
         }
 
+        std::span<const asset::ModelData> additionalModelData() const {
+            return m_AdditionalModelData;
+        }
+
         ModelResource* model() {
             return m_Report.modelLoaded ? &m_Model : nullptr;
         }
 
         const ModelResource* model() const {
             return m_Report.modelLoaded ? &m_Model : nullptr;
+        }
+
+        usize additionalModelCount() const {
+            return m_AdditionalModels.size();
+        }
+
+        ModelResource* additionalModel(usize index) {
+            return index < m_AdditionalModels.size() ? m_AdditionalModels[index].get() : nullptr;
+        }
+
+        const ModelResource* additionalModel(usize index) const {
+            return index < m_AdditionalModels.size() ? m_AdditionalModels[index].get() : nullptr;
         }
 
         EnvironmentResource* environment() {
@@ -108,9 +136,10 @@ namespace ark {
     private:
         asset::ModelData m_ModelData;
         ModelResource m_Model;
+        std::vector<asset::ModelData> m_AdditionalModelData;
+        std::vector<Scope<ModelResource>> m_AdditionalModels;
         EnvironmentResource m_Environment;
         RenderScene m_Scene;
         SceneResourceLoadReport m_Report;
     };
 } // namespace ark
-

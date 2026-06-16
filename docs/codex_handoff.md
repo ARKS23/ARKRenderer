@@ -1,5 +1,36 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-16, Default Sandbox Composite Scene)
+
+The default `ark_sandbox.exe` path now opens a large validation scene instead of only the standalone DamagedHelmet.
+
+Key changes:
+- `SceneResourceLoadDesc` now supports `additionalModels`.
+- `SceneResource` owns additional `ModelResource` instances and adds them to the same `RenderScene`.
+- `ApplicationDesc` / `RendererDesc` now forward default additional models to the renderer.
+- `RendererScenePreset::Default` uses Sponza as the main model and adds DamagedHelmet as a second model near the Sponza courtyard.
+- `--preset sponza` remains a pure Sponza view.
+- Explicit positional model overrides clear the default additional model list, so ad-hoc sandbox model tests do not unexpectedly include DamagedHelmet.
+- Sandbox large-scene camera defaults now use a farther orbit camera, and the camera distance clamp was raised to support Sponza-scale scenes.
+- `README.md`, `docs/phase/phase58.md`, and smoke tests were updated for the new default behavior.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_sandbox_camera_controller_smoke ark_renderer_preset_smoke ark_scene_resource_smoke ark_framework_headers_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(sandbox_camera_controller|renderer_preset|scene_resource|framework_headers)_smoke" --output-on-failure
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 4/4
+```
+
+Notes:
+- Default sandbox now verifies Sponza-scale geometry plus DamagedHelmet material/IBL response in one scene.
+- Sponza materials still use texture load failure fallback for `.ktx` textures, so it is not a final material-quality reference.
+- Shadows remain opt-in for default sandbox unless using `--preset shadow-validation`.
+
 ## Latest Update (2026-06-16, Phase 0.58)
 
 ARKRenderer has completed Phase 0.58: Directional Shadow Map Foundation.

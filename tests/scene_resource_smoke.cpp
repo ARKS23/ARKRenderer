@@ -14,6 +14,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <glm/ext/matrix_transform.hpp>
 #include <vector>
 
 namespace {
@@ -378,6 +379,66 @@ namespace {
 
         return true;
     }
+
+    bool validateSponzaHelmetCompositeSceneLoad() {
+        FakeRenderDevice device{};
+
+        ark::SceneResourceLoadDesc desc{};
+        desc.modelPath = "assets/models/sponza/sponza.gltf";
+        desc.modelFallback = ark::SceneModelFallbackPolicy::None;
+        desc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::ProceduralOnly;
+        desc.modelName = "SponzaCompositeSceneResource";
+        desc.additionalModels.push_back(ark::SceneAdditionalModelDesc{
+            "assets/models/DamagedHelmet/DamagedHelmet.gltf",
+            glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 95.0f, 0.0f}) *
+                glm::scale(glm::mat4{1.0f}, glm::vec3{80.0f}),
+            "SponzaCompositeHelmet",
+        });
+
+        ark::SceneResource sceneResource{};
+        if (!sceneResource.load(device, desc)) {
+            std::cerr << "SceneResource failed to load Sponza + DamagedHelmet composite scene\n";
+            return false;
+        }
+
+        const ark::SceneResourceLoadReport& report = sceneResource.report();
+        if (!report.modelLoaded ||
+            report.loadedModelCount != 2 ||
+            report.resolvedModelPath.filename() != "sponza.gltf" ||
+            report.resolvedAdditionalModelPaths.size() != 1 ||
+            report.resolvedAdditionalModelPaths.front().filename() != "DamagedHelmet.gltf" ||
+            sceneResource.scene().models().size() != 2 ||
+            sceneResource.scene().size() != 2 ||
+            sceneResource.additionalModelCount() != 1 ||
+            !sceneResource.additionalModel(0) ||
+            sceneResource.additionalModel(0)->primitiveCount() == 0) {
+            std::cerr << "Sponza + DamagedHelmet composite scene state is invalid\n";
+            return false;
+        }
+
+        const glm::mat4& helmetTransform = sceneResource.scene().models()[1].transform;
+        if (helmetTransform[3][1] < 90.0f || helmetTransform[0][0] < 79.0f) {
+            std::cerr << "Composite helmet transform is invalid\n";
+            return false;
+        }
+
+        ark::RenderQueue queue{};
+        queue.build(sceneResource.scene());
+        if (queue.size() <= sceneResource.model()->instanceCount()) {
+            std::cerr << "Composite scene queue did not include the additional model\n";
+            return false;
+        }
+
+        sceneResource.resetImmediate();
+        if (sceneResource.hasScene() ||
+            sceneResource.additionalModelCount() != 0 ||
+            !sceneResource.additionalModelData().empty()) {
+            std::cerr << "Composite SceneResource reset state is invalid\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -385,7 +446,8 @@ int main() {
                    validateMissingExplicitModelFallsBack() &&
                    validateDebugOrientationEnvironment() &&
                    validateMissingEnvironmentFallback() &&
-                   validateSponzaTextureFailureFallbackSceneLoad()
+                   validateSponzaTextureFailureFallbackSceneLoad() &&
+                   validateSponzaHelmetCompositeSceneLoad()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

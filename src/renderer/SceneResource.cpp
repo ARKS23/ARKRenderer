@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 
 namespace ark {
     namespace {
@@ -104,6 +105,19 @@ namespace ark {
             return {};
         }
 
+        Path resolveAdditionalModelPath(const SceneAdditionalModelDesc& desc) {
+            if (desc.modelPath.empty()) {
+                return {};
+            }
+
+            Path requestedPath = findResourceFile(desc.modelPath);
+            if (requestedPath.empty()) {
+                ARK_WARN("Requested additional scene model was not found: {}", desc.modelPath.string());
+            }
+
+            return requestedPath;
+        }
+
         asset::ImageData loadEnvironmentImage(const Path& path) {
             if (path.empty()) {
                 return {};
@@ -196,7 +210,43 @@ namespace ark {
         }
 
         m_Report.modelLoaded = true;
+        m_Report.loadedModelCount = 1;
         m_Scene.addModel(m_Model, glm::mat4{1.0f}, desc.modelName);
+
+        m_AdditionalModelData.reserve(desc.additionalModels.size());
+        m_AdditionalModels.reserve(desc.additionalModels.size());
+        m_Report.resolvedAdditionalModelPaths.reserve(desc.additionalModels.size());
+        for (const SceneAdditionalModelDesc& additionalDesc : desc.additionalModels) {
+            const Path additionalModelPath = resolveAdditionalModelPath(additionalDesc);
+            if (additionalModelPath.empty()) {
+                ARK_ERROR("SceneResource failed to resolve additional model: {}",
+                          additionalDesc.modelPath.string());
+                resetImmediate();
+                return false;
+            }
+
+            asset::ModelData additionalModelData = asset::loadGltfModel(additionalModelPath);
+            if (additionalModelData.empty()) {
+                ARK_ERROR("SceneResource failed to load additional model data: {}",
+                          additionalModelPath.string());
+                resetImmediate();
+                return false;
+            }
+
+            Scope<ModelResource> additionalModel = makeScope<ModelResource>();
+            if (!additionalModel->create(device, additionalModelData)) {
+                ARK_ERROR("SceneResource failed to create additional model resources: {}",
+                          additionalModelPath.string());
+                resetImmediate();
+                return false;
+            }
+
+            m_AdditionalModelData.push_back(std::move(additionalModelData));
+            m_AdditionalModels.push_back(std::move(additionalModel));
+            m_Report.resolvedAdditionalModelPaths.push_back(additionalModelPath);
+            m_Scene.addModel(*m_AdditionalModels.back(), additionalDesc.transform, additionalDesc.modelName);
+            ++m_Report.loadedModelCount;
+        }
 
         asset::ImageData environmentImage = resolveEnvironmentImage(desc, m_Report);
         if (!environmentImage.empty()) {
@@ -225,6 +275,13 @@ namespace ark {
         m_Scene.clear();
         m_Scene.clearEnvironment();
         m_Environment.resetImmediate();
+        for (Scope<ModelResource>& additionalModel : m_AdditionalModels) {
+            if (additionalModel) {
+                additionalModel->reset();
+            }
+        }
+        m_AdditionalModels.clear();
+        m_AdditionalModelData.clear();
         m_Model.reset();
         m_ModelData = {};
         m_Report = {};

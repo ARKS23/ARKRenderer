@@ -17,7 +17,7 @@ namespace ark {
         constexpr float MinPitch = glm::radians(-89.0f);
         constexpr float MaxPitch = glm::radians(89.0f);
         constexpr float MinDistance = 0.25f;
-        constexpr float MaxDistance = 100.0f;
+        constexpr float MaxDistance = 10000.0f;
 
         float aspectFromExtent(rhi::Extent2D extent) {
             if (extent.width == 0 || extent.height == 0) {

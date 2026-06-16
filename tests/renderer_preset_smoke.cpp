@@ -20,7 +20,9 @@ namespace {
         const ark::ResolvedRendererPreset resolved =
             ark::resolveRendererPreset(ark::RendererPresetDesc{});
 
-        if (!resolved.scene.modelPath.empty() ||
+        if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
+            resolved.scene.additionalModels.size() != 1 ||
+            resolved.scene.additionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
             !resolved.scene.environmentPath.empty() ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
@@ -93,6 +95,7 @@ namespace {
         preset.scene = ark::RendererScenePreset::Sponza;
         resolved = ark::resolveRendererPreset(preset);
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
+            !resolved.scene.additionalModels.empty() ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
                 ark::SceneEnvironmentFallbackPolicy::DefaultHdrThenProcedural ||
@@ -196,6 +199,19 @@ namespace {
 
     bool validateSandboxLaunchOptions() {
         {
+            const ark::ApplicationDesc desc =
+                ark::makeSandboxApplicationDesc(std::span<const std::string_view>{});
+            if (desc.defaultModelPath.filename() != "sponza.gltf" ||
+                desc.defaultAdditionalModels.size() != 1 ||
+                desc.defaultAdditionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
+                desc.camera.distance < 1000.0f ||
+                desc.camera.farPlane < 5000.0f) {
+                std::cerr << "Sandbox default scene application desc is invalid\n";
+                return false;
+            }
+        }
+
+        {
             constexpr std::array<std::string_view, 6> args{
                 "--preset",
                 "material-ball",
@@ -229,8 +245,10 @@ namespace {
             const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
             if (options.ignoredExtraPositionalArgumentCount != 1 ||
                 desc.defaultModelPath != ark::Path{"assets/models/custom_fixture.gltf"} ||
+                !desc.defaultAdditionalModels.empty() ||
                 desc.defaultEnvironmentPath != ark::Path{"assets/HDR/custom.hdr"} ||
                 desc.useDebugOrientationEnvironment ||
+                !near(desc.camera.distance, 4.0f) ||
                 desc.rendererQuality.environmentBake.specularPrefilterSampleCount != 256) {
                 std::cerr << "Sandbox explicit path override behavior is invalid\n";
                 return false;
@@ -308,7 +326,8 @@ namespace {
             if (!options.missingPresetValue ||
                 !options.missingQualityValue ||
                 !options.missingToneMappingValue ||
-                !desc.defaultModelPath.empty() ||
+                desc.defaultModelPath.filename() != "sponza.gltf" ||
+                desc.defaultAdditionalModels.size() != 1 ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox missing option value fallback behavior is invalid\n";
                 return false;

@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-已完成 0.58 前置 Texture Load Failure Fallback 到 0.58.6 Tests 的开发工作。当前落地范围包括：KTX/不可解码贴图按 texture slot fallback、Sponza scene preset、shadow-validation sandbox preset、`ShadowSettings` / CLI 参数、`ShadowPass` depth-only shadow map、ForwardPass shadow map descriptor 与 direct lighting shadow factor，以及对应 smoke tests。Sponza 当前仍是 fallback material path，不等同于 KTX/KTX2 原生支持。
+已完成 0.58 前置 Texture Load Failure Fallback 到 0.58.6 Tests 的开发工作，并补上默认 sandbox 组合验证场景。当前落地范围包括：KTX/不可解码贴图按 texture slot fallback、Sponza scene preset、shadow-validation sandbox preset、默认 Sponza + DamagedHelmet 组合场景、`SceneResource` 附加模型加载、`ShadowSettings` / CLI 参数、`ShadowPass` depth-only shadow map、ForwardPass shadow map descriptor 与 direct lighting shadow factor，以及对应 smoke tests。Sponza 当前仍是 fallback material path，不等同于 KTX/KTX2 原生支持。
 
 最终验证：targeted build/CTest 通过，full build 通过，full CTest 29/29 通过，`git diff --check` 仅有行尾提示，sandbox hidden-window smoke 覆盖 default、sponza、shadow-validation、bloom-validation + Bloom + ACES。
 
@@ -14,7 +14,7 @@ Phase 0.57 已补齐 Blend bucket back-to-front 排序，Forward 渲染路径的
 - ForwardPass PBR 直接光、diffuse IBL、specular IBL。
 - HDR scene color、Physically Based Bloom、ToneMapping。
 - frame validation / golden image / postprocess statistical diff。
-- sandbox 默认模型、scene preset、quality preset 和 orbit camera。
+- sandbox 默认 Sponza + DamagedHelmet 组合场景、scene preset、quality preset 和 orbit camera。
 
 下一块最影响“渲染器完成度”和 sandbox 直观观感的是 **阴影**。没有阴影时，PBR/IBL 物体虽然有材质和环境反射，但缺少接触关系和空间落点。Phase 0.58 建议先做最小可用的 **directional shadow map foundation**，为后续 cascaded shadow maps、shadow validation fixture、engine integration 提供基础。
 
@@ -32,7 +32,7 @@ Phase 0.57 已补齐 Blend bucket back-to-front 排序，Forward 渲染路径的
 - 优先通过 sandbox / validation preset 观察阴影效果。
 - 增加 smoke tests 覆盖 ShadowPass 资源、pipeline 和 ForwardPass descriptor / shader 接入。
 - 前置补齐 texture load failure fallback，让 Sponza 这类 KTX 贴图资源能先以 fallback material path 加载几何。
-- 为后续把 DamagedHelmet 放入 Sponza 场景做验证预留加载基础。
+- 默认把 DamagedHelmet 作为第二个模型放入 Sponza 中庭附近，形成阴影、Bloom、ToneMapping、IBL 和复杂场景组合的手动验证入口。
 
 ## 非目标
 
@@ -306,7 +306,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\sponza\sponza.gltf
 - 相机 orbit / pan / zoom 能找到合适观察位置。
 - 后续 shadow map fixed bounds 是否足够覆盖中庭区域。
 
-后续把 DamagedHelmet 放入 Sponza 时建议新增专门 fixture 或 scene preset，而不是直接手改原始 Sponza：
+当前默认 sandbox 已通过代码侧 multi-model scene path 把 DamagedHelmet 作为第二个模型放入 Sponza 中庭附近；纯 Sponza 仍可通过 `--preset sponza` 查看，显式传入模型路径时不会自动追加默认 Helmet。后续如果需要更稳定的截图/golden 基准，仍建议新增专门 fixture，而不是直接手改原始 Sponza：
 
 ```text
 assets/models/sponza_helmet_validation_fixture.gltf
@@ -318,7 +318,7 @@ assets/models/sponza_helmet_validation_fixture.gltf
 - 给一个验证相机。
 - 用于 IBL、shadow、Bloom/ToneMapping 和后续材质验证。
 
-如果短期不做 glTF 合并，也可以先通过 renderer scene API 在代码侧同时加载 Sponza 与 DamagedHelmet，作为后续 `RenderScene` multi-model preset 的目标。
+短期已采用 renderer scene API / `SceneResource::additionalModels` 在代码侧同时加载 Sponza 与 DamagedHelmet，作为默认 sandbox 组合验证路径。
 
 如果默认模型阴影不明显，建议新增：
 
@@ -439,7 +439,7 @@ README.md
 - 提供 `--shadows` 或 `shadow-validation` preset。
 - sandbox 能直接看到阴影。
 - 默认路径不改变，除非明确决定更新 golden。
-- Sponza fallback path 可作为大场景手动 smoke；DamagedHelmet 进入 Sponza 的正式 fixture 可放到后续阶段。
+- Sponza fallback path 可作为大场景手动 smoke；默认 sandbox 已加载 Sponza + DamagedHelmet 组合场景，正式 golden fixture 可放到后续阶段。
 
 ### 0.58.6 Tests
 
@@ -496,7 +496,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe --preset shadow-validation --shadows
 - ShadowPass 能渲染 directional shadow map。
 - ForwardPass 能读取 shadow map 并影响 direct lighting。
 - `.ktx` 等当前不可解码贴图加载失败时，ModelResource 能按 slot fallback，不导致整个模型加载失败。
-- Sponza 能作为 fallback material 大场景进入 sandbox smoke。
+- Sponza 能作为 fallback material 大场景进入 sandbox smoke，默认 sandbox 能加载 Sponza + DamagedHelmet 组合场景。
 - shadow 默认策略明确，不意外改变默认 golden。
 - sandbox 有明确命令可以观察阴影。
 - 相关 smoke tests 通过。
@@ -518,7 +518,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe --preset shadow-validation --shadows
 Phase 0.58 完成后建议：
 
 1. Phase 0.59：Shadow Validation Fixture / Golden or Statistical Validation。
-2. Phase 0.60：Sponza + DamagedHelmet validation scene / multi-model scene preset。
+2. Phase 0.60：Screenshot/golden 基准可围绕默认 Sponza + DamagedHelmet 组合场景或专用 fixture 建立。
 3. Phase 0.61：KTX/KTX2 texture loader 或 Sponza texture conversion pipeline。
 4. Phase 0.62：`KHR_materials_emissive_strength`。
 5. Phase 0.63：Renderer Public API / Engine Integration Boundary。

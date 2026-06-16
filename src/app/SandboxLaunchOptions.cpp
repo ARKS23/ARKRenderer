@@ -1,6 +1,7 @@
 #include "app/SandboxLaunchOptions.h"
 
 #include <charconv>
+#include <glm/trigonometric.hpp>
 #include <string>
 #include <system_error>
 
@@ -68,6 +69,30 @@ namespace ark {
             if (parseU32(value, parsed)) {
                 target = parsed;
             }
+        }
+
+        SandboxCameraControllerDesc makeSandboxCameraDesc(RendererScenePreset preset) {
+            SandboxCameraControllerDesc camera{};
+
+            switch (preset) {
+            case RendererScenePreset::Default:
+            case RendererScenePreset::Sponza:
+            case RendererScenePreset::ShadowValidation:
+                camera.target = glm::vec3{0.0f, 450.0f, 0.0f};
+                camera.distance = 2800.0f;
+                camera.yaw = glm::radians(28.0f);
+                camera.pitch = glm::radians(-12.0f);
+                camera.nearPlane = 1.0f;
+                camera.farPlane = 6000.0f;
+                break;
+            case RendererScenePreset::MaterialBall:
+            case RendererScenePreset::SpecularValidation:
+            case RendererScenePreset::BloomValidation:
+            case RendererScenePreset::DebugOrientation:
+                break;
+            }
+
+            return camera;
         }
     } // namespace
 
@@ -342,13 +367,15 @@ namespace ark {
 
     ApplicationDesc makeSandboxApplicationDesc(const SandboxLaunchOptions& options) {
         ResolvedRendererPreset resolved = resolveRendererPreset(options.preset);
+        const bool hasModelPathOverride = !options.modelPathOverride.empty();
 
         if (options.useDebugOrientationEnvironment) {
             resolved.scene.environmentFallback = SceneEnvironmentFallbackPolicy::DebugOrientation;
         }
 
-        if (!options.modelPathOverride.empty()) {
+        if (hasModelPathOverride) {
             resolved.scene.modelPath = options.modelPathOverride;
+            resolved.scene.additionalModels.clear();
         }
 
         if (!options.environmentPathOverride.empty()) {
@@ -357,11 +384,15 @@ namespace ark {
 
         ApplicationDesc desc{};
         desc.defaultModelPath = resolved.scene.modelPath;
+        desc.defaultAdditionalModels = resolved.scene.additionalModels;
         desc.defaultEnvironmentPath = resolved.scene.environmentPath;
         desc.rendererQuality = resolved.quality;
         desc.toneMapping = options.toneMapping;
         desc.postProcessing = sanitizePostProcessingSettings(options.postProcessing);
         desc.shadows = options.shadows;
+        desc.camera = hasModelPathOverride && options.preset.scene == RendererScenePreset::Default
+                          ? SandboxCameraControllerDesc{}
+                          : makeSandboxCameraDesc(options.preset.scene);
         if (options.preset.scene == RendererScenePreset::ShadowValidation) {
             desc.shadows.enabled = true;
             desc.shadows.strength = desc.shadows.strength <= 0.0f ? 0.7f : desc.shadows.strength;

@@ -107,6 +107,11 @@
 int main() {
     ark::ApplicationDesc applicationDesc{};
     applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
+    applicationDesc.defaultAdditionalModels.push_back(ark::SceneAdditionalModelDesc{
+        "assets/models/DamagedHelmet/DamagedHelmet.gltf",
+        glm::mat4{1.0f},
+        "FrameworkAdditionalModel",
+    });
     applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
     applicationDesc.rendererQuality.environmentBake.brdfLutSampleCount = 512;
     applicationDesc.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
@@ -393,6 +398,7 @@ int main() {
     rendererDesc.nativeWindow = nativeWindow;
     rendererDesc.extent = swapChainDesc.extent;
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
+    rendererDesc.defaultAdditionalModels = applicationDesc.defaultAdditionalModels;
     rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
     rendererDesc.useDebugOrientationEnvironment = true;
     ark::RendererQualityDesc rendererQualityDesc{};
@@ -494,11 +500,13 @@ int main() {
     }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
     sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
+    sceneResourceLoadDesc.additionalModels = rendererDesc.defaultAdditionalModels;
     sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
     sceneResourceLoadDesc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::DebugOrientation;
     ark::SceneResourceLoadReport sceneResourceLoadReport{};
     sceneResourceLoadReport.modelSource = ark::SceneModelSource::RequestedPath;
     sceneResourceLoadReport.environmentSource = ark::SceneEnvironmentSource::DebugOrientation;
+    sceneResourceLoadReport.loadedModelCount = 2;
     ark::SceneResource sceneResource{};
 
     ark::FrameContext frameContext{};

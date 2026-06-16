@@ -141,13 +141,38 @@ namespace {
 
         return true;
     }
+
+    bool validateLargeSceneCamera() {
+        ark::SandboxCameraControllerDesc desc{};
+        desc.target = glm::vec3{0.0f, 450.0f, 0.0f};
+        desc.distance = 2800.0f;
+        desc.yaw = glm::radians(28.0f);
+        desc.pitch = glm::radians(-12.0f);
+        desc.nearPlane = 1.0f;
+        desc.farPlane = 6000.0f;
+
+        ark::SandboxCameraController controller{desc};
+        controller.setViewportExtent(ark::rhi::Extent2D{1280, 720});
+
+        ark::RenderView view{};
+        controller.writeTo(view);
+        if (!near(controller.distance(), 2800.0f) ||
+            !near(controller.target().y, 450.0f) ||
+            view.cameraPosition().y <= desc.target.y) {
+            std::cerr << "Sandbox large scene camera state is invalid\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
     return validateDefaultCamera() &&
                    validateOrbitZoomAndPan() &&
                    validateClampsAndReset() &&
-                   validateResizeDoesNotResetCamera()
+                   validateResizeDoesNotResetCamera() &&
+                   validateLargeSceneCamera()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }
