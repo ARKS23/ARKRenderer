@@ -150,7 +150,7 @@ namespace ark {
                 prepareDefaultSpecularCube(context, renderScene);
                 prepareDefaultBrdfLut(context, renderScene);
                 // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue。
-                m_RenderQueue.build(renderScene);
+                m_RenderQueue.build(renderScene, view.cameraPosition());
 
                 FrameContext frameContext{};
                 frameContext.frameIndex = frame.frameIndex;

@@ -2,6 +2,7 @@
 
 #include "core/Types.h"
 
+#include <glm/glm.hpp>
 #include <glm/mat4x4.hpp>
 
 #include <span>
@@ -18,6 +19,7 @@ namespace ark {
         MaterialResource* material = nullptr;
         glm::mat4 modelMatrix{1.0f};
         std::string debugName;
+        float sortDistanceSq = 0.0f;
 
         bool isDrawable() const {
             return mesh != nullptr && material != nullptr;
@@ -29,6 +31,7 @@ namespace ark {
         virtual ~RenderQueue() = default;
 
         void build(const RenderScene& scene);
+        void build(const RenderScene& scene, const glm::vec3& cameraPosition);
         std::span<const DrawItem> drawItems() const;
         void clear();
 

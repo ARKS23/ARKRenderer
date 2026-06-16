@@ -4,6 +4,7 @@
 #include "renderer/ModelResource.h"
 #include "renderer/RenderScene.h"
 
+#include <algorithm>
 #include <iterator>
 #include <utility>
 
@@ -13,6 +14,18 @@ namespace ark {
             drawItems.insert(drawItems.end(),
                              std::make_move_iterator(bucket.begin()),
                              std::make_move_iterator(bucket.end()));
+        }
+
+        float sortDistanceSq(const glm::mat4& modelMatrix, const glm::vec3& cameraPosition) {
+            const glm::vec3 sortPosition{modelMatrix[3]};
+            const glm::vec3 delta = sortPosition - cameraPosition;
+            return glm::dot(delta, delta);
+        }
+
+        void sortBlendBucket(std::vector<DrawItem>& blendItems) {
+            std::stable_sort(blendItems.begin(), blendItems.end(), [](const DrawItem& lhs, const DrawItem& rhs) {
+                return lhs.sortDistanceSq > rhs.sortDistanceSq;
+            });
         }
 
         void pushDrawItem(std::vector<DrawItem>& opaqueItems,
@@ -34,6 +47,10 @@ namespace ark {
     } // namespace
 
     void RenderQueue::build(const RenderScene& scene) {
+        build(scene, glm::vec3{0.0f});
+    }
+
+    void RenderQueue::build(const RenderScene& scene, const glm::vec3& cameraPosition) {
         clear();
         std::vector<DrawItem> opaqueItems;
         std::vector<DrawItem> maskItems;
@@ -59,6 +76,7 @@ namespace ark {
                 item.material = material;
                 item.modelMatrix = model.transform * instance.localTransform;
                 item.debugName = instance.debugName.empty() ? model.debugName : instance.debugName;
+                item.sortDistanceSq = sortDistanceSq(item.modelMatrix, cameraPosition);
                 pushDrawItem(opaqueItems, maskItems, blendItems, std::move(item));
             }
         }
@@ -73,8 +91,11 @@ namespace ark {
             item.material = object.material;
             item.modelMatrix = object.transform;
             item.debugName = object.debugName;
+            item.sortDistanceSq = sortDistanceSq(item.modelMatrix, cameraPosition);
             pushDrawItem(opaqueItems, maskItems, blendItems, std::move(item));
         }
+
+        sortBlendBucket(blendItems);
 
         m_DrawItems.reserve(opaqueItems.size() + maskItems.size() + blendItems.size());
         appendBucket(m_DrawItems, opaqueItems);

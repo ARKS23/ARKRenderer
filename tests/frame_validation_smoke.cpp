@@ -732,7 +732,7 @@ namespace {
         scene.addModel(model, glm::mat4{1.0f}, sceneModelName);
 
         ark::RenderQueue queue{};
-        queue.build(scene);
+        queue.build(scene, view.cameraPosition());
         if (queue.empty()) {
             std::cerr << "Frame validation render queue is empty\n";
             return false;

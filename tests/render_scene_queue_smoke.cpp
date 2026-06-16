@@ -36,6 +36,14 @@ namespace {
         return resource.create(material, textures);
     }
 
+    glm::mat4 translated(float x, float y, float z) {
+        glm::mat4 transform{1.0f};
+        transform[3][0] = x;
+        transform[3][1] = y;
+        transform[3][2] = z;
+        return transform;
+    }
+
     bool validateSceneQueueBuild() {
         ark::MeshResource meshA{};
         ark::MeshResource meshB{};
@@ -194,8 +202,83 @@ namespace {
 
         return true;
     }
+
+    bool validateBlendBucketBackToFrontSort() {
+        ark::TextureResource texture{};
+        ark::MeshResource opaqueMesh{};
+        ark::MeshResource maskMesh{};
+        ark::MeshResource nearBlendMesh{};
+        ark::MeshResource midBlendMesh{};
+        ark::MeshResource farBlendMesh{};
+        ark::MeshResource stableBlendMeshA{};
+        ark::MeshResource stableBlendMeshB{};
+        ark::MaterialResource opaqueMaterial{};
+        ark::MaterialResource maskMaterial{};
+        ark::MaterialResource nearBlendMaterial{};
+        ark::MaterialResource midBlendMaterial{};
+        ark::MaterialResource farBlendMaterial{};
+        ark::MaterialResource stableBlendMaterialA{};
+        ark::MaterialResource stableBlendMaterialB{};
+
+        if (!createMaterial(opaqueMaterial, texture, ark::asset::AlphaMode::Opaque, "Opaque") ||
+            !createMaterial(maskMaterial, texture, ark::asset::AlphaMode::Mask, "Mask") ||
+            !createMaterial(nearBlendMaterial, texture, ark::asset::AlphaMode::Blend, "NearBlend") ||
+            !createMaterial(midBlendMaterial, texture, ark::asset::AlphaMode::Blend, "MidBlend") ||
+            !createMaterial(farBlendMaterial, texture, ark::asset::AlphaMode::Blend, "FarBlend") ||
+            !createMaterial(stableBlendMaterialA, texture, ark::asset::AlphaMode::Blend, "StableBlendA") ||
+            !createMaterial(stableBlendMaterialB, texture, ark::asset::AlphaMode::Blend, "StableBlendB")) {
+            std::cerr << "Failed to create blend sorting test materials\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        scene.addObject(nearBlendMesh, nearBlendMaterial, translated(0.0f, 0.0f, 1.0f), "NearBlend");
+        scene.addObject(opaqueMesh, opaqueMaterial, translated(0.0f, 0.0f, 0.0f), "Opaque");
+        scene.addObject(midBlendMesh, midBlendMaterial, translated(0.0f, 0.0f, 3.0f), "MidBlend");
+        scene.addObject(maskMesh, maskMaterial, translated(0.0f, 0.0f, 0.0f), "Mask");
+        scene.addObject(farBlendMesh, farBlendMaterial, translated(0.0f, 0.0f, 6.0f), "FarBlend");
+        scene.addObject(stableBlendMeshA, stableBlendMaterialA, translated(2.0f, 0.0f, 0.0f), "StableBlendA");
+        scene.addObject(stableBlendMeshB, stableBlendMaterialB, translated(-2.0f, 0.0f, 0.0f), "StableBlendB");
+
+        ark::RenderQueue queue{};
+        queue.build(scene, glm::vec3{0.0f});
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        if (drawItems.size() != 7) {
+            std::cerr << "Blend sorting test produced unexpected item count\n";
+            return false;
+        }
+
+        if (drawItems[0].debugName != "Opaque" || drawItems[1].debugName != "Mask") {
+            std::cerr << "Blend sorting test did not preserve bucket order\n";
+            return false;
+        }
+
+        if (drawItems[2].debugName != "FarBlend" ||
+            drawItems[3].debugName != "MidBlend" ||
+            drawItems[4].debugName != "StableBlendA" ||
+            drawItems[5].debugName != "StableBlendB" ||
+            drawItems[6].debugName != "NearBlend") {
+            std::cerr << "Blend sorting test did not order Blend items back-to-front\n";
+            return false;
+        }
+
+        if (!near(drawItems[2].sortDistanceSq, 36.0f) ||
+            !near(drawItems[3].sortDistanceSq, 9.0f) ||
+            !near(drawItems[4].sortDistanceSq, 4.0f) ||
+            !near(drawItems[5].sortDistanceSq, 4.0f) ||
+            !near(drawItems[6].sortDistanceSq, 1.0f)) {
+            std::cerr << "Blend sorting test produced invalid sort keys\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateSceneQueueBuild() && validateAlphaBucketOrder() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateSceneQueueBuild() &&
+                   validateAlphaBucketOrder() &&
+                   validateBlendBucketBackToFrontSort()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

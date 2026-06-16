@@ -1,5 +1,39 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-16, Phase 0.57)
+
+ARKRenderer has completed Phase 0.57: Transparent Sorting / Blend Bucket Back-to-Front.
+
+Key changes:
+- `RenderQueue` now exposes `build(const RenderScene&, const glm::vec3& cameraPosition)`.
+- Existing `RenderQueue::build(const RenderScene&)` remains compatible.
+- `DrawItem` now stores `sortDistanceSq`.
+- Blend bucket draw items are stable-sorted back-to-front by camera distance.
+- Opaque and Mask buckets keep their existing stable submission order.
+- `Renderer` now builds the render queue with `RenderView::cameraPosition()`.
+- `ark_frame_validation_smoke` now builds its queue with the validation camera position.
+- `ark_render_scene_queue_smoke` covers bucket order, Blend back-to-front ordering, sort keys, and stable ordering for equal-distance Blend items.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_render_scene_queue_smoke ark_frame_validation_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(render_scene_queue|frame_validation)_smoke" --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, material-ball, specular-validation, and bloom-validation --bloom --tone-mapping aces
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 2/2
+git diff --check: only line-ending warnings, no whitespace errors
+full build passed
+full CTest passed: 28/28
+sandbox hidden-window smoke passed for default, material-ball, specular-validation, and bloom-validation --bloom --tone-mapping aces
+```
+
 ## Latest Update (2026-06-16, Phase 0.56)
 
 ARKRenderer has completed Phase 0.56: Bloom / ToneMapping Visual Validation Closure.
