@@ -209,7 +209,13 @@ namespace {
                 desc.camera.target.y < 1.0f ||
                 desc.camera.target.y > 4.0f ||
                 desc.camera.farPlane < 100.0f ||
-                desc.camera.farPlane > 300.0f) {
+                desc.camera.farPlane > 300.0f ||
+                desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
+                !desc.postProcessing.bloom.enabled ||
+                !near(desc.postProcessing.bloom.intensity, 0.12f) ||
+                !desc.shadows.enabled ||
+                !near(desc.shadows.orthographicHalfExtent, 24.0f) ||
+                !near(desc.shadows.lightDistance, 32.0f)) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }

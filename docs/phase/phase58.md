@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-已完成 0.58 前置 Texture Load Failure Fallback 到 0.58.6 Tests 的开发工作，并补上默认 sandbox 组合验证场景。当前落地范围包括：KTX/不可解码贴图按 texture slot fallback、Sponza scene preset、shadow-validation sandbox preset、默认 Sponza + DamagedHelmet 组合场景、`SceneResource` 附加模型加载、`ShadowSettings` / CLI 参数、`ShadowPass` depth-only shadow map、ForwardPass shadow map descriptor 与 direct lighting shadow factor，以及对应 smoke tests。Sponza 当前仍是 fallback material path，不等同于 KTX/KTX2 原生支持。
+已完成 0.58 前置 Texture Load Failure Fallback 到 0.58.6 Tests 的开发工作，并补上默认 sandbox 组合验证场景。当前落地范围包括：KTX/不可解码贴图按 texture slot fallback、Sponza scene preset、shadow-validation sandbox preset、默认 Sponza + DamagedHelmet 组合场景、默认开启 Shadow / Bloom / ACES ToneMapping、`SceneResource` 附加模型加载、`ShadowSettings` / CLI 参数、`ShadowPass` depth-only shadow map、ForwardPass shadow map descriptor 与 direct lighting shadow factor，以及对应 smoke tests。Sponza 当前仍是 fallback material path，不等同于 KTX/KTX2 原生支持。
 
 最终验证：targeted build/CTest 通过，full build 通过，full CTest 29/29 通过，`git diff --check` 仅有行尾提示，sandbox hidden-window smoke 覆盖 default、sponza、shadow-validation、bloom-validation + Bloom + ACES。
 

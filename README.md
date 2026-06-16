@@ -34,17 +34,17 @@ ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
 build\msvc-vcpkg\Debug\ark_sandbox.exe
 ```
 
-默认启动会加载 Sponza 大场景，并把 DamagedHelmet 作为第二个模型放在中庭附近，用于观察阴影、Bloom、ToneMapping、IBL 和复杂场景组合。
+默认启动会加载 Sponza 大场景，并把 DamagedHelmet 作为第二个模型放在中庭附近，同时默认开启 Shadow、Bloom 和 ACES ToneMapping，用于观察 IBL、后处理和复杂场景组合。
 
 常用 sandbox 参数：
 
 ```powershell
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset material-ball
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset specular-validation
-build\msvc-vcpkg\Debug\ark_sandbox.exe --preset bloom-validation --bloom --tone-mapping aces
+build\msvc-vcpkg\Debug\ark_sandbox.exe --preset bloom-validation
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset shadow-validation
-build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza --shadows --shadow-bounds 20
+build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza --shadow-bounds 20
 build\msvc-vcpkg\Debug\ark_sandbox.exe --quality low
 build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\material_ball_validation_fixture.gltf
 ```

@@ -171,8 +171,8 @@ namespace {
         const ark::ApplicationDesc enableOnlyDesc =
             ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(enableOnlyArguments));
         if (!enableOnlyDesc.postProcessing.bloom.enabled ||
-            !nearlyEqual(enableOnlyDesc.postProcessing.bloom.intensity, 0.08f)) {
-            std::cerr << "--bloom should enable a conservative visible default intensity\n";
+            !nearlyEqual(enableOnlyDesc.postProcessing.bloom.intensity, 0.12f)) {
+            std::cerr << "--bloom should keep the default visible intensity\n";
             return false;
         }
 
