@@ -78,12 +78,12 @@ namespace ark {
             case RendererScenePreset::Default:
             case RendererScenePreset::Sponza:
             case RendererScenePreset::ShadowValidation:
-                camera.target = glm::vec3{0.0f, 2.0f, 0.3f};
-                camera.distance = 22.0f;
+                camera.target = glm::vec3{0.0f, 4.0f, 0.6f};
+                camera.distance = 34.0f;
                 camera.yaw = glm::radians(18.0f);
                 camera.pitch = glm::radians(-10.0f);
                 camera.nearPlane = 0.05f;
-                camera.farPlane = 200.0f;
+                camera.farPlane = 320.0f;
                 break;
             case RendererScenePreset::MaterialBall:
             case RendererScenePreset::SpecularValidation:
@@ -384,8 +384,12 @@ namespace ark {
 
         ApplicationDesc desc{};
         desc.defaultModelPath = resolved.scene.modelPath;
+        desc.defaultModelTransform = resolved.scene.modelTransform;
         desc.defaultAdditionalModels = resolved.scene.additionalModels;
         desc.defaultEnvironmentPath = resolved.scene.environmentPath;
+        desc.defaultEnvironmentIntensity = resolved.scene.environmentIntensity;
+        desc.defaultOverrideLighting = resolved.scene.overrideLighting;
+        desc.defaultLighting = resolved.scene.lighting;
         desc.rendererQuality = resolved.quality;
         desc.toneMapping = options.toneMapping;
         desc.postProcessing = sanitizePostProcessingSettings(options.postProcessing);
@@ -396,11 +400,11 @@ namespace ark {
         if (options.preset.scene == RendererScenePreset::ShadowValidation) {
             desc.shadows.enabled = true;
             desc.shadows.strength = desc.shadows.strength <= 0.0f ? 0.7f : desc.shadows.strength;
-            if (desc.shadows.orthographicHalfExtent < 12.0f) {
-                desc.shadows.orthographicHalfExtent = 12.0f;
+            if (desc.shadows.orthographicHalfExtent < 36.0f) {
+                desc.shadows.orthographicHalfExtent = 36.0f;
             }
-            if (desc.shadows.lightDistance < 24.0f) {
-                desc.shadows.lightDistance = 24.0f;
+            if (desc.shadows.lightDistance < 64.0f) {
+                desc.shadows.lightDistance = 64.0f;
             }
         }
         desc.useDebugOrientationEnvironment =

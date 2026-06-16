@@ -23,6 +23,8 @@ namespace {
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
             resolved.scene.additionalModels.size() != 1 ||
             resolved.scene.additionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
+            !near(resolved.scene.modelTransform[0][0], 2.0f) ||
+            !near(resolved.scene.additionalModels.front().transform[0][0], 2.4f) ||
             !resolved.scene.environmentPath.empty() ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
@@ -30,7 +32,9 @@ namespace {
             resolved.scene.sceneName != "DefaultSandboxScene" ||
             resolved.scene.modelName != "DefaultSandboxModel" ||
             resolved.scene.environmentName != "DefaultSandboxEnvironment" ||
-            !near(resolved.scene.environmentIntensity, 1.0f)) {
+            !near(resolved.scene.environmentIntensity, 0.65f) ||
+            !resolved.scene.overrideLighting ||
+            !near(resolved.scene.lighting.mainLight.direction.y, -0.45f)) {
             std::cerr << "Default scene preset is invalid\n";
             return false;
         }
@@ -96,6 +100,8 @@ namespace {
         resolved = ark::resolveRendererPreset(preset);
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
             !resolved.scene.additionalModels.empty() ||
+            !near(resolved.scene.modelTransform[0][0], 2.0f) ||
+            !resolved.scene.overrideLighting ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
                 ark::SceneEnvironmentFallbackPolicy::DefaultHdrThenProcedural ||
@@ -204,18 +210,23 @@ namespace {
             if (desc.defaultModelPath.filename() != "sponza.gltf" ||
                 desc.defaultAdditionalModels.size() != 1 ||
                 desc.defaultAdditionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-                desc.camera.distance < 10.0f ||
-                desc.camera.distance > 40.0f ||
-                desc.camera.target.y < 1.0f ||
-                desc.camera.target.y > 4.0f ||
-                desc.camera.farPlane < 100.0f ||
-                desc.camera.farPlane > 300.0f ||
+                !near(desc.defaultModelTransform[0][0], 2.0f) ||
+                !near(desc.defaultAdditionalModels.front().transform[0][0], 2.4f) ||
+                !desc.defaultOverrideLighting ||
+                !near(desc.defaultEnvironmentIntensity, 0.65f) ||
+                desc.camera.distance < 25.0f ||
+                desc.camera.distance > 45.0f ||
+                desc.camera.target.y < 3.0f ||
+                desc.camera.target.y > 5.0f ||
+                desc.camera.farPlane < 250.0f ||
+                desc.camera.farPlane > 400.0f ||
                 desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
                 !desc.postProcessing.bloom.enabled ||
                 !near(desc.postProcessing.bloom.intensity, 0.12f) ||
                 !desc.shadows.enabled ||
-                !near(desc.shadows.orthographicHalfExtent, 24.0f) ||
-                !near(desc.shadows.lightDistance, 32.0f)) {
+                !near(desc.shadows.strength, 0.9f) ||
+                !near(desc.shadows.orthographicHalfExtent, 36.0f) ||
+                !near(desc.shadows.lightDistance, 64.0f)) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }
@@ -299,8 +310,8 @@ namespace {
                 !near(desc.shadows.strength, 0.45f) ||
                 !near(desc.shadows.bias, 0.004f) ||
                 desc.shadows.mapExtent != 2048 ||
-                desc.shadows.orthographicHalfExtent < 12.0f ||
-                desc.shadows.lightDistance < 24.0f) {
+                desc.shadows.orthographicHalfExtent < 36.0f ||
+                desc.shadows.lightDistance < 64.0f) {
                 std::cerr << "Sandbox shadow validation preset application desc is invalid\n";
                 return false;
             }

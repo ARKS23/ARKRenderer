@@ -385,13 +385,16 @@ namespace {
 
         ark::SceneResourceLoadDesc desc{};
         desc.modelPath = "assets/models/sponza/sponza.gltf";
+        desc.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f});
         desc.modelFallback = ark::SceneModelFallbackPolicy::None;
         desc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::ProceduralOnly;
         desc.modelName = "SponzaCompositeSceneResource";
+        desc.overrideLighting = true;
+        desc.lighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
         desc.additionalModels.push_back(ark::SceneAdditionalModelDesc{
             "assets/models/DamagedHelmet/DamagedHelmet.gltf",
-            glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 1.45f, 0.3f}) *
-                glm::scale(glm::mat4{1.0f}, glm::vec3{1.2f}),
+            glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 2.9f, 0.6f}) *
+                glm::scale(glm::mat4{1.0f}, glm::vec3{2.4f}),
             "SponzaCompositeHelmet",
         });
 
@@ -417,9 +420,12 @@ namespace {
         }
 
         const glm::mat4& helmetTransform = sceneResource.scene().models()[1].transform;
-        if (helmetTransform[3][1] < 1.4f || helmetTransform[3][1] > 1.5f ||
-            helmetTransform[3][2] < 0.25f || helmetTransform[3][2] > 0.35f ||
-            helmetTransform[0][0] < 1.1f || helmetTransform[0][0] > 1.3f) {
+        if (sceneResource.scene().models()[0].transform[0][0] < 1.9f ||
+            sceneResource.scene().models()[0].transform[0][0] > 2.1f ||
+            helmetTransform[3][1] < 2.8f || helmetTransform[3][1] > 3.0f ||
+            helmetTransform[3][2] < 0.5f || helmetTransform[3][2] > 0.7f ||
+            helmetTransform[0][0] < 2.3f || helmetTransform[0][0] > 2.5f ||
+            sceneResource.scene().lighting().mainLight.direction.y > -0.4f) {
             std::cerr << "Composite helmet transform is invalid\n";
             return false;
         }

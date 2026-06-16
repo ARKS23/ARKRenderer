@@ -99,6 +99,7 @@
 #include "rhi/vulkan/VulkanTextureView.h"
 
 #include <glm/glm.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 #include <array>
 #include <cstdlib>
@@ -107,12 +108,16 @@
 int main() {
     ark::ApplicationDesc applicationDesc{};
     applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
+    applicationDesc.defaultModelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f});
     applicationDesc.defaultAdditionalModels.push_back(ark::SceneAdditionalModelDesc{
         "assets/models/DamagedHelmet/DamagedHelmet.gltf",
         glm::mat4{1.0f},
         "FrameworkAdditionalModel",
     });
     applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
+    applicationDesc.defaultEnvironmentIntensity = 0.75f;
+    applicationDesc.defaultOverrideLighting = true;
+    applicationDesc.defaultLighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
     applicationDesc.rendererQuality.environmentBake.brdfLutSampleCount = 512;
     applicationDesc.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
     applicationDesc.shadows.enabled = true;
@@ -398,8 +403,12 @@ int main() {
     rendererDesc.nativeWindow = nativeWindow;
     rendererDesc.extent = swapChainDesc.extent;
     rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
+    rendererDesc.defaultModelTransform = applicationDesc.defaultModelTransform;
     rendererDesc.defaultAdditionalModels = applicationDesc.defaultAdditionalModels;
     rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
+    rendererDesc.defaultEnvironmentIntensity = applicationDesc.defaultEnvironmentIntensity;
+    rendererDesc.defaultOverrideLighting = applicationDesc.defaultOverrideLighting;
+    rendererDesc.defaultLighting = applicationDesc.defaultLighting;
     rendererDesc.useDebugOrientationEnvironment = true;
     ark::RendererQualityDesc rendererQualityDesc{};
     rendererQualityDesc.environmentBake.specularPrefilterSampleCount = 256;
@@ -416,6 +425,12 @@ int main() {
     }
     if (!applicationDesc.postProcessing.bloom.enabled ||
         applicationDesc.postProcessing.bloom.intensity != 0.06f) {
+        return EXIT_FAILURE;
+    }
+    if (rendererDesc.defaultModelTransform[0][0] != 2.0f ||
+        rendererDesc.defaultEnvironmentIntensity != 0.75f ||
+        !rendererDesc.defaultOverrideLighting ||
+        rendererDesc.defaultLighting.mainLight.direction.y != -0.45f) {
         return EXIT_FAILURE;
     }
     if (!applicationDesc.shadows.enabled ||
@@ -485,7 +500,7 @@ int main() {
         !shadowSandboxApplicationDesc.useDebugOrientationEnvironment ||
         !shadowSandboxApplicationDesc.shadows.enabled ||
         shadowSandboxApplicationDesc.shadows.strength != 0.4f ||
-        shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 24.0f) {
+        shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 36.0f) {
         return EXIT_FAILURE;
     }
     constexpr std::array<std::string_view, 2> toneMappingArguments{
@@ -500,8 +515,12 @@ int main() {
     }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
     sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
+    sceneResourceLoadDesc.modelTransform = rendererDesc.defaultModelTransform;
     sceneResourceLoadDesc.additionalModels = rendererDesc.defaultAdditionalModels;
     sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
+    sceneResourceLoadDesc.environmentIntensity = rendererDesc.defaultEnvironmentIntensity;
+    sceneResourceLoadDesc.overrideLighting = rendererDesc.defaultOverrideLighting;
+    sceneResourceLoadDesc.lighting = rendererDesc.defaultLighting;
     sceneResourceLoadDesc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::DebugOrientation;
     ark::SceneResourceLoadReport sceneResourceLoadReport{};
     sceneResourceLoadReport.modelSource = ark::SceneModelSource::RequestedPath;

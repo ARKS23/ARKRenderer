@@ -9,6 +9,8 @@
 #include "renderer/RenderView.h"
 #include "renderer/SceneResource.h"
 
+#include <glm/mat4x4.hpp>
+
 #include <vector>
 
 namespace ark {
@@ -17,8 +19,12 @@ namespace ark {
     struct ApplicationDesc {
         WindowDesc window;
         Path defaultModelPath;
+        glm::mat4 defaultModelTransform{1.0f};
         std::vector<SceneAdditionalModelDesc> defaultAdditionalModels;
         Path defaultEnvironmentPath;
+        float defaultEnvironmentIntensity = 1.0f;
+        bool defaultOverrideLighting = false;
+        SceneLighting defaultLighting;
         RendererQualityDesc rendererQuality;
         ToneMappingSettings toneMapping;
         PostProcessingSettings postProcessing;

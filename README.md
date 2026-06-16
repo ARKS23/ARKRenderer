@@ -34,7 +34,7 @@ ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
 build\msvc-vcpkg\Debug\ark_sandbox.exe
 ```
 
-默认启动会加载 Sponza 大场景，并把 DamagedHelmet 作为第二个模型放在中庭附近，同时默认开启 Shadow、Bloom 和 ACES ToneMapping，用于观察 IBL、后处理和复杂场景组合。
+默认启动会加载放大的 Sponza 大场景，并把 DamagedHelmet 作为第二个模型放在中庭附近，同时默认开启更明显的斜向 Shadow、Bloom 和 ACES ToneMapping，用于观察 IBL、后处理和复杂场景组合。
 
 常用 sandbox 参数：
 

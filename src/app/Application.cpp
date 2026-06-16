@@ -38,8 +38,12 @@ namespace ark {
         rendererDesc.nativeWindow = m_Window->getNativeWindowHandle();
         rendererDesc.extent = m_Window->getExtent();
         rendererDesc.defaultModelPath = m_Desc.defaultModelPath;
+        rendererDesc.defaultModelTransform = m_Desc.defaultModelTransform;
         rendererDesc.defaultAdditionalModels = m_Desc.defaultAdditionalModels;
         rendererDesc.defaultEnvironmentPath = m_Desc.defaultEnvironmentPath;
+        rendererDesc.defaultEnvironmentIntensity = m_Desc.defaultEnvironmentIntensity;
+        rendererDesc.defaultOverrideLighting = m_Desc.defaultOverrideLighting;
+        rendererDesc.defaultLighting = m_Desc.defaultLighting;
         rendererDesc.quality = m_Desc.rendererQuality;
         rendererDesc.useDebugOrientationEnvironment = m_Desc.useDebugOrientationEnvironment;
 #ifndef NDEBUG

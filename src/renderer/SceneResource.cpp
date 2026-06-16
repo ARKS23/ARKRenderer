@@ -211,7 +211,10 @@ namespace ark {
 
         m_Report.modelLoaded = true;
         m_Report.loadedModelCount = 1;
-        m_Scene.addModel(m_Model, glm::mat4{1.0f}, desc.modelName);
+        m_Scene.addModel(m_Model, desc.modelTransform, desc.modelName);
+        if (desc.overrideLighting) {
+            m_Scene.setLighting(desc.lighting);
+        }
 
         m_AdditionalModelData.reserve(desc.additionalModels.size());
         m_AdditionalModels.reserve(desc.additionalModels.size());

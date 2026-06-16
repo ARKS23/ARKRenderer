@@ -50,6 +50,7 @@ namespace ark {
 
     struct SceneResourceLoadDesc {
         Path modelPath;
+        glm::mat4 modelTransform{1.0f};
         SceneModelFallbackPolicy modelFallback = SceneModelFallbackPolicy::DefaultSandboxModel;
         std::vector<SceneAdditionalModelDesc> additionalModels;
 
@@ -61,6 +62,8 @@ namespace ark {
         std::string modelName = "DefaultModel";
         std::string environmentName = "DefaultEnvironment";
         float environmentIntensity = 1.0f;
+        bool overrideLighting = false;
+        SceneLighting lighting;
     };
 
     struct SceneResourceLoadReport {
