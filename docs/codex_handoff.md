@@ -1,5 +1,42 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-16, Phase 0.59)
+
+ARKRenderer has completed Phase 0.59: Complex Scene Shadow Visibility Closure.
+
+Key changes:
+- Default Sponza scene scale is now validated at `5.0f`.
+- Default sandbox still loads Sponza as the main model and DamagedHelmet as the second model; `--preset sponza` remains pure Sponza.
+- Large-scene sandbox camera now uses target `(0.0, 3.2, 0.6)`, distance `26.0`, pitch `-12` degrees, and far plane `512.0`.
+- Default sandbox shadows now use strength `1.0`, map extent `2048`, orthographic half extent `64.0`, far plane `256.0`, and light distance `96.0`.
+- Default/Sponza environment intensity and ambient lighting were reduced so direct-light shadows are easier to see.
+- `shadow-validation` now enforces the larger minimum shadow bounds, far plane, and light distance needed by the scaled Sponza scene.
+- Updated preset, scene resource, sandbox camera, framework header, shadow, and forward pass smoke coverage.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_renderer_preset_smoke ark_scene_resource_smoke ark_sandbox_camera_controller_smoke ark_framework_headers_smoke ark_shadow_pass_smoke ark_forward_pass_pipeline_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(renderer_preset|scene_resource|sandbox_camera_controller|framework_headers|shadow_pass|forward_pass_pipeline)_smoke" --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, sponza, shadow-validation, and bloom-validation
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 6/6
+git diff --check: only CRLF warnings, no whitespace errors
+full build passed
+full CTest passed: 29/29
+sandbox hidden-window smoke passed for default, sponza, shadow-validation, and bloom-validation
+```
+
+Notes:
+- Sponza still uses texture load failure fallback for `.ktx` textures. It is suitable for geometry, scale, camera, shadow, Bloom, and tone-mapping validation, but not final material quality.
+- The current shadow path is still one directional shadow map with fixed bounds. CSM or dynamic scene-bounds fitting remains future work.
+
 ## Latest Update (2026-06-16, Default Sandbox Composite Scene)
 
 The default `ark_sandbox.exe` path now opens a large validation scene instead of only the standalone DamagedHelmet.

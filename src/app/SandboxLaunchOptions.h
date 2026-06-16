@@ -15,7 +15,7 @@ namespace ark {
         PostProcessingSettings postProcessing{
             BloomSettings{true, 0.12f, 0.6f, 1.0f, 0.5f, 6},
         };
-        ShadowSettings shadows{true, 0.9f, 0.0015f, 1024, 36.0f, 0.1f, 160.0f, 64.0f};
+        ShadowSettings shadows{true, 1.0f, 0.0015f, 2048, 64.0f, 0.1f, 256.0f, 96.0f};
         bool useDebugOrientationEnvironment = false;
         Path modelPathOverride;
         Path environmentPathOverride;

@@ -1,5 +1,37 @@
 # Phase 0.59 Complex Scene Shadow Visibility Closure
 
+## 实施状态
+
+已完成 0.59.0 文档与范围确认到 0.59.6 验证与收尾的开发工作。当前落地范围：
+
+- 默认 Sponza scale 固定为 `5.0f`，`Default` preset 保持 Sponza + DamagedHelmet 组合场景，`Sponza` preset 保持纯 Sponza 验证路径。
+- 默认大场景相机调整为 target `(0.0, 3.2, 0.6)`、distance `26.0`、pitch `-12`、far plane `512.0`，避免模型放大后被远距离相机抵消。
+- 默认 sandbox shadow settings 调整为 strength `1.0`、map extent `2048`、orthographic half extent `64.0`、far plane `256.0`、light distance `96.0`。
+- 默认/Sponza 场景降低 environment intensity 到 `0.55` 并降低 ambient；`shadow-validation` 降到 `0.35`，增强 direct light 与 shadow 对比。
+- `shadow-validation` preset 最低 shadow bounds / far plane / light distance 同步提升，避免大场景下 shadow map 覆盖不足。
+- smoke tests 已同步覆盖默认 preset、scene resource composite、sandbox camera、framework header usage 和 shadow validation 参数。
+
+验证结果：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_renderer_preset_smoke ark_scene_resource_smoke ark_sandbox_camera_controller_smoke ark_framework_headers_smoke ark_shadow_pass_smoke ark_forward_pass_pipeline_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(renderer_preset|scene_resource|sandbox_camera_controller|framework_headers|shadow_pass|forward_pass_pipeline)_smoke" --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+```
+
+结果：
+
+```text
+targeted build passed
+targeted CTest passed: 6/6
+git diff --check: only CRLF warnings, no whitespace errors
+full build passed
+full CTest passed: 29/29
+sandbox hidden-window smoke passed: default, sponza, shadow-validation, bloom-validation
+```
+
 ## 阶段判断
 
 Phase 0.58 已经把 Sponza fallback 加载、默认 Sponza + DamagedHelmet 组合场景、Directional Shadow Map、Bloom 和 ACES ToneMapping 接到 sandbox 路径中。当前主要问题不再是“有没有功能”，而是“默认打开是否能稳定、清晰地看出这些功能”。

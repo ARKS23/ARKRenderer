@@ -500,7 +500,9 @@ int main() {
         !shadowSandboxApplicationDesc.useDebugOrientationEnvironment ||
         !shadowSandboxApplicationDesc.shadows.enabled ||
         shadowSandboxApplicationDesc.shadows.strength != 0.4f ||
-        shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 36.0f) {
+        shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 64.0f ||
+        shadowSandboxApplicationDesc.shadows.farPlane != 256.0f ||
+        shadowSandboxApplicationDesc.shadows.lightDistance != 96.0f) {
         return EXIT_FAILURE;
     }
     constexpr std::array<std::string_view, 2> toneMappingArguments{

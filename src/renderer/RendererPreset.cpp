@@ -44,11 +44,11 @@ namespace ark {
             case RendererScenePreset::Default:
                 scene.modelPath = SponzaFixturePath;
                 scene.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{DefaultSponzaScale});
-                scene.environmentIntensity = 0.65f;
+                scene.environmentIntensity = 0.55f;
                 scene.overrideLighting = true;
                 scene.lighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
-                scene.lighting.mainLight.color = glm::vec3{1.35f, 1.22f, 1.02f};
-                scene.lighting.ambientColor = glm::vec3{0.03f, 0.035f, 0.045f};
+                scene.lighting.mainLight.color = glm::vec3{1.50f, 1.34f, 1.10f};
+                scene.lighting.ambientColor = glm::vec3{0.02f, 0.024f, 0.030f};
                 scene.additionalModels.push_back(SceneAdditionalModelDesc{
                     DamagedHelmetFixturePath,
                     glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 2.9f, 0.6f}) *
@@ -77,11 +77,11 @@ namespace ark {
             case RendererScenePreset::Sponza:
                 scene.modelPath = SponzaFixturePath;
                 scene.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{DefaultSponzaScale});
-                scene.environmentIntensity = 0.65f;
+                scene.environmentIntensity = 0.55f;
                 scene.overrideLighting = true;
                 scene.lighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
-                scene.lighting.mainLight.color = glm::vec3{1.35f, 1.22f, 1.02f};
-                scene.lighting.ambientColor = glm::vec3{0.03f, 0.035f, 0.045f};
+                scene.lighting.mainLight.color = glm::vec3{1.50f, 1.34f, 1.10f};
+                scene.lighting.ambientColor = glm::vec3{0.02f, 0.024f, 0.030f};
                 scene.sceneName = "SponzaScene";
                 scene.modelName = "SponzaModel";
                 scene.environmentName = "SponzaEnvironment";
@@ -89,11 +89,11 @@ namespace ark {
             case RendererScenePreset::ShadowValidation:
                 scene.modelPath = SponzaFixturePath;
                 scene.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{DefaultSponzaScale});
-                scene.environmentIntensity = 0.45f;
+                scene.environmentIntensity = 0.35f;
                 scene.overrideLighting = true;
                 scene.lighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
-                scene.lighting.mainLight.color = glm::vec3{1.45f, 1.30f, 1.08f};
-                scene.lighting.ambientColor = glm::vec3{0.02f, 0.025f, 0.03f};
+                scene.lighting.mainLight.color = glm::vec3{1.70f, 1.52f, 1.24f};
+                scene.lighting.ambientColor = glm::vec3{0.012f, 0.014f, 0.018f};
                 scene.sceneName = "ShadowValidationScene";
                 scene.modelName = "ShadowValidationModel";
                 scene.environmentName = "ShadowValidationEnvironment";

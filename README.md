@@ -44,7 +44,7 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe --preset specular-validation
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset bloom-validation
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza
 build\msvc-vcpkg\Debug\ark_sandbox.exe --preset shadow-validation
-build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza --shadow-bounds 20
+build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza --shadow-bounds 64 --shadow-strength=1.0
 build\msvc-vcpkg\Debug\ark_sandbox.exe --quality low
 build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\material_ball_validation_fixture.gltf
 ```

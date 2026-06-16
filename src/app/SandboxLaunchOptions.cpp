@@ -78,12 +78,12 @@ namespace ark {
             case RendererScenePreset::Default:
             case RendererScenePreset::Sponza:
             case RendererScenePreset::ShadowValidation:
-                camera.target = glm::vec3{0.0f, 4.0f, 0.6f};
-                camera.distance = 34.0f;
+                camera.target = glm::vec3{0.0f, 3.2f, 0.6f};
+                camera.distance = 26.0f;
                 camera.yaw = glm::radians(18.0f);
-                camera.pitch = glm::radians(-10.0f);
+                camera.pitch = glm::radians(-12.0f);
                 camera.nearPlane = 0.05f;
-                camera.farPlane = 320.0f;
+                camera.farPlane = 512.0f;
                 break;
             case RendererScenePreset::MaterialBall:
             case RendererScenePreset::SpecularValidation:
@@ -399,12 +399,15 @@ namespace ark {
                           : makeSandboxCameraDesc(options.preset.scene);
         if (options.preset.scene == RendererScenePreset::ShadowValidation) {
             desc.shadows.enabled = true;
-            desc.shadows.strength = desc.shadows.strength <= 0.0f ? 0.7f : desc.shadows.strength;
-            if (desc.shadows.orthographicHalfExtent < 36.0f) {
-                desc.shadows.orthographicHalfExtent = 36.0f;
+            desc.shadows.strength = desc.shadows.strength <= 0.0f ? 1.0f : desc.shadows.strength;
+            if (desc.shadows.orthographicHalfExtent < 64.0f) {
+                desc.shadows.orthographicHalfExtent = 64.0f;
             }
-            if (desc.shadows.lightDistance < 64.0f) {
-                desc.shadows.lightDistance = 64.0f;
+            if (desc.shadows.farPlane < 256.0f) {
+                desc.shadows.farPlane = 256.0f;
+            }
+            if (desc.shadows.lightDistance < 96.0f) {
+                desc.shadows.lightDistance = 96.0f;
             }
         }
         desc.useDebugOrientationEnvironment =

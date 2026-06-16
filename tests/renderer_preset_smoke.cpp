@@ -23,7 +23,7 @@ namespace {
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
             resolved.scene.additionalModels.size() != 1 ||
             resolved.scene.additionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-            !near(resolved.scene.modelTransform[0][0], 2.0f) ||
+            !near(resolved.scene.modelTransform[0][0], 5.0f) ||
             !near(resolved.scene.additionalModels.front().transform[0][0], 2.4f) ||
             !resolved.scene.environmentPath.empty() ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
@@ -32,7 +32,7 @@ namespace {
             resolved.scene.sceneName != "DefaultSandboxScene" ||
             resolved.scene.modelName != "DefaultSandboxModel" ||
             resolved.scene.environmentName != "DefaultSandboxEnvironment" ||
-            !near(resolved.scene.environmentIntensity, 0.65f) ||
+            !near(resolved.scene.environmentIntensity, 0.55f) ||
             !resolved.scene.overrideLighting ||
             !near(resolved.scene.lighting.mainLight.direction.y, -0.45f)) {
             std::cerr << "Default scene preset is invalid\n";
@@ -100,7 +100,7 @@ namespace {
         resolved = ark::resolveRendererPreset(preset);
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
             !resolved.scene.additionalModels.empty() ||
-            !near(resolved.scene.modelTransform[0][0], 2.0f) ||
+            !near(resolved.scene.modelTransform[0][0], 5.0f) ||
             !resolved.scene.overrideLighting ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
@@ -210,23 +210,25 @@ namespace {
             if (desc.defaultModelPath.filename() != "sponza.gltf" ||
                 desc.defaultAdditionalModels.size() != 1 ||
                 desc.defaultAdditionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-                !near(desc.defaultModelTransform[0][0], 2.0f) ||
+                !near(desc.defaultModelTransform[0][0], 5.0f) ||
                 !near(desc.defaultAdditionalModels.front().transform[0][0], 2.4f) ||
                 !desc.defaultOverrideLighting ||
-                !near(desc.defaultEnvironmentIntensity, 0.65f) ||
-                desc.camera.distance < 25.0f ||
-                desc.camera.distance > 45.0f ||
-                desc.camera.target.y < 3.0f ||
-                desc.camera.target.y > 5.0f ||
-                desc.camera.farPlane < 250.0f ||
-                desc.camera.farPlane > 400.0f ||
+                !near(desc.defaultEnvironmentIntensity, 0.55f) ||
+                desc.camera.distance < 22.0f ||
+                desc.camera.distance > 30.0f ||
+                desc.camera.target.y < 2.5f ||
+                desc.camera.target.y > 3.8f ||
+                desc.camera.farPlane < 500.0f ||
+                desc.camera.farPlane > 560.0f ||
                 desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
                 !desc.postProcessing.bloom.enabled ||
                 !near(desc.postProcessing.bloom.intensity, 0.12f) ||
                 !desc.shadows.enabled ||
-                !near(desc.shadows.strength, 0.9f) ||
-                !near(desc.shadows.orthographicHalfExtent, 36.0f) ||
-                !near(desc.shadows.lightDistance, 64.0f)) {
+                !near(desc.shadows.strength, 1.0f) ||
+                desc.shadows.mapExtent != 2048 ||
+                !near(desc.shadows.orthographicHalfExtent, 64.0f) ||
+                !near(desc.shadows.farPlane, 256.0f) ||
+                !near(desc.shadows.lightDistance, 96.0f)) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }
@@ -310,8 +312,9 @@ namespace {
                 !near(desc.shadows.strength, 0.45f) ||
                 !near(desc.shadows.bias, 0.004f) ||
                 desc.shadows.mapExtent != 2048 ||
-                desc.shadows.orthographicHalfExtent < 36.0f ||
-                desc.shadows.lightDistance < 64.0f) {
+                desc.shadows.orthographicHalfExtent < 64.0f ||
+                desc.shadows.farPlane < 256.0f ||
+                desc.shadows.lightDistance < 96.0f) {
                 std::cerr << "Sandbox shadow validation preset application desc is invalid\n";
                 return false;
             }
