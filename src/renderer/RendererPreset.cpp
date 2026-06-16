@@ -17,7 +17,7 @@ namespace ark {
             "assets/models/sponza/sponza.gltf";
         constexpr const char* DamagedHelmetFixturePath =
             "assets/models/DamagedHelmet/DamagedHelmet.gltf";
-        constexpr float DefaultSponzaScale = 2.0f;
+        constexpr float DefaultSponzaScale = 5.0f;
 
         std::string normalizePresetName(std::string_view name) {
             std::string normalized{name};
