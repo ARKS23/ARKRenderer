@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Types.h"
+#include "renderer/Bounds.h"
 
 #include <glm/glm.hpp>
 #include <glm/mat4x4.hpp>
@@ -75,6 +76,14 @@ namespace ark {
         void clearEnvironment();
         void clear();
 
+        const Bounds3& bounds() const {
+            return m_Bounds;
+        }
+
+        bool hasBounds() const {
+            return m_Bounds.isValid();
+        }
+
         bool empty() const {
             return m_Models.empty() && m_Objects.empty();
         }
@@ -86,6 +95,7 @@ namespace ark {
     private:
         std::vector<SceneModel> m_Models;
         std::vector<SceneObject> m_Objects;
+        Bounds3 m_Bounds;
         SceneLighting m_Lighting;
         SceneEnvironment m_Environment;
     };

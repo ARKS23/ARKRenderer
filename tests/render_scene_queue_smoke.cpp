@@ -51,7 +51,7 @@ namespace {
         ark::MaterialResource materialB{};
 
         ark::RenderScene scene{};
-        if (!scene.empty() || scene.size() != 0) {
+        if (!scene.empty() || scene.size() != 0 || scene.hasBounds()) {
             std::cerr << "New RenderScene is not empty\n";
             return false;
         }
@@ -108,6 +108,10 @@ namespace {
             std::cerr << "RenderScene did not preserve objects\n";
             return false;
         }
+        if (scene.hasBounds()) {
+            std::cerr << "RenderScene should ignore invalid resource bounds\n";
+            return false;
+        }
 
         ark::RenderQueue queue{};
         queue.build(scene);
@@ -129,6 +133,10 @@ namespace {
         }
 
         scene.clear();
+        if (scene.hasBounds()) {
+            std::cerr << "RenderScene clear did not reset bounds\n";
+            return false;
+        }
         if (scene.environment().environment != &environmentResource || !scene.environment().isEnabled()) {
             std::cerr << "RenderScene clear should preserve scene environment policy\n";
             return false;

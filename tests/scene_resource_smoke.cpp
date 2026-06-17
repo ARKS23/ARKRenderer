@@ -1,5 +1,8 @@
+#include "asset/MeshData.h"
+#include "renderer/MeshResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/SceneResource.h"
+#include "renderer/material/MaterialResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
@@ -12,12 +15,21 @@
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <glm/ext/matrix_transform.hpp>
 #include <vector>
 
 namespace {
+    bool near(float lhs, float rhs) {
+        return std::fabs(lhs - rhs) < 0.0001f;
+    }
+
+    bool nearVec3(const glm::vec3& lhs, const glm::vec3& rhs) {
+        return near(lhs.x, rhs.x) && near(lhs.y, rhs.y) && near(lhs.z, rhs.z);
+    }
+
     class FakeBuffer final : public ark::rhi::Buffer {
     public:
         explicit FakeBuffer(const ark::rhi::BufferDesc& desc) : m_Desc(desc) {
@@ -223,6 +235,74 @@ namespace {
         }
 
         return false;
+    }
+
+    ark::asset::MeshPrimitiveData makeTriangle(const char* name) {
+        ark::asset::MeshVertex v0{};
+        v0.position[0] = -0.5f;
+        v0.position[1] = 0.0f;
+        v0.normal[2] = 1.0f;
+
+        ark::asset::MeshVertex v1 = v0;
+        v1.position[0] = 0.5f;
+
+        ark::asset::MeshVertex v2 = v0;
+        v2.position[1] = 1.0f;
+
+        ark::asset::MeshPrimitiveData mesh{};
+        mesh.debugName = name;
+        mesh.vertices = {v0, v1, v2};
+        mesh.indices = {0, 1, 2};
+        return mesh;
+    }
+
+    bool validateDirectSceneObjectWorldBounds() {
+        FakeRenderDevice device{};
+        ark::MeshResource invalidMesh{};
+        ark::MeshResource meshA{};
+        ark::MeshResource meshB{};
+        ark::MaterialResource material{};
+
+        if (!meshA.create(device, makeTriangle("BoundsObjectA")) ||
+            !meshB.create(device, makeTriangle("BoundsObjectB"))) {
+            std::cerr << "Failed to create scene bounds test meshes\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        if (scene.hasBounds() || scene.bounds().isValid()) {
+            std::cerr << "New RenderScene should not have bounds\n";
+            return false;
+        }
+
+        scene.addObject(invalidMesh, material, glm::translate(glm::mat4{1.0f}, glm::vec3{10.0f}), "InvalidBounds");
+        if (scene.hasBounds()) {
+            std::cerr << "RenderScene should ignore invalid object bounds\n";
+            return false;
+        }
+
+        const glm::mat4 transformA = glm::translate(glm::mat4{1.0f}, glm::vec3{3.0f, -1.0f, 5.0f});
+        const glm::mat4 transformB =
+            glm::translate(glm::mat4{1.0f}, glm::vec3{-2.0f, 1.0f, -1.0f}) *
+            glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f, 3.0f, 1.0f});
+        scene.addObject(meshA, material, transformA, "BoundsObjectA");
+        scene.addObject(meshB, material, transformB, "BoundsObjectB");
+
+        const ark::Bounds3& bounds = scene.bounds();
+        if (!scene.hasBounds() ||
+            !nearVec3(bounds.min, glm::vec3{-3.0f, -1.0f, -1.0f}) ||
+            !nearVec3(bounds.max, glm::vec3{3.5f, 4.0f, 5.0f})) {
+            std::cerr << "RenderScene object world bounds are invalid\n";
+            return false;
+        }
+
+        scene.clear();
+        if (scene.hasBounds() || scene.bounds().isValid() || !scene.empty()) {
+            std::cerr << "RenderScene clear did not reset world bounds\n";
+            return false;
+        }
+
+        return true;
     }
 
     bool validateExplicitModelAndProceduralEnvironment() {
@@ -445,6 +525,16 @@ namespace {
             return false;
         }
 
+        const ark::Bounds3& sceneBounds = sceneResource.scene().bounds();
+        if (!sceneResource.scene().hasBounds() ||
+            !sceneBounds.isValid() ||
+            sceneBounds.extent().x <= 0.0f ||
+            sceneBounds.extent().y <= 0.0f ||
+            sceneBounds.extent().z <= 0.0f) {
+            std::cerr << "Composite scene world bounds are invalid\n";
+            return false;
+        }
+
         ark::RenderQueue queue{};
         queue.build(sceneResource.scene());
         if (queue.size() <= sceneResource.model()->instanceCount()) {
@@ -454,6 +544,7 @@ namespace {
 
         sceneResource.resetImmediate();
         if (sceneResource.hasScene() ||
+            sceneResource.scene().hasBounds() ||
             sceneResource.additionalModelCount() != 0 ||
             !sceneResource.additionalModelData().empty()) {
             std::cerr << "Composite SceneResource reset state is invalid\n";
@@ -465,7 +556,8 @@ namespace {
 } // namespace
 
 int main() {
-    return validateExplicitModelAndProceduralEnvironment() &&
+    return validateDirectSceneObjectWorldBounds() &&
+                   validateExplicitModelAndProceduralEnvironment() &&
                    validateMissingExplicitModelFallsBack() &&
                    validateDebugOrientationEnvironment() &&
                    validateMissingEnvironmentFallback() &&

@@ -240,6 +240,17 @@ tests/model_resource_smoke.cpp
 
 ### 0.61.3 RenderScene World Bounds
 
+已完成：
+
+- `RenderScene` 增加 world-space `Bounds3` 聚合状态。
+- `RenderScene::bounds()` / `RenderScene::hasBounds()` 暴露当前 scene world bounds。
+- `addModel()` 使用 `transformBounds(model.localBounds(), sceneModel.transform)` 合并 model world bounds。
+- `addObject()` 使用 `transformBounds(mesh.localBounds(), object.transform)` 合并 standalone mesh object world bounds。
+- invalid resource bounds 会被忽略，保证未创建资源的旧 queue smoke path 不会产生错误 scene bounds。
+- `clear()` 会清空 models / objects，并把 scene bounds 恢复为 invalid；environment policy 仍沿用原行为。
+- `tests/render_scene_queue_smoke.cpp` 覆盖 invalid resource bounds 和 clear reset。
+- `tests/scene_resource_smoke.cpp` 覆盖 standalone object world bounds 以及 Sponza + DamagedHelmet composite model bounds。
+
 修改：
 
 ```text
