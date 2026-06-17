@@ -19,6 +19,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/Bounds.h"
 #include "renderer/CubemapOrientation.h"
 #include "renderer/EnvironmentBrdfLutGenerator.h"
 #include "renderer/EnvironmentBrdfLutResource.h"

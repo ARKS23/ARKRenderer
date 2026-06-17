@@ -3,6 +3,7 @@
 #include "asset/MeshData.h"
 #include "core/Memory.h"
 #include "core/Types.h"
+#include "renderer/Bounds.h"
 #include "rhi/Buffer.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/RHICommon.h"
@@ -32,11 +33,16 @@ namespace ark {
             return m_IndexCount;
         }
 
+        const Bounds3& localBounds() const {
+            return m_LocalBounds;
+        }
+
     private:
         Scope<rhi::Buffer> m_VertexBuffer;
         Scope<rhi::Buffer> m_IndexBuffer;
         Scope<rhi::Buffer> m_VertexStagingBuffer;
         Scope<rhi::Buffer> m_IndexStagingBuffer;
+        Bounds3 m_LocalBounds;
         u32 m_IndexCount = 0;
         bool m_Uploaded = false;
     };

@@ -6,6 +6,18 @@
 #include <limits>
 
 namespace ark {
+    namespace {
+        // Mesh primitive 的 local bounds 只依赖 CPU 顶点 position，不需要等 GPU buffer 上传完成。
+        Bounds3 computeLocalBounds(const asset::MeshPrimitiveData& mesh) {
+            Bounds3 bounds = makeInvalidBounds();
+            for (const asset::MeshVertex& vertex : mesh.vertices) {
+                expandBounds(bounds, glm::vec3{vertex.position[0], vertex.position[1], vertex.position[2]});
+            }
+
+            return bounds;
+        }
+    } // namespace
+
     bool MeshResource::create(rhi::RenderDevice& device, const asset::MeshPrimitiveData& mesh) {
         if (mesh.empty()) {
             ARK_ERROR("MeshResource requires non-empty mesh data");
@@ -25,6 +37,7 @@ namespace ark {
         }
 
         m_Uploaded = false;
+        m_LocalBounds = computeLocalBounds(mesh);
         m_IndexCount = static_cast<u32>(mesh.indices.size());
 
         rhi::BufferDesc vertexBufferDesc{};
@@ -128,6 +141,7 @@ namespace ark {
 
         m_IndexCount = 0;
         m_Uploaded = false;
+        m_LocalBounds = makeInvalidBounds();
         return true;
     }
 
@@ -139,6 +153,7 @@ namespace ark {
         m_IndexBuffer.reset();
         m_IndexCount = 0;
         m_Uploaded = false;
+        m_LocalBounds = makeInvalidBounds();
     }
 
     void MeshResource::bind(rhi::DeviceContext& context) const {

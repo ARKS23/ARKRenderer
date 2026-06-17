@@ -20,6 +20,28 @@ namespace ark {
             return matrix;
         }
 
+        // Model local bounds 需要把每个 primitive instance 的局部变换都合并进去。
+        Bounds3 computeModelLocalBounds(const std::vector<MeshResource>& meshes,
+                                        const std::vector<ModelPrimitiveResource>& primitives,
+                                        const std::vector<ModelPrimitiveInstance>& instances) {
+            Bounds3 modelBounds = makeInvalidBounds();
+            for (const ModelPrimitiveInstance& instance : instances) {
+                if (instance.primitiveIndex >= primitives.size()) {
+                    continue;
+                }
+
+                const ModelPrimitiveResource& primitive = primitives[instance.primitiveIndex];
+                if (primitive.meshIndex >= meshes.size()) {
+                    continue;
+                }
+
+                const MeshResource& mesh = meshes[primitive.meshIndex];
+                mergeBounds(modelBounds, transformBounds(mesh.localBounds(), instance.localTransform));
+            }
+
+            return modelBounds;
+        }
+
         rhi::FilterMode toRhiFilter(asset::TextureFilter filter) {
             switch (filter) {
             case asset::TextureFilter::Nearest:
@@ -142,6 +164,7 @@ namespace ark {
         m_Materials.clear();
         m_Primitives.clear();
         m_Instances.clear();
+        m_LocalBounds = makeInvalidBounds();
         m_LocalTextureCache.clear();
         m_Meshes.resize(model.meshes.size());
         m_Materials.resize(model.materials.size());
@@ -237,6 +260,13 @@ namespace ark {
             }
         }
 
+        // 先得到 model 的 local bounds，再交给后续 scene / shadow fitting 使用。
+        m_LocalBounds = computeModelLocalBounds(m_Meshes, m_Primitives, m_Instances);
+        if (!m_LocalBounds.isValid()) {
+            ARK_ERROR("ModelResource failed to compute local bounds");
+            return false;
+        }
+
         return !m_Primitives.empty() && !m_Instances.empty();
     }
 
@@ -261,6 +291,7 @@ namespace ark {
         m_Instances.clear();
         m_Primitives.clear();
         m_Materials.clear();
+        m_LocalBounds = makeInvalidBounds();
 
         for (MeshResource& meshResource : m_Meshes) {
             if (!meshResource.releaseDeferred(context)) {
@@ -281,6 +312,7 @@ namespace ark {
         m_Instances.clear();
         m_Primitives.clear();
         m_Materials.clear();
+        m_LocalBounds = makeInvalidBounds();
         for (MeshResource& meshResource : m_Meshes) {
             meshResource.resetImmediate();
         }

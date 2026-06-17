@@ -213,6 +213,15 @@ tests/render_scene_queue_smoke.cpp 或新增 tests/bounds_smoke.cpp
 
 ### 0.61.2 MeshResource / ModelResource Bounds
 
+已完成：
+
+- `MeshResource` 在 `create()` 阶段从 `asset::MeshPrimitiveData::vertices.position` 计算 primitive local AABB。
+- `MeshResource::localBounds()` 暴露 mesh local bounds，并在 deferred release / immediate reset 后恢复 invalid bounds。
+- `ModelResource` 按实际 `ModelPrimitiveInstance` 合并 primitive mesh bounds 和 instance local transform，得到 model local bounds。
+- `ModelResource::localBounds()` 暴露 model local bounds，供后续 `RenderScene` world bounds 与 `ShadowPass` fitting 使用。
+- `tests/model_resource_smoke.cpp` 覆盖单 mesh bounds、多 primitive mesh bounds、多 instance transform bounds。
+- `tests/framework_headers_smoke.cpp` 纳入 `renderer/Bounds.h` 公共头编译覆盖。
+
 修改：
 
 ```text

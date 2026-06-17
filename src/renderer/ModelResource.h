@@ -2,6 +2,7 @@
 
 #include "asset/MeshData.h"
 #include "core/Types.h"
+#include "renderer/Bounds.h"
 #include "renderer/MeshResource.h"
 #include "renderer/TextureCache.h"
 #include "renderer/material/MaterialResource.h"
@@ -41,6 +42,10 @@ namespace ark {
         bool resetDeferred(rhi::DeviceContext& context);
         void reset();
 
+        const Bounds3& localBounds() const {
+            return m_LocalBounds;
+        }
+
         std::span<const ModelPrimitiveResource> primitives() const;
         std::span<const ModelPrimitiveInstance> instances() const;
         MeshResource* mesh(usize index);
@@ -74,6 +79,7 @@ namespace ark {
         std::vector<MaterialResource> m_Materials;
         std::vector<ModelPrimitiveResource> m_Primitives;
         std::vector<ModelPrimitiveInstance> m_Instances;
+        Bounds3 m_LocalBounds;
         bool m_UsesExternalTextureCache = false;
     };
 } // namespace ark

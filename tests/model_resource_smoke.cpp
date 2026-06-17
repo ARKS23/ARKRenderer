@@ -2,6 +2,7 @@
 #include "asset/MeshData.h"
 #include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
+#include "renderer/Bounds.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
@@ -20,6 +21,8 @@
 #include "rhi/Texture.h"
 #include "rhi/TextureView.h"
 
+#include <glm/ext/matrix_transform.hpp>
+
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -33,6 +36,10 @@
 namespace {
     bool near(float lhs, float rhs) {
         return std::fabs(lhs - rhs) < 0.0001f;
+    }
+
+    bool nearVec3(const glm::vec3& lhs, const glm::vec3& rhs) {
+        return near(lhs.x, rhs.x) && near(lhs.y, rhs.y) && near(lhs.z, rhs.z);
     }
 
     bool textureTransformNear(const ark::MaterialTextureTransform& transform,
@@ -417,6 +424,18 @@ namespace {
         };
 
         return ark::findFirstExistingPath(candidates);
+    }
+
+    ark::asset::TransformData toTransformData(const glm::mat4& matrix) {
+        ark::asset::TransformData transform{};
+        for (ark::usize column = 0; column < 4; ++column) {
+            for (ark::usize row = 0; row < 4; ++row) {
+                transform.matrix[column * 4 + row] = matrix[static_cast<glm::length_t>(column)]
+                                                       [static_cast<glm::length_t>(row)];
+            }
+        }
+
+        return transform;
     }
 
     ark::asset::MeshPrimitiveData makeTriangle(const char* name, ark::u32 materialIndex, float xOffset) {
@@ -841,6 +860,14 @@ namespace {
             return false;
         }
 
+        const ark::Bounds3& localBounds = meshResource.localBounds();
+        if (!localBounds.isValid() ||
+            !nearVec3(localBounds.min, glm::vec3{-0.5f, 0.0f, 0.0f}) ||
+            !nearVec3(localBounds.max, glm::vec3{0.5f, 1.0f, 0.0f})) {
+            std::cerr << "MeshResource local bounds are invalid\n";
+            return false;
+        }
+
         if (!meshResource.releaseDeferred(context)) {
             std::cerr << "MeshResource deferred release failed\n";
             return false;
@@ -1030,6 +1057,32 @@ namespace {
             return false;
         }
 
+        ark::MeshResource* firstMesh = modelResource.primitiveMesh(0);
+        ark::MeshResource* secondMesh = modelResource.primitiveMesh(1);
+        if (!firstMesh || !secondMesh) {
+            std::cerr << "ModelResource primitive mesh lookup failed for bounds\n";
+            return false;
+        }
+
+        const ark::Bounds3& meshBoundsA = firstMesh->localBounds();
+        const ark::Bounds3& meshBoundsB = secondMesh->localBounds();
+        if (!meshBoundsA.isValid() || !meshBoundsB.isValid() ||
+            !nearVec3(meshBoundsA.min, glm::vec3{-1.5f, 0.0f, 0.0f}) ||
+            !nearVec3(meshBoundsA.max, glm::vec3{-0.5f, 1.0f, 0.0f}) ||
+            !nearVec3(meshBoundsB.min, glm::vec3{0.5f, 0.0f, 0.0f}) ||
+            !nearVec3(meshBoundsB.max, glm::vec3{1.5f, 1.0f, 0.0f})) {
+            std::cerr << "ModelResource mesh local bounds are invalid\n";
+            return false;
+        }
+
+        const ark::Bounds3& modelBounds = modelResource.localBounds();
+        if (!modelBounds.isValid() ||
+            !nearVec3(modelBounds.min, glm::vec3{-3.5f, 0.0f, 0.0f}) ||
+            !nearVec3(modelBounds.max, glm::vec3{1.5f, 1.0f, 0.0f})) {
+            std::cerr << "ModelResource local bounds are invalid\n";
+            return false;
+        }
+
         const ark::MaterialTextureSet& materialTextures = modelResource.primitiveMaterial(0)->textures();
         const ark::MaterialTextureSet& duplicateTextures = modelResource.primitiveMaterial(1)->textures();
         if (!materialTextures.baseColor || !materialTextures.normal || !materialTextures.metallicRoughness ||
@@ -1178,6 +1231,56 @@ namespace {
         if (queue.size() != 2 || queue.drawItems()[0].material != modelResource.primitiveMaterial(0) ||
             queue.drawItems()[1].material != modelResource.primitiveMaterial(1)) {
             std::cerr << "Texture cache fixture queue draw items are invalid\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateModelResourceInstanceBounds() {
+        const ark::Path texturePath = findTexturePath();
+        if (texturePath.empty()) {
+            std::cerr << "Failed to find texture asset for instance bounds test\n";
+            return false;
+        }
+
+        ark::asset::MaterialData material{};
+        material.debugName = "InstanceBoundsMaterial";
+        material.baseColorTexturePath = texturePath;
+
+        ark::asset::ModelData modelData{};
+        modelData.debugName = "InstanceBoundsModel";
+        modelData.materials.push_back(material);
+        modelData.meshes.push_back(makeTriangle("InstanceBoundsTriangle", 0, 0.0f));
+
+        ark::asset::MeshPrimitiveInstanceData instanceA{};
+        instanceA.meshIndex = 0;
+        instanceA.debugName = "InstanceBoundsA";
+        instanceA.localTransform = toTransformData(glm::mat4{1.0f});
+        modelData.instances.push_back(instanceA);
+
+        ark::asset::MeshPrimitiveInstanceData instanceB{};
+        instanceB.meshIndex = 0;
+        instanceB.debugName = "InstanceBoundsB";
+        glm::mat4 transform{1.0f};
+        transform = glm::translate(transform, glm::vec3{3.0f, 0.0f, 0.0f});
+        transform = glm::scale(transform, glm::vec3{1.0f, 2.0f, 1.0f});
+        instanceB.localTransform = toTransformData(transform);
+        modelData.instances.push_back(instanceB);
+
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+        ark::ModelResource modelResource{};
+        if (!modelResource.create(device, textureCache, modelData)) {
+            std::cerr << "Instance bounds ModelResource create failed\n";
+            return false;
+        }
+
+        const ark::Bounds3& modelBounds = modelResource.localBounds();
+        if (!modelBounds.isValid() ||
+            !nearVec3(modelBounds.min, glm::vec3{-0.5f, 0.0f, 0.0f}) ||
+            !nearVec3(modelBounds.max, glm::vec3{3.5f, 2.0f, 0.0f})) {
+            std::cerr << "ModelResource instance local bounds are invalid\n";
             return false;
         }
 
@@ -1765,6 +1868,7 @@ int main() {
                    validateMaterialResourceTextureSlots() && validateMeshResourceDeferredRelease() &&
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
+                   validateModelResourceInstanceBounds() &&
                    validateTextureCacheFixtureModelResource() && validateAlphaModesModelResource() &&
                    validateSpecularIblValidationModelResource() &&
                    validateMaterialBallValidationModelResource() &&
