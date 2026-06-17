@@ -269,6 +269,17 @@ tests/scene_resource_smoke.cpp
 
 ### 0.61.4 ShadowPass FitScene Path
 
+已完成：
+
+- `ShadowSettings` 增加 `fitSceneBounds`，默认开启。
+- `ShadowPass` 在 `fitSceneBounds == true` 且 `RenderScene::hasBounds()` 时，根据 scene world bounds 计算 light view-projection。
+- scene fitting 会把 scene bounds 的 8 个角点投到 light-space，用 light-space min/max 生成 ortho projection。
+- `orthographicHalfExtent`、`nearPlane`、`farPlane` 和 `lightDistance` 仍作为 fallback / 最小 clamp 使用。
+- scene bounds invalid 或 `fitSceneBounds == false` 时保留旧的固定 origin + manual half extent path。
+- sandbox 显式传入 `--shadow-bounds` / `--shadow-bounds=` 时会关闭 `fitSceneBounds`，保持手动 shadow bounds 行为可预测。
+- `tests/shadow_pass_smoke.cpp` 覆盖 scene bounds fitting 与 manual fallback。
+- `tests/framework_headers_smoke.cpp` / `tests/renderer_preset_smoke.cpp` 覆盖 sandbox 默认开启 fitting、手动 `--shadow-bounds` 关闭 fitting。
+
 修改：
 
 ```text
@@ -291,6 +302,29 @@ tests/framework_headers_smoke.cpp
 
 ### 0.61.5 Tests
 
+已完成：
+
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_model_resource_smoke ark_render_scene_queue_smoke ark_scene_resource_smoke ark_shadow_pass_smoke ark_renderer_preset_smoke ark_framework_headers_smoke ark_bounds_smoke
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(model_resource|render_scene_queue|scene_resource|shadow_pass|renderer_preset|framework_headers|bounds)_smoke" --output-on-failure
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+```
+
+结果：
+
+- targeted build 通过。
+- targeted CTest 通过：7/7。
+- full Debug build 通过。
+- full CTest 通过：30/30。
+- `git diff --check` 通过，仅有 Windows CRLF 行尾提示。
+
+Sandbox hidden-window smoke 已完成：
+
+- default sandbox 启动成功。
+- `--preset shadow-validation` 启动成功。
+- `--preset sponza --shadow-bounds 64 --shadow-strength=1.0` 启动成功。
+
 建议执行：
 
 ```powershell
@@ -311,6 +345,14 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza --shadow-bounds 64 --shad
 ```
 
 ### 0.61.6 验证与收尾
+
+已完成：
+
+- `docs/phase/phase61.md` 已同步完成状态和验证结果。
+- `docs/codex_handoff.md` 已同步到 Phase 0.61。
+- `README.md` 已补充默认 shadow 自动 scene bounds fitting 与 `--shadow-bounds` 手动覆盖关系。
+- 已记录手动 shadow bounds 与 automatic fitting 的关系：默认自动 fitting；显式 `--shadow-bounds` 关闭 fitting 并使用 manual half extent path。
+- 本轮未提交/推送；等待用户明确要求。
 
 - 更新 `docs/phase/phase61.md` 完成状态。
 - 更新 `docs/codex_handoff.md`。

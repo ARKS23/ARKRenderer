@@ -7,7 +7,7 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 - Vulkan RHI 基础封装，使用 dynamic rendering。
 - glTF 模型加载，支持 PBR 材质、PNG/JPG/KTX 纹理、sampler、alpha mode、UV set 和 texture transform。
 - HDR 环境、equirectangular-to-cubemap、Skybox、Diffuse IBL、Specular IBL 和 BRDF LUT。
-- Directional shadow map 基础路径，sandbox 可通过 preset/参数开启。
+- Directional shadow map 基础路径，默认按 scene bounds 自动拟合；显式 `--shadow-bounds` 会切换为手动 bounds。
 - HDR scene color、Physically Based Bloom、ToneMapping 和 frame validation smoke tests。
 - sandbox 轨道相机、scene preset、quality preset、默认 Sponza + DamagedHelmet 组合场景和资源 fallback。
 
@@ -48,6 +48,8 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe --preset sponza --shadow-bounds 64 --shad
 build\msvc-vcpkg\Debug\ark_sandbox.exe --quality low
 build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\material_ball_validation_fixture.gltf
 ```
+
+说明：默认 shadow 会根据当前 scene bounds 自动拟合单张 directional shadow map。需要手动调试固定 shadow box 时，使用 `--shadow-bounds`；该参数会关闭自动 fitting。
 
 说明：当前已接入 KTX-Software / libktx 的最小路径，Sponza 现有 KTX1 RGBA8 diffuse/baseColor 贴图可以进入 `TextureCache` / `TextureResource`。压缩 KTX、BasisU、完整 KTX2 转码和 Sponza 缺失的完整 PBR 贴图集仍是后续工作；不支持的纹理仍会走 texture load failure fallback。
 

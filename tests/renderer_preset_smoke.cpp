@@ -228,7 +228,8 @@ namespace {
                 desc.shadows.mapExtent != 2048 ||
                 !near(desc.shadows.orthographicHalfExtent, 64.0f) ||
                 !near(desc.shadows.farPlane, 256.0f) ||
-                !near(desc.shadows.lightDistance, 96.0f)) {
+                !near(desc.shadows.lightDistance, 96.0f) ||
+                !desc.shadows.fitSceneBounds) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }
@@ -314,7 +315,8 @@ namespace {
                 desc.shadows.mapExtent != 2048 ||
                 desc.shadows.orthographicHalfExtent < 64.0f ||
                 desc.shadows.farPlane < 256.0f ||
-                desc.shadows.lightDistance < 96.0f) {
+                desc.shadows.lightDistance < 96.0f ||
+                !desc.shadows.fitSceneBounds) {
                 std::cerr << "Sandbox shadow validation preset application desc is invalid\n";
                 return false;
             }
@@ -331,7 +333,8 @@ namespace {
             if (desc.defaultModelPath.filename() != "sponza.gltf" ||
                 desc.useDebugOrientationEnvironment ||
                 !desc.shadows.enabled ||
-                !near(desc.shadows.orthographicHalfExtent, 20.0f)) {
+                !near(desc.shadows.orthographicHalfExtent, 20.0f) ||
+                desc.shadows.fitSceneBounds) {
                 std::cerr << "Sandbox Sponza shadow options are invalid\n";
                 return false;
             }

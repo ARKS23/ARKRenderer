@@ -325,6 +325,7 @@ namespace ark {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
                     options.shadows.enabled = true;
+                    options.shadows.fitSceneBounds = false;
                     applyFloatOption(value, options.shadows.orthographicHalfExtent);
                 } else {
                     options.missingShadowBoundsValue = true;
@@ -335,6 +336,7 @@ namespace ark {
             constexpr std::string_view shadowBoundsPrefix = "--shadow-bounds=";
             if (hasPrefix(argument, shadowBoundsPrefix)) {
                 options.shadows.enabled = true;
+                options.shadows.fitSceneBounds = false;
                 applyFloatOption(argument.substr(shadowBoundsPrefix.size()),
                                  options.shadows.orthographicHalfExtent);
                 continue;

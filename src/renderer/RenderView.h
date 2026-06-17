@@ -35,6 +35,7 @@ namespace ark {
         float nearPlane = 0.1f;
         float farPlane = 64.0f;
         float lightDistance = 16.0f;
+        bool fitSceneBounds = true;
     };
 
     ToneMappingOperator parseToneMappingOperator(

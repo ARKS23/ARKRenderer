@@ -436,7 +436,8 @@ int main() {
     }
     if (!applicationDesc.shadows.enabled ||
         applicationDesc.shadows.strength != 0.5f ||
-        applicationDesc.shadows.mapExtent != 2048) {
+        applicationDesc.shadows.mapExtent != 2048 ||
+        !applicationDesc.shadows.fitSceneBounds) {
         return EXIT_FAILURE;
     }
     ark::RendererPresetDesc rendererPresetDesc{};
@@ -503,7 +504,8 @@ int main() {
         shadowSandboxApplicationDesc.shadows.strength != 0.4f ||
         shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 64.0f ||
         shadowSandboxApplicationDesc.shadows.farPlane != 256.0f ||
-        shadowSandboxApplicationDesc.shadows.lightDistance != 96.0f) {
+        shadowSandboxApplicationDesc.shadows.lightDistance != 96.0f ||
+        shadowSandboxApplicationDesc.shadows.fitSceneBounds) {
         return EXIT_FAILURE;
     }
     constexpr std::array<std::string_view, 2> toneMappingArguments{
@@ -596,6 +598,7 @@ int main() {
         renderView.shadowSettings().strength != 0.75f ||
         renderView.shadowSettings().bias != 0.002f ||
         renderView.shadowSettings().mapExtent != 512 ||
+        !renderView.shadowSettings().fitSceneBounds ||
         ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {
         return EXIT_FAILURE;
     }

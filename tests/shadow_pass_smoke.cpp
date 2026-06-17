@@ -22,6 +22,7 @@
 #include "rhi/TextureView.h"
 
 #include <glm/glm.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 #include <array>
 #include <cmath>
@@ -40,6 +41,11 @@ namespace {
 
     bool near(float lhs, float rhs, float epsilon = 0.0001f) {
         return std::abs(lhs - rhs) <= epsilon;
+    }
+
+    glm::vec3 projectPoint(const glm::mat4& matrix, const glm::vec3& point) {
+        const glm::vec4 clip = matrix * glm::vec4{point, 1.0f};
+        return glm::vec3{clip} / clip.w;
     }
 
     bool containsBinding(const std::vector<ark::rhi::DescriptorBindingDesc>& bindings,
@@ -634,10 +640,99 @@ namespace {
 
         return true;
     }
+
+    bool validateShadowPassSceneBoundsFitting() {
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        ark::TextureCache textureCache{};
+        ark::MeshResource mesh{};
+        ark::MaterialResource material{};
+        ark::RenderScene scene{};
+        ark::RenderQueue queue{};
+        ark::RenderView fittedView{};
+        ark::RenderView manualView{};
+        ark::ShadowPass pass{};
+
+        if (!mesh.create(device, makeTriangle()) ||
+            !createMaterial(device, textureCache, material)) {
+            std::cerr << "Failed to create ShadowPass fitting resources\n";
+            return false;
+        }
+
+        ark::SceneLighting lighting{};
+        lighting.mainLight.direction = glm::vec3{0.0f, -1.0f, 0.0f};
+        scene.setLighting(lighting);
+        scene.addObject(mesh,
+                        material,
+                        glm::translate(glm::mat4{1.0f}, glm::vec3{24.0f, 0.0f, 0.0f}),
+                        "FittedShadowObject");
+        queue.build(scene);
+        if (!scene.hasBounds()) {
+            std::cerr << "ShadowPass fitting test requires scene bounds\n";
+            return false;
+        }
+
+        ark::ShadowSettings shadows{};
+        shadows.enabled = true;
+        shadows.strength = 1.0f;
+        shadows.mapExtent = 256;
+        shadows.orthographicHalfExtent = 4.0f;
+        shadows.farPlane = 32.0f;
+        shadows.lightDistance = 8.0f;
+        shadows.fitSceneBounds = true;
+        fittedView.setShadowSettings(shadows);
+
+        pass.setup(device);
+
+        context.frame.frameSlot = 0;
+        context.frame.frameIndex = 0;
+
+        ark::FrameContext frameContext{};
+        frameContext.scene = &scene;
+        frameContext.view = &fittedView;
+        frameContext.queue = &queue;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.frameResource = &context.frame;
+
+        if (!pass.prepare(frameContext)) {
+            std::cerr << "ShadowPass scene-fit prepare failed\n";
+            return false;
+        }
+
+        const glm::vec3 fittedCenter = projectPoint(frameContext.lightViewProjection, scene.bounds().center());
+        if (!near(fittedCenter.x, 0.0f, 0.001f) ||
+            !near(fittedCenter.y, 0.0f, 0.001f) ||
+            fittedCenter.z < 0.0f ||
+            fittedCenter.z > 1.0f) {
+            std::cerr << "ShadowPass scene fitting did not center scene bounds: "
+                      << fittedCenter.x << ", "
+                      << fittedCenter.y << ", "
+                      << fittedCenter.z << "\n";
+            return false;
+        }
+
+        shadows.fitSceneBounds = false;
+        manualView.setShadowSettings(shadows);
+        frameContext.view = &manualView;
+        if (!pass.prepare(frameContext)) {
+            std::cerr << "ShadowPass manual prepare failed\n";
+            return false;
+        }
+
+        const glm::vec3 manualCenter = projectPoint(frameContext.lightViewProjection, scene.bounds().center());
+        if (std::abs(manualCenter.x) < 1.0f) {
+            std::cerr << "ShadowPass manual bounds should not auto-center scene bounds\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateShadowPassDisabledPath() && validateShadowPassDepthRender()
+    return validateShadowPassDisabledPath() && validateShadowPassDepthRender() &&
+                   validateShadowPassSceneBoundsFitting()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

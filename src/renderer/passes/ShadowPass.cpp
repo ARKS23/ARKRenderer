@@ -3,6 +3,7 @@
 #include "asset/MeshData.h"
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
+#include "renderer/Bounds.h"
 #include "renderer/FrameContext.h"
 #include "renderer/MeshResource.h"
 #include "renderer/RenderQueue.h"
@@ -17,9 +18,11 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace ark {
     namespace {
@@ -53,10 +56,18 @@ namespace ark {
             return glm::vec3{0.0f, 0.0f, 1.0f};
         }
 
-        glm::mat4 makeLightViewProjection(const FrameContext& frameContext) {
-            const SceneLighting defaultLighting{};
-            const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
-            const ShadowSettings& settings = frameContext.view->shadowSettings();
+        void expandRangeToMinHalfExtent(float& rangeMin, float& rangeMax, float minHalfExtent) {
+            const float center = (rangeMin + rangeMax) * 0.5f;
+            const float halfExtent = std::max((rangeMax - rangeMin) * 0.5f, minHalfExtent);
+            rangeMin = center - halfExtent;
+            rangeMax = center + halfExtent;
+        }
+
+        bool isValidRange(float rangeMin, float rangeMax) {
+            return std::isfinite(rangeMin) && std::isfinite(rangeMax) && rangeMin <= rangeMax;
+        }
+
+        glm::mat4 makeFixedLightViewProjection(const SceneLighting& lighting, const ShadowSettings& settings) {
             const glm::vec3 lightDirection = normalizeLightDirection(lighting.mainLight.direction);
             const glm::vec3 lightTarget{0.0f, 0.0f, 0.0f};
             const glm::vec3 lightPosition = lightTarget - lightDirection * settings.lightDistance;
@@ -71,6 +82,72 @@ namespace ark {
                                                         settings.farPlane);
             lightProjection[1][1] *= -1.0f;
             return lightProjection * lightView;
+        }
+
+        glm::mat4 makeSceneFitLightViewProjection(const RenderScene& scene,
+                                                  const SceneLighting& lighting,
+                                                  const ShadowSettings& settings) {
+            const Bounds3& sceneBounds = scene.bounds();
+            const glm::vec3 lightDirection = normalizeLightDirection(lighting.mainLight.direction);
+            const glm::vec3 lightTarget = sceneBounds.center();
+            const glm::vec3 sceneHalfExtent = sceneBounds.halfExtent();
+            const float sceneRadius = glm::length(sceneHalfExtent);
+            const float padding = std::max(0.5f, sceneRadius * 0.1f);
+            const float lightDistance =
+                std::max(settings.lightDistance, sceneRadius + padding + settings.nearPlane);
+            const glm::vec3 lightPosition = lightTarget - lightDirection * lightDistance;
+            const glm::mat4 lightView = glm::lookAt(lightPosition,
+                                                    lightTarget,
+                                                    chooseLightUp(lightDirection));
+
+            // 第一版只用 scene world AABB 拟合单张 directional shadow map；CSM 和 texel snapping 后续再接。
+            float left = std::numeric_limits<float>::max();
+            float right = std::numeric_limits<float>::lowest();
+            float bottom = std::numeric_limits<float>::max();
+            float top = std::numeric_limits<float>::lowest();
+            float minDepth = std::numeric_limits<float>::max();
+            float maxDepth = std::numeric_limits<float>::lowest();
+
+            for (const glm::vec3& corner : boundsCorners(sceneBounds)) {
+                const glm::vec4 lightCorner = lightView * glm::vec4{corner, 1.0f};
+                left = std::min(left, lightCorner.x);
+                right = std::max(right, lightCorner.x);
+                bottom = std::min(bottom, lightCorner.y);
+                top = std::max(top, lightCorner.y);
+
+                const float depth = -lightCorner.z;
+                minDepth = std::min(minDepth, depth);
+                maxDepth = std::max(maxDepth, depth);
+            }
+
+            if (!isValidRange(left, right) || !isValidRange(bottom, top) || !isValidRange(minDepth, maxDepth)) {
+                return makeFixedLightViewProjection(lighting, settings);
+            }
+
+            left -= padding;
+            right += padding;
+            bottom -= padding;
+            top += padding;
+            expandRangeToMinHalfExtent(left, right, settings.orthographicHalfExtent);
+            expandRangeToMinHalfExtent(bottom, top, settings.orthographicHalfExtent);
+
+            const float nearPlane = std::max(settings.nearPlane, minDepth - padding);
+            const float farPlane = std::max({settings.farPlane, maxDepth + padding, nearPlane + 0.01f});
+
+            glm::mat4 lightProjection = glm::orthoRH_ZO(left, right, bottom, top, nearPlane, farPlane);
+            lightProjection[1][1] *= -1.0f;
+            return lightProjection * lightView;
+        }
+
+        glm::mat4 makeLightViewProjection(const FrameContext& frameContext) {
+            const SceneLighting defaultLighting{};
+            const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
+            const ShadowSettings& settings = frameContext.view->shadowSettings();
+            if (settings.fitSceneBounds && frameContext.scene && frameContext.scene->hasBounds()) {
+                return makeSceneFitLightViewProjection(*frameContext.scene, lighting, settings);
+            }
+
+            return makeFixedLightViewProjection(lighting, settings);
         }
 
         rhi::Extent2D makeShadowExtent(const ShadowSettings& settings) {

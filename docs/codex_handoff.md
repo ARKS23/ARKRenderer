@@ -1,5 +1,45 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-17, Phase 0.61)
+
+ARKRenderer has completed Phase 0.61: Scene Bounds / Shadow Bounds Fitting Foundation.
+
+Key changes:
+- Added reusable renderer-side `Bounds3` helpers for invalid/point/expand/merge/corners/transform AABB operations.
+- `MeshResource` now computes primitive local bounds from CPU vertex positions.
+- `ModelResource` now computes model local bounds from actual primitive instances and local transforms.
+- `RenderScene` now maintains world-space scene bounds through `addModel()` / `addObject()` and resets bounds on `clear()`.
+- `ShadowSettings` now exposes `fitSceneBounds`, enabled by default.
+- `ShadowPass` now fits the directional shadow light view-projection to `RenderScene::bounds()` when scene bounds are valid.
+- The previous fixed origin/manual half-extent path remains available as fallback.
+- Sandbox `--shadow-bounds` / `--shadow-bounds=` now disables automatic scene-bounds fitting so manual shadow bounds remain predictable.
+- README now documents the automatic shadow fitting vs manual `--shadow-bounds` relationship.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_model_resource_smoke ark_render_scene_queue_smoke ark_scene_resource_smoke ark_shadow_pass_smoke ark_renderer_preset_smoke ark_framework_headers_smoke ark_bounds_smoke
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(model_resource|render_scene_queue|scene_resource|shadow_pass|renderer_preset|framework_headers|bounds)_smoke" --output-on-failure
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+git diff --check
+ark_sandbox hidden-window smoke for default, shadow-validation, and sponza manual `--shadow-bounds`
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 7/7
+full Debug build passed
+full CTest passed: 30/30
+git diff --check: only CRLF warnings, no whitespace errors
+sandbox hidden-window smoke passed for default, shadow-validation, and sponza --shadow-bounds manual path
+```
+
+Notes:
+- This is still a single directional shadow map. CSM, texel snapping, PCF/PCSS quality tiers, and better large-scene focus strategies remain future work.
+- `orthographicHalfExtent`, `nearPlane`, `farPlane`, and `lightDistance` still act as fallback/minimum clamp parameters for fitting.
+- Scene bounds are currently maintained incrementally by `RenderScene::addModel()` / `addObject()`; if runtime transform mutation is added later, bounds should move to a dirty/rebuild model.
+
 ## Latest Update (2026-06-16, Phase 0.60)
 
 ARKRenderer has completed Phase 0.60: KTX/KTX2 Texture Loader / Sponza Material Recovery.
