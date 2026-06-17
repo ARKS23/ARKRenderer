@@ -13,6 +13,20 @@
 #include <utility>
 
 namespace ark {
+    namespace {
+        SandboxCameraControllerDesc makeSandboxCameraControllerDesc(const OrbitCameraProfileDesc& camera) {
+            SandboxCameraControllerDesc desc{};
+            desc.target = camera.target;
+            desc.distance = camera.distance;
+            desc.yaw = camera.yawRadians;
+            desc.pitch = camera.pitchRadians;
+            desc.verticalFovRadians = camera.verticalFovRadians;
+            desc.nearPlane = camera.nearPlane;
+            desc.farPlane = camera.farPlane;
+            return desc;
+        }
+    } // namespace
+
     Application::Application(ApplicationDesc desc) : m_Desc(std::move(desc)) {
     }
 
@@ -37,15 +51,8 @@ namespace ark {
         RendererDesc rendererDesc{};
         rendererDesc.nativeWindow = m_Window->getNativeWindowHandle();
         rendererDesc.extent = m_Window->getExtent();
-        rendererDesc.defaultModelPath = m_Desc.defaultModelPath;
-        rendererDesc.defaultModelTransform = m_Desc.defaultModelTransform;
-        rendererDesc.defaultAdditionalModels = m_Desc.defaultAdditionalModels;
-        rendererDesc.defaultEnvironmentPath = m_Desc.defaultEnvironmentPath;
-        rendererDesc.defaultEnvironmentIntensity = m_Desc.defaultEnvironmentIntensity;
-        rendererDesc.defaultOverrideLighting = m_Desc.defaultOverrideLighting;
-        rendererDesc.defaultLighting = m_Desc.defaultLighting;
+        rendererDesc.defaultScene = m_Desc.defaultScene;
         rendererDesc.quality = m_Desc.rendererQuality;
-        rendererDesc.useDebugOrientationEnvironment = m_Desc.useDebugOrientationEnvironment;
 #ifndef NDEBUG
         rendererDesc.enableValidation = true;
 #endif
@@ -54,10 +61,10 @@ namespace ark {
 
         RenderScene scene;
         RenderView view;
-        view.setToneMappingSettings(m_Desc.toneMapping);
-        view.setPostProcessingSettings(m_Desc.postProcessing);
-        view.setShadowSettings(m_Desc.shadows);
-        SandboxCameraController cameraController{m_Desc.camera};
+        view.setToneMappingSettings(m_Desc.view.toneMapping);
+        view.setPostProcessingSettings(m_Desc.view.postProcessing);
+        view.setShadowSettings(m_Desc.view.shadows);
+        SandboxCameraController cameraController{makeSandboxCameraControllerDesc(m_Desc.camera)};
         rhi::Extent2D currentExtent = rendererDesc.extent;
         cameraController.setViewportExtent(currentExtent);
         cameraController.writeTo(view);
@@ -74,9 +81,9 @@ namespace ark {
 
             cameraController.update(m_Window->getInputSnapshot());
             cameraController.writeTo(view);
-            view.setToneMappingSettings(m_Desc.toneMapping);
-            view.setPostProcessingSettings(m_Desc.postProcessing);
-            view.setShadowSettings(m_Desc.shadows);
+            view.setToneMappingSettings(m_Desc.view.toneMapping);
+            view.setPostProcessingSettings(m_Desc.view.postProcessing);
+            view.setShadowSettings(m_Desc.view.shadows);
             m_Renderer->render(scene, view);
         }
 

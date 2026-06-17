@@ -1,5 +1,47 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-17, Phase 0.63)
+
+ARKRenderer has completed Phase 0.63: Renderer Public Scene / Resource API Closure.
+
+Key changes:
+- `RendererPreset` now resolves scene, quality, view profile, interactive camera, and capture camera from one renderer-side preset output.
+- Added renderer-side `RenderViewProfileDesc` and `OrbitCameraProfileDesc`.
+- Added `applyOrbitCameraProfile()` so frame validation can consume the same camera profile without depending on app-layer camera controller code.
+- `ApplicationDesc` now stores `SceneResourceLoadDesc defaultScene`, `RendererQualityDesc rendererQuality`, `RenderViewProfileDesc view`, and `OrbitCameraProfileDesc camera`.
+- `RendererDesc` now stores `SceneResourceLoadDesc defaultScene` and no longer duplicates model/environment/lighting fields.
+- `Application` converts the renderer-side orbit camera profile into `SandboxCameraControllerDesc`.
+- `SandboxLaunchOptions` now carries preset + CLI view override values/mask and builds `ApplicationDesc` from the resolved renderer preset.
+- Sandbox view overrides are applied on top of `resolved.view`, so preset-specific view defaults do not need to be duplicated in app code.
+- `ark_frame_validation_smoke` default composite case now reads Bloom / ToneMapping / Shadow and capture camera from `ResolvedRendererPreset` instead of maintaining a second copy.
+- Updated framework, preset, bloom, post-processing, and frame validation smoke coverage for the new public API shape.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_renderer_preset_smoke ark_framework_headers_smoke ark_bloom_validation_fixture_smoke ark_post_processing_settings_smoke ark_frame_validation_smoke ark_scene_resource_smoke ark_sandbox_camera_controller_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(renderer_preset|framework_headers|bloom_validation_fixture|post_processing_settings|frame_validation|scene_resource|sandbox_camera_controller)_smoke" --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, sponza, shadow-validation, bloom-validation, and sponza manual `--shadow-bounds`
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 7/7
+git diff --check: only CRLF warnings, no whitespace errors
+full Debug build passed
+full CTest passed: 30/30
+sandbox hidden-window smoke passed for default, sponza, shadow-validation, bloom-validation, and sponza manual --shadow-bounds
+```
+
+Notes:
+- This phase intentionally avoids render algorithm changes. It is a public API and configuration ownership cleanup.
+- `SceneResourceLoadDesc` remains resource-loading focused; view, post-processing, shadow, and camera defaults are kept in renderer preset/profile data.
+- `RendererDesc` remains runtime creation data and does not own camera/input state.
+- Phase 0.63 final validation is complete.
+
 ## Latest Update (2026-06-17, Phase 0.62)
 
 ARKRenderer has completed Phase 0.62: Default Composite Scene Visual Regression Loop.

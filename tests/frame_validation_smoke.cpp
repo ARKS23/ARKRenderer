@@ -160,18 +160,12 @@ namespace {
         ark::ShadowSettings shadowSettings;
         bool useSceneCamera = true;
         bool useFixedCamera = false;
+        ark::OrbitCameraProfileDesc fixedCamera;
         bool enableEnvironmentBake = false;
         bool requireSceneBounds = false;
         bool requireAdditionalModel = false;
         bool requireShadowMap = false;
         bool validateCompositeStats = false;
-        glm::vec3 cameraTarget{0.0f};
-        float cameraDistance = 4.0f;
-        float cameraYawRadians = 0.0f;
-        float cameraPitchRadians = 0.0f;
-        float cameraFovYRadians = glm::radians(60.0f);
-        float cameraNearPlane = 0.1f;
-        float cameraFarPlane = 100.0f;
         bool compareGolden = true;
         bool writeArtifact = true;
     };
@@ -795,30 +789,6 @@ namespace {
         return false;
     }
 
-    void applyFixedOrbitCamera(ark::RenderView& view,
-                               const FrameValidationCaseDesc& desc,
-                               ark::rhi::Extent2D extent) {
-        const float aspect =
-            extent.height == 0 ? 1.0f : static_cast<float>(extent.width) / static_cast<float>(extent.height);
-        const float cosPitch = std::cos(desc.cameraPitchRadians);
-        const glm::vec3 forward = glm::normalize(glm::vec3{
-            cosPitch * std::sin(desc.cameraYawRadians),
-            std::sin(desc.cameraPitchRadians),
-            cosPitch * std::cos(desc.cameraYawRadians),
-        });
-        const glm::vec3 cameraPosition = desc.cameraTarget - forward * desc.cameraDistance;
-        glm::mat4 projection = glm::perspectiveRH_ZO(desc.cameraFovYRadians,
-                                                     aspect,
-                                                     desc.cameraNearPlane,
-                                                     desc.cameraFarPlane);
-        projection[1][1] *= -1.0f;
-        view.setMatrices(glm::lookAt(cameraPosition,
-                                     desc.cameraTarget,
-                                     glm::vec3{0.0f, 1.0f, 0.0f}),
-                         projection,
-                         cameraPosition);
-    }
-
     bool createEnvironmentCubeResource(ark::rhi::RenderDevice& device,
                                        ark::EnvironmentCubeResource& resource,
                                        std::string debugName,
@@ -1289,7 +1259,7 @@ namespace {
         ark::RenderView view{};
         bool cameraApplied = false;
         if (desc.useFixedCamera) {
-            applyFixedOrbitCamera(view, desc, FrameExtent);
+            ark::applyOrbitCameraProfile(view, desc.fixedCamera, FrameExtent);
             cameraApplied = true;
         } else if (desc.useSceneCamera && cameraModelData) {
             cameraApplied = applyFirstSceneCamera(view, *cameraModelData, FrameExtent);
@@ -1447,31 +1417,6 @@ namespace {
         return settings;
     }
 
-    ark::PostProcessingSettings makeDefaultCompositePostProcessingSettings() {
-        ark::PostProcessingSettings settings{};
-        settings.bloom.enabled = true;
-        settings.bloom.intensity = 0.12f;
-        settings.bloom.scatter = 0.6f;
-        settings.bloom.threshold = 1.0f;
-        settings.bloom.softKnee = 0.5f;
-        settings.bloom.maxMipCount = 6;
-        return settings;
-    }
-
-    ark::ShadowSettings makeDefaultCompositeShadowSettings() {
-        ark::ShadowSettings settings{};
-        settings.enabled = true;
-        settings.strength = 1.0f;
-        settings.bias = 0.0015f;
-        settings.mapExtent = 1024;
-        settings.orthographicHalfExtent = 64.0f;
-        settings.nearPlane = 0.1f;
-        settings.farPlane = 256.0f;
-        settings.lightDistance = 96.0f;
-        settings.fitSceneBounds = true;
-        return settings;
-    }
-
     FrameValidationCaseDesc makeBloomValidationCase(const char* fixtureId) {
         FrameValidationCaseDesc desc{};
         desc.fixtureRelativePath = ark::Path{"assets/models/bloom_validation_fixture.gltf"};
@@ -1483,27 +1428,28 @@ namespace {
     }
 
     FrameValidationCaseDesc makeDefaultCompositeCase() {
+        const ark::ResolvedRendererPreset resolved =
+            ark::resolveRendererPreset(ark::RendererPresetDesc{
+                .scene = ark::RendererScenePreset::Default,
+                .quality = ark::RendererQualityPreset::Default,
+            });
+
         FrameValidationCaseDesc desc{};
         desc.sceneMode = FrameValidationSceneMode::RendererPreset;
         desc.fixtureName = "default composite scene";
         desc.fixtureId = "default_composite_scene";
         desc.scenePreset = ark::RendererScenePreset::Default;
-        desc.toneMapping = ark::ToneMappingSettings{1.0f, 2.2f, ark::ToneMappingOperator::ACES};
-        desc.postProcessing = makeDefaultCompositePostProcessingSettings();
-        desc.shadowSettings = makeDefaultCompositeShadowSettings();
+        desc.toneMapping = resolved.view.toneMapping;
+        desc.postProcessing = resolved.view.postProcessing;
+        desc.shadowSettings = resolved.view.shadows;
         desc.useSceneCamera = false;
         desc.useFixedCamera = true;
+        desc.fixedCamera = resolved.captureCamera;
         desc.enableEnvironmentBake = true;
         desc.requireSceneBounds = true;
         desc.requireAdditionalModel = true;
         desc.requireShadowMap = true;
         desc.validateCompositeStats = true;
-        desc.cameraTarget = glm::vec3{0.0f, 3.2f, 0.6f};
-        desc.cameraDistance = 16.0f;
-        desc.cameraYawRadians = glm::radians(90.0f);
-        desc.cameraPitchRadians = glm::radians(-8.0f);
-        desc.cameraNearPlane = 0.05f;
-        desc.cameraFarPlane = 512.0f;
         return desc;
     }
 

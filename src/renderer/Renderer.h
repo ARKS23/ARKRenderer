@@ -1,14 +1,9 @@
 #pragma once
 
-#include "core/FileSystem.h"
 #include "core/Memory.h"
 #include "renderer/RendererQuality.h"
 #include "renderer/SceneResource.h"
 #include "rhi/RHICommon.h"
-
-#include <glm/mat4x4.hpp>
-
-#include <vector>
 
 namespace ark {
     class RenderScene;
@@ -18,15 +13,8 @@ namespace ark {
     struct RendererDesc {
         rhi::NativeWindowHandle nativeWindow;
         rhi::Extent2D extent{1280, 720};
-        Path defaultModelPath;
-        glm::mat4 defaultModelTransform{1.0f};
-        std::vector<SceneAdditionalModelDesc> defaultAdditionalModels;
-        Path defaultEnvironmentPath;
-        float defaultEnvironmentIntensity = 1.0f;
-        bool defaultOverrideLighting = false;
-        SceneLighting defaultLighting;
+        SceneResourceLoadDesc defaultScene;
         RendererQualityDesc quality;
-        bool useDebugOrientationEnvironment = false;
         bool enableValidation = false;
     };
 

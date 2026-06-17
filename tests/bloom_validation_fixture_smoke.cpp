@@ -99,8 +99,9 @@ namespace {
         const ark::SandboxLaunchOptions options =
             ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
         const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
-        if (!desc.postProcessing.bloom.enabled || !near(desc.postProcessing.bloom.intensity, 0.12f) ||
-            desc.defaultModelPath.filename() != "bloom_validation_fixture.gltf") {
+        if (!desc.view.postProcessing.bloom.enabled ||
+            !near(desc.view.postProcessing.bloom.intensity, 0.12f) ||
+            desc.defaultScene.modelPath.filename() != "bloom_validation_fixture.gltf") {
             std::cerr << "Bloom validation sandbox options are invalid\n";
             return false;
         }

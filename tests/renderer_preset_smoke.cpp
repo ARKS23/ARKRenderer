@@ -207,29 +207,29 @@ namespace {
         {
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{});
-            if (desc.defaultModelPath.filename() != "sponza.gltf" ||
-                desc.defaultAdditionalModels.size() != 1 ||
-                desc.defaultAdditionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-                !near(desc.defaultModelTransform[0][0], 5.0f) ||
-                !near(desc.defaultAdditionalModels.front().transform[0][0], 2.4f) ||
-                !desc.defaultOverrideLighting ||
-                !near(desc.defaultEnvironmentIntensity, 0.55f) ||
+            if (desc.defaultScene.modelPath.filename() != "sponza.gltf" ||
+                desc.defaultScene.additionalModels.size() != 1 ||
+                desc.defaultScene.additionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
+                !near(desc.defaultScene.modelTransform[0][0], 5.0f) ||
+                !near(desc.defaultScene.additionalModels.front().transform[0][0], 2.4f) ||
+                !desc.defaultScene.overrideLighting ||
+                !near(desc.defaultScene.environmentIntensity, 0.55f) ||
                 desc.camera.distance < 22.0f ||
                 desc.camera.distance > 30.0f ||
                 desc.camera.target.y < 2.5f ||
                 desc.camera.target.y > 3.8f ||
                 desc.camera.farPlane < 500.0f ||
                 desc.camera.farPlane > 560.0f ||
-                desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
-                !desc.postProcessing.bloom.enabled ||
-                !near(desc.postProcessing.bloom.intensity, 0.12f) ||
-                !desc.shadows.enabled ||
-                !near(desc.shadows.strength, 1.0f) ||
-                desc.shadows.mapExtent != 2048 ||
-                !near(desc.shadows.orthographicHalfExtent, 64.0f) ||
-                !near(desc.shadows.farPlane, 256.0f) ||
-                !near(desc.shadows.lightDistance, 96.0f) ||
-                !desc.shadows.fitSceneBounds) {
+                desc.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
+                !desc.view.postProcessing.bloom.enabled ||
+                !near(desc.view.postProcessing.bloom.intensity, 0.12f) ||
+                !desc.view.shadows.enabled ||
+                !near(desc.view.shadows.strength, 1.0f) ||
+                desc.view.shadows.mapExtent != 2048 ||
+                !near(desc.view.shadows.orthographicHalfExtent, 64.0f) ||
+                !near(desc.view.shadows.farPlane, 256.0f) ||
+                !near(desc.view.shadows.lightDistance, 96.0f) ||
+                !desc.view.shadows.fitSceneBounds) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }
@@ -246,9 +246,9 @@ namespace {
             };
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{args});
-            if (desc.defaultModelPath.filename() != "material_ball_validation_fixture.gltf" ||
+            if (desc.defaultScene.modelPath.filename() != "material_ball_validation_fixture.gltf" ||
                 desc.useDebugOrientationEnvironment ||
-                desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
+                desc.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
                 !sameExtent(desc.rendererQuality.environmentBake.brdfLutExtent,
                             ark::rhi::Extent2D{128, 128})) {
                 std::cerr << "Sandbox material-ball low preset application desc is invalid\n";
@@ -268,9 +268,9 @@ namespace {
                 ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
             const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
             if (options.ignoredExtraPositionalArgumentCount != 1 ||
-                desc.defaultModelPath != ark::Path{"assets/models/custom_fixture.gltf"} ||
-                !desc.defaultAdditionalModels.empty() ||
-                desc.defaultEnvironmentPath != ark::Path{"assets/HDR/custom.hdr"} ||
+                desc.defaultScene.modelPath != ark::Path{"assets/models/custom_fixture.gltf"} ||
+                !desc.defaultScene.additionalModels.empty() ||
+                desc.defaultScene.environmentPath != ark::Path{"assets/HDR/custom.hdr"} ||
                 desc.useDebugOrientationEnvironment ||
                 !near(desc.camera.distance, 4.0f) ||
                 desc.rendererQuality.environmentBake.specularPrefilterSampleCount != 256) {
@@ -287,7 +287,7 @@ namespace {
             };
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{args});
-            if (desc.defaultModelPath.filename() != "bloom_validation_fixture.gltf" ||
+            if (desc.defaultScene.modelPath.filename() != "bloom_validation_fixture.gltf" ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox debug orientation override behavior is invalid\n";
                 return false;
@@ -307,16 +307,16 @@ namespace {
             const ark::SandboxLaunchOptions options =
                 ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
             const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
-            if (desc.defaultModelPath.filename() != "sponza.gltf" ||
+            if (desc.defaultScene.modelPath.filename() != "sponza.gltf" ||
                 !desc.useDebugOrientationEnvironment ||
-                !desc.shadows.enabled ||
-                !near(desc.shadows.strength, 0.45f) ||
-                !near(desc.shadows.bias, 0.004f) ||
-                desc.shadows.mapExtent != 2048 ||
-                desc.shadows.orthographicHalfExtent < 64.0f ||
-                desc.shadows.farPlane < 256.0f ||
-                desc.shadows.lightDistance < 96.0f ||
-                !desc.shadows.fitSceneBounds) {
+                !desc.view.shadows.enabled ||
+                !near(desc.view.shadows.strength, 0.45f) ||
+                !near(desc.view.shadows.bias, 0.004f) ||
+                desc.view.shadows.mapExtent != 2048 ||
+                desc.view.shadows.orthographicHalfExtent < 64.0f ||
+                desc.view.shadows.farPlane < 256.0f ||
+                desc.view.shadows.lightDistance < 96.0f ||
+                !desc.view.shadows.fitSceneBounds) {
                 std::cerr << "Sandbox shadow validation preset application desc is invalid\n";
                 return false;
             }
@@ -330,11 +330,11 @@ namespace {
             };
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{args});
-            if (desc.defaultModelPath.filename() != "sponza.gltf" ||
+            if (desc.defaultScene.modelPath.filename() != "sponza.gltf" ||
                 desc.useDebugOrientationEnvironment ||
-                !desc.shadows.enabled ||
-                !near(desc.shadows.orthographicHalfExtent, 20.0f) ||
-                desc.shadows.fitSceneBounds) {
+                !desc.view.shadows.enabled ||
+                !near(desc.view.shadows.orthographicHalfExtent, 20.0f) ||
+                desc.view.shadows.fitSceneBounds) {
                 std::cerr << "Sandbox Sponza shadow options are invalid\n";
                 return false;
             }
@@ -353,8 +353,8 @@ namespace {
             if (!options.missingPresetValue ||
                 !options.missingQualityValue ||
                 !options.missingToneMappingValue ||
-                desc.defaultModelPath.filename() != "sponza.gltf" ||
-                desc.defaultAdditionalModels.size() != 1 ||
+                desc.defaultScene.modelPath.filename() != "sponza.gltf" ||
+                desc.defaultScene.additionalModels.size() != 1 ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox missing option value fallback behavior is invalid\n";
                 return false;

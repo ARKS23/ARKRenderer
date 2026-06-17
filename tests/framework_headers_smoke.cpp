@@ -108,22 +108,22 @@
 
 int main() {
     ark::ApplicationDesc applicationDesc{};
-    applicationDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
-    applicationDesc.defaultModelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f});
-    applicationDesc.defaultAdditionalModels.push_back(ark::SceneAdditionalModelDesc{
+    applicationDesc.defaultScene.modelPath = "assets/models/forward_multinode_fixture.gltf";
+    applicationDesc.defaultScene.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f});
+    applicationDesc.defaultScene.additionalModels.push_back(ark::SceneAdditionalModelDesc{
         "assets/models/DamagedHelmet/DamagedHelmet.gltf",
         glm::mat4{1.0f},
         "FrameworkAdditionalModel",
     });
-    applicationDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
-    applicationDesc.defaultEnvironmentIntensity = 0.75f;
-    applicationDesc.defaultOverrideLighting = true;
-    applicationDesc.defaultLighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
+    applicationDesc.defaultScene.environmentPath = "assets/environments/local_test.hdr";
+    applicationDesc.defaultScene.environmentIntensity = 0.75f;
+    applicationDesc.defaultScene.overrideLighting = true;
+    applicationDesc.defaultScene.lighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
     applicationDesc.rendererQuality.environmentBake.brdfLutSampleCount = 512;
-    applicationDesc.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
-    applicationDesc.shadows.enabled = true;
-    applicationDesc.shadows.strength = 0.5f;
-    applicationDesc.shadows.mapExtent = 2048;
+    applicationDesc.view.toneMapping.operatorType = ark::ToneMappingOperator::ACES;
+    applicationDesc.view.shadows.enabled = true;
+    applicationDesc.view.shadows.strength = 0.5f;
+    applicationDesc.view.shadows.mapExtent = 2048;
     applicationDesc.useDebugOrientationEnvironment = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
@@ -403,14 +403,14 @@ int main() {
     ark::RendererDesc rendererDesc{};
     rendererDesc.nativeWindow = nativeWindow;
     rendererDesc.extent = swapChainDesc.extent;
-    rendererDesc.defaultModelPath = "assets/models/forward_multinode_fixture.gltf";
-    rendererDesc.defaultModelTransform = applicationDesc.defaultModelTransform;
-    rendererDesc.defaultAdditionalModels = applicationDesc.defaultAdditionalModels;
-    rendererDesc.defaultEnvironmentPath = "assets/environments/local_test.hdr";
-    rendererDesc.defaultEnvironmentIntensity = applicationDesc.defaultEnvironmentIntensity;
-    rendererDesc.defaultOverrideLighting = applicationDesc.defaultOverrideLighting;
-    rendererDesc.defaultLighting = applicationDesc.defaultLighting;
-    rendererDesc.useDebugOrientationEnvironment = true;
+    rendererDesc.defaultScene.modelPath = "assets/models/forward_multinode_fixture.gltf";
+    rendererDesc.defaultScene.modelTransform = applicationDesc.defaultScene.modelTransform;
+    rendererDesc.defaultScene.additionalModels = applicationDesc.defaultScene.additionalModels;
+    rendererDesc.defaultScene.environmentPath = "assets/environments/local_test.hdr";
+    rendererDesc.defaultScene.environmentIntensity = applicationDesc.defaultScene.environmentIntensity;
+    rendererDesc.defaultScene.overrideLighting = applicationDesc.defaultScene.overrideLighting;
+    rendererDesc.defaultScene.lighting = applicationDesc.defaultScene.lighting;
+    rendererDesc.defaultScene.environmentFallback = ark::SceneEnvironmentFallbackPolicy::DebugOrientation;
     ark::RendererQualityDesc rendererQualityDesc{};
     rendererQualityDesc.environmentBake.specularPrefilterSampleCount = 256;
     rendererDesc.quality = rendererQualityDesc;
@@ -418,26 +418,26 @@ int main() {
     applicationPostProcessing.bloom.enabled = true;
     applicationPostProcessing.bloom.intensity = 0.06f;
     applicationPostProcessing.bloom.scatter = 0.55f;
-    applicationDesc.postProcessing = applicationPostProcessing;
+    applicationDesc.view.postProcessing = applicationPostProcessing;
     const ark::RendererQualityDesc sanitizedRendererQualityDesc =
         ark::sanitizeRendererQualityDesc(rendererDesc.quality);
     if (sanitizedRendererQualityDesc.environmentBake.specularPrefilterSampleCount != 256) {
         return EXIT_FAILURE;
     }
-    if (!applicationDesc.postProcessing.bloom.enabled ||
-        applicationDesc.postProcessing.bloom.intensity != 0.06f) {
+    if (!applicationDesc.view.postProcessing.bloom.enabled ||
+        applicationDesc.view.postProcessing.bloom.intensity != 0.06f) {
         return EXIT_FAILURE;
     }
-    if (rendererDesc.defaultModelTransform[0][0] != 2.0f ||
-        rendererDesc.defaultEnvironmentIntensity != 0.75f ||
-        !rendererDesc.defaultOverrideLighting ||
-        rendererDesc.defaultLighting.mainLight.direction.y != -0.45f) {
+    if (rendererDesc.defaultScene.modelTransform[0][0] != 2.0f ||
+        rendererDesc.defaultScene.environmentIntensity != 0.75f ||
+        !rendererDesc.defaultScene.overrideLighting ||
+        rendererDesc.defaultScene.lighting.mainLight.direction.y != -0.45f) {
         return EXIT_FAILURE;
     }
-    if (!applicationDesc.shadows.enabled ||
-        applicationDesc.shadows.strength != 0.5f ||
-        applicationDesc.shadows.mapExtent != 2048 ||
-        !applicationDesc.shadows.fitSceneBounds) {
+    if (!applicationDesc.view.shadows.enabled ||
+        applicationDesc.view.shadows.strength != 0.5f ||
+        applicationDesc.view.shadows.mapExtent != 2048 ||
+        !applicationDesc.view.shadows.fitSceneBounds) {
         return EXIT_FAILURE;
     }
     ark::RendererPresetDesc rendererPresetDesc{};
@@ -465,7 +465,7 @@ int main() {
         ark::parseSandboxLaunchOptions(sandboxArguments);
     const ark::ApplicationDesc sandboxApplicationDesc =
         ark::makeSandboxApplicationDesc(sandboxLaunchOptions);
-    if (sandboxApplicationDesc.defaultModelPath.filename() !=
+    if (sandboxApplicationDesc.defaultScene.modelPath.filename() !=
             "specular_ibl_validation_fixture.gltf" ||
         sandboxApplicationDesc.rendererQuality.environmentBake.specularPrefilterSampleCount != 256 ||
         parsedRendererScenePreset != ark::RendererScenePreset::DebugOrientation ||
@@ -481,11 +481,11 @@ int main() {
     };
     const ark::ApplicationDesc bloomSandboxApplicationDesc =
         ark::makeSandboxApplicationDesc(bloomArguments);
-    if (!bloomSandboxApplicationDesc.postProcessing.bloom.enabled ||
-        bloomSandboxApplicationDesc.postProcessing.bloom.intensity != 0.12f) {
+    if (!bloomSandboxApplicationDesc.view.postProcessing.bloom.enabled ||
+        bloomSandboxApplicationDesc.view.postProcessing.bloom.intensity != 0.12f) {
         return EXIT_FAILURE;
     }
-    if (bloomSandboxApplicationDesc.defaultModelPath.filename() !=
+    if (bloomSandboxApplicationDesc.defaultScene.modelPath.filename() !=
         "bloom_validation_fixture.gltf") {
         return EXIT_FAILURE;
     }
@@ -498,14 +498,14 @@ int main() {
     };
     const ark::ApplicationDesc shadowSandboxApplicationDesc =
         ark::makeSandboxApplicationDesc(shadowArguments);
-    if (shadowSandboxApplicationDesc.defaultModelPath.filename() != "sponza.gltf" ||
+    if (shadowSandboxApplicationDesc.defaultScene.modelPath.filename() != "sponza.gltf" ||
         !shadowSandboxApplicationDesc.useDebugOrientationEnvironment ||
-        !shadowSandboxApplicationDesc.shadows.enabled ||
-        shadowSandboxApplicationDesc.shadows.strength != 0.4f ||
-        shadowSandboxApplicationDesc.shadows.orthographicHalfExtent != 64.0f ||
-        shadowSandboxApplicationDesc.shadows.farPlane != 256.0f ||
-        shadowSandboxApplicationDesc.shadows.lightDistance != 96.0f ||
-        shadowSandboxApplicationDesc.shadows.fitSceneBounds) {
+        !shadowSandboxApplicationDesc.view.shadows.enabled ||
+        shadowSandboxApplicationDesc.view.shadows.strength != 0.4f ||
+        shadowSandboxApplicationDesc.view.shadows.orthographicHalfExtent != 64.0f ||
+        shadowSandboxApplicationDesc.view.shadows.farPlane != 256.0f ||
+        shadowSandboxApplicationDesc.view.shadows.lightDistance != 96.0f ||
+        shadowSandboxApplicationDesc.view.shadows.fitSceneBounds) {
         return EXIT_FAILURE;
     }
     constexpr std::array<std::string_view, 2> toneMappingArguments{
@@ -514,18 +514,18 @@ int main() {
     };
     const ark::ApplicationDesc toneMappingSandboxApplicationDesc =
         ark::makeSandboxApplicationDesc(toneMappingArguments);
-    if (toneMappingSandboxApplicationDesc.toneMapping.operatorType !=
+    if (toneMappingSandboxApplicationDesc.view.toneMapping.operatorType !=
         ark::ToneMappingOperator::Linear) {
         return EXIT_FAILURE;
     }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
-    sceneResourceLoadDesc.modelPath = rendererDesc.defaultModelPath;
-    sceneResourceLoadDesc.modelTransform = rendererDesc.defaultModelTransform;
-    sceneResourceLoadDesc.additionalModels = rendererDesc.defaultAdditionalModels;
-    sceneResourceLoadDesc.environmentPath = rendererDesc.defaultEnvironmentPath;
-    sceneResourceLoadDesc.environmentIntensity = rendererDesc.defaultEnvironmentIntensity;
-    sceneResourceLoadDesc.overrideLighting = rendererDesc.defaultOverrideLighting;
-    sceneResourceLoadDesc.lighting = rendererDesc.defaultLighting;
+    sceneResourceLoadDesc.modelPath = rendererDesc.defaultScene.modelPath;
+    sceneResourceLoadDesc.modelTransform = rendererDesc.defaultScene.modelTransform;
+    sceneResourceLoadDesc.additionalModels = rendererDesc.defaultScene.additionalModels;
+    sceneResourceLoadDesc.environmentPath = rendererDesc.defaultScene.environmentPath;
+    sceneResourceLoadDesc.environmentIntensity = rendererDesc.defaultScene.environmentIntensity;
+    sceneResourceLoadDesc.overrideLighting = rendererDesc.defaultScene.overrideLighting;
+    sceneResourceLoadDesc.lighting = rendererDesc.defaultScene.lighting;
     sceneResourceLoadDesc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::DebugOrientation;
     ark::SceneResourceLoadReport sceneResourceLoadReport{};
     sceneResourceLoadReport.modelSource = ark::SceneModelSource::RequestedPath;

@@ -135,7 +135,7 @@ namespace {
 
         const ark::SandboxLaunchOptions options = ark::parseSandboxLaunchOptions(arguments);
         const ark::ApplicationDesc desc = ark::makeSandboxApplicationDesc(options);
-        const ark::BloomSettings& bloom = desc.postProcessing.bloom;
+        const ark::BloomSettings& bloom = desc.view.postProcessing.bloom;
         if (!bloom.enabled ||
             !nearlyEqual(bloom.intensity, 0.12f) ||
             !nearlyEqual(bloom.scatter, 0.7f) ||
@@ -146,7 +146,7 @@ namespace {
             return false;
         }
 
-        if (desc.toneMapping.operatorType != ark::ToneMappingOperator::ACES) {
+        if (desc.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES) {
             std::cerr << "Sandbox tone mapping CLI option was not parsed into ApplicationDesc\n";
             return false;
         }
@@ -154,7 +154,7 @@ namespace {
         constexpr std::array<std::string_view, 1> linearArguments{"--tone-mapping=linear"};
         const ark::ApplicationDesc linearDesc =
             ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(linearArguments));
-        if (linearDesc.toneMapping.operatorType != ark::ToneMappingOperator::Linear) {
+        if (linearDesc.view.toneMapping.operatorType != ark::ToneMappingOperator::Linear) {
             std::cerr << "Sandbox tone mapping equals option was not parsed\n";
             return false;
         }
@@ -162,7 +162,7 @@ namespace {
         constexpr std::array<std::string_view, 1> filmicArguments{"--tone-mapping=filmic"};
         const ark::ApplicationDesc filmicDesc =
             ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(filmicArguments));
-        if (filmicDesc.toneMapping.operatorType != ark::ToneMappingOperator::ACES) {
+        if (filmicDesc.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES) {
             std::cerr << "Sandbox filmic tone mapping alias should map to ACES\n";
             return false;
         }
@@ -170,8 +170,8 @@ namespace {
         constexpr std::array<std::string_view, 1> enableOnlyArguments{"--bloom"};
         const ark::ApplicationDesc enableOnlyDesc =
             ark::makeSandboxApplicationDesc(ark::parseSandboxLaunchOptions(enableOnlyArguments));
-        if (!enableOnlyDesc.postProcessing.bloom.enabled ||
-            !nearlyEqual(enableOnlyDesc.postProcessing.bloom.intensity, 0.12f)) {
+        if (!enableOnlyDesc.view.postProcessing.bloom.enabled ||
+            !nearlyEqual(enableOnlyDesc.view.postProcessing.bloom.intensity, 0.12f)) {
             std::cerr << "--bloom should keep the default visible intensity\n";
             return false;
         }

@@ -1,7 +1,6 @@
 #include "app/SandboxLaunchOptions.h"
 
 #include <charconv>
-#include <glm/trigonometric.hpp>
 #include <string>
 #include <system_error>
 
@@ -71,29 +70,68 @@ namespace ark {
             }
         }
 
-        SandboxCameraControllerDesc makeSandboxCameraDesc(RendererScenePreset preset) {
-            SandboxCameraControllerDesc camera{};
+        void applySandboxViewOverrides(const SandboxLaunchOptions& options,
+                                       RenderViewProfileDesc& view) {
+            const SandboxViewOverrideMask& mask = options.viewOverrides;
+            const RenderViewProfileDesc& overrides = options.view;
 
-            switch (preset) {
-            case RendererScenePreset::Default:
-            case RendererScenePreset::Sponza:
-            case RendererScenePreset::ShadowValidation:
-                camera.target = glm::vec3{0.0f, 3.2f, 0.6f};
-                camera.distance = 26.0f;
-                camera.yaw = glm::radians(18.0f);
-                camera.pitch = glm::radians(-12.0f);
-                camera.nearPlane = 0.05f;
-                camera.farPlane = 512.0f;
-                break;
-            case RendererScenePreset::MaterialBall:
-            case RendererScenePreset::SpecularValidation:
-            case RendererScenePreset::BloomValidation:
-            case RendererScenePreset::DebugOrientation:
-                break;
+            if (mask.toneMappingOperator) {
+                view.toneMapping.operatorType = overrides.toneMapping.operatorType;
             }
 
-            return camera;
+            BloomSettings& bloom = view.postProcessing.bloom;
+            const BloomSettings& bloomOverrides = overrides.postProcessing.bloom;
+            if (mask.bloomEnabled) {
+                bloom.enabled = bloomOverrides.enabled;
+                if (bloom.enabled && bloom.intensity <= 0.0f && !mask.bloomIntensity) {
+                    bloom.intensity = bloomOverrides.intensity > 0.0f ? bloomOverrides.intensity : 0.08f;
+                }
+            }
+            if (mask.bloomIntensity) {
+                bloom.enabled = true;
+                bloom.intensity = bloomOverrides.intensity;
+            }
+            if (mask.bloomScatter) {
+                bloom.enabled = true;
+                bloom.scatter = bloomOverrides.scatter;
+            }
+            if (mask.bloomThreshold) {
+                bloom.enabled = true;
+                bloom.threshold = bloomOverrides.threshold;
+            }
+            if (mask.bloomSoftKnee) {
+                bloom.enabled = true;
+                bloom.softKnee = bloomOverrides.softKnee;
+            }
+            if (mask.bloomMipCount) {
+                bloom.enabled = true;
+                bloom.maxMipCount = bloomOverrides.maxMipCount;
+            }
+
+            ShadowSettings& shadows = view.shadows;
+            const ShadowSettings& shadowOverrides = overrides.shadows;
+            if (mask.shadowsEnabled) {
+                shadows.enabled = shadowOverrides.enabled;
+            }
+            if (mask.shadowStrength) {
+                shadows.enabled = true;
+                shadows.strength = shadowOverrides.strength;
+            }
+            if (mask.shadowBias) {
+                shadows.enabled = true;
+                shadows.bias = shadowOverrides.bias;
+            }
+            if (mask.shadowExtent) {
+                shadows.enabled = true;
+                shadows.mapExtent = shadowOverrides.mapExtent;
+            }
+            if (mask.shadowBounds) {
+                shadows.enabled = true;
+                shadows.fitSceneBounds = shadowOverrides.fitSceneBounds;
+                shadows.orthographicHalfExtent = shadowOverrides.orthographicHalfExtent;
+            }
         }
+
     } // namespace
 
     SandboxLaunchOptions parseSandboxLaunchOptions(std::span<const std::string_view> arguments) {
@@ -112,15 +150,17 @@ namespace ark {
             }
 
             if (argument == "--bloom") {
-                options.postProcessing.bloom.enabled = true;
-                if (options.postProcessing.bloom.intensity <= 0.0f) {
-                    options.postProcessing.bloom.intensity = 0.08f;
+                options.viewOverrides.bloomEnabled = true;
+                options.view.postProcessing.bloom.enabled = true;
+                if (options.view.postProcessing.bloom.intensity <= 0.0f) {
+                    options.view.postProcessing.bloom.intensity = 0.08f;
                 }
                 continue;
             }
 
             if (argument == "--shadows" || argument == "--shadow") {
-                options.shadows.enabled = true;
+                options.viewOverrides.shadowsEnabled = true;
+                options.view.shadows.enabled = true;
                 continue;
             }
 
@@ -164,8 +204,9 @@ namespace ark {
             if (argument == "--tone-mapping") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.toneMapping.operatorType =
-                        parseToneMappingOperator(value, options.toneMapping.operatorType);
+                    options.viewOverrides.toneMappingOperator = true;
+                    options.view.toneMapping.operatorType =
+                        parseToneMappingOperator(value, options.view.toneMapping.operatorType);
                 } else {
                     options.missingToneMappingValue = true;
                 }
@@ -174,17 +215,20 @@ namespace ark {
 
             constexpr std::string_view toneMappingPrefix = "--tone-mapping=";
             if (hasPrefix(argument, toneMappingPrefix)) {
-                options.toneMapping.operatorType =
+                options.viewOverrides.toneMappingOperator = true;
+                options.view.toneMapping.operatorType =
                     parseToneMappingOperator(argument.substr(toneMappingPrefix.size()),
-                                             options.toneMapping.operatorType);
+                                             options.view.toneMapping.operatorType);
                 continue;
             }
 
             if (argument == "--bloom-intensity") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.postProcessing.bloom.enabled = true;
-                    applyFloatOption(value, options.postProcessing.bloom.intensity);
+                    options.viewOverrides.bloomEnabled = true;
+                    options.viewOverrides.bloomIntensity = true;
+                    options.view.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.view.postProcessing.bloom.intensity);
                 } else {
                     options.missingBloomIntensityValue = true;
                 }
@@ -193,17 +237,21 @@ namespace ark {
 
             constexpr std::string_view bloomIntensityPrefix = "--bloom-intensity=";
             if (hasPrefix(argument, bloomIntensityPrefix)) {
-                options.postProcessing.bloom.enabled = true;
+                options.viewOverrides.bloomEnabled = true;
+                options.viewOverrides.bloomIntensity = true;
+                options.view.postProcessing.bloom.enabled = true;
                 applyFloatOption(argument.substr(bloomIntensityPrefix.size()),
-                                 options.postProcessing.bloom.intensity);
+                                 options.view.postProcessing.bloom.intensity);
                 continue;
             }
 
             if (argument == "--bloom-scatter") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.postProcessing.bloom.enabled = true;
-                    applyFloatOption(value, options.postProcessing.bloom.scatter);
+                    options.viewOverrides.bloomEnabled = true;
+                    options.viewOverrides.bloomScatter = true;
+                    options.view.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.view.postProcessing.bloom.scatter);
                 } else {
                     options.missingBloomScatterValue = true;
                 }
@@ -212,17 +260,21 @@ namespace ark {
 
             constexpr std::string_view bloomScatterPrefix = "--bloom-scatter=";
             if (hasPrefix(argument, bloomScatterPrefix)) {
-                options.postProcessing.bloom.enabled = true;
+                options.viewOverrides.bloomEnabled = true;
+                options.viewOverrides.bloomScatter = true;
+                options.view.postProcessing.bloom.enabled = true;
                 applyFloatOption(argument.substr(bloomScatterPrefix.size()),
-                                 options.postProcessing.bloom.scatter);
+                                 options.view.postProcessing.bloom.scatter);
                 continue;
             }
 
             if (argument == "--bloom-threshold") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.postProcessing.bloom.enabled = true;
-                    applyFloatOption(value, options.postProcessing.bloom.threshold);
+                    options.viewOverrides.bloomEnabled = true;
+                    options.viewOverrides.bloomThreshold = true;
+                    options.view.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.view.postProcessing.bloom.threshold);
                 } else {
                     options.missingBloomThresholdValue = true;
                 }
@@ -231,17 +283,21 @@ namespace ark {
 
             constexpr std::string_view bloomThresholdPrefix = "--bloom-threshold=";
             if (hasPrefix(argument, bloomThresholdPrefix)) {
-                options.postProcessing.bloom.enabled = true;
+                options.viewOverrides.bloomEnabled = true;
+                options.viewOverrides.bloomThreshold = true;
+                options.view.postProcessing.bloom.enabled = true;
                 applyFloatOption(argument.substr(bloomThresholdPrefix.size()),
-                                 options.postProcessing.bloom.threshold);
+                                 options.view.postProcessing.bloom.threshold);
                 continue;
             }
 
             if (argument == "--bloom-soft-knee") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.postProcessing.bloom.enabled = true;
-                    applyFloatOption(value, options.postProcessing.bloom.softKnee);
+                    options.viewOverrides.bloomEnabled = true;
+                    options.viewOverrides.bloomSoftKnee = true;
+                    options.view.postProcessing.bloom.enabled = true;
+                    applyFloatOption(value, options.view.postProcessing.bloom.softKnee);
                 } else {
                     options.missingBloomSoftKneeValue = true;
                 }
@@ -250,17 +306,21 @@ namespace ark {
 
             constexpr std::string_view bloomSoftKneePrefix = "--bloom-soft-knee=";
             if (hasPrefix(argument, bloomSoftKneePrefix)) {
-                options.postProcessing.bloom.enabled = true;
+                options.viewOverrides.bloomEnabled = true;
+                options.viewOverrides.bloomSoftKnee = true;
+                options.view.postProcessing.bloom.enabled = true;
                 applyFloatOption(argument.substr(bloomSoftKneePrefix.size()),
-                                 options.postProcessing.bloom.softKnee);
+                                 options.view.postProcessing.bloom.softKnee);
                 continue;
             }
 
             if (argument == "--bloom-mips") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.postProcessing.bloom.enabled = true;
-                    applyU32Option(value, options.postProcessing.bloom.maxMipCount);
+                    options.viewOverrides.bloomEnabled = true;
+                    options.viewOverrides.bloomMipCount = true;
+                    options.view.postProcessing.bloom.enabled = true;
+                    applyU32Option(value, options.view.postProcessing.bloom.maxMipCount);
                 } else {
                     options.missingBloomMipCountValue = true;
                 }
@@ -270,8 +330,10 @@ namespace ark {
             if (argument == "--shadow-strength") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.shadows.enabled = true;
-                    applyFloatOption(value, options.shadows.strength);
+                    options.viewOverrides.shadowsEnabled = true;
+                    options.viewOverrides.shadowStrength = true;
+                    options.view.shadows.enabled = true;
+                    applyFloatOption(value, options.view.shadows.strength);
                 } else {
                     options.missingShadowStrengthValue = true;
                 }
@@ -280,16 +342,20 @@ namespace ark {
 
             constexpr std::string_view shadowStrengthPrefix = "--shadow-strength=";
             if (hasPrefix(argument, shadowStrengthPrefix)) {
-                options.shadows.enabled = true;
-                applyFloatOption(argument.substr(shadowStrengthPrefix.size()), options.shadows.strength);
+                options.viewOverrides.shadowsEnabled = true;
+                options.viewOverrides.shadowStrength = true;
+                options.view.shadows.enabled = true;
+                applyFloatOption(argument.substr(shadowStrengthPrefix.size()), options.view.shadows.strength);
                 continue;
             }
 
             if (argument == "--shadow-bias") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.shadows.enabled = true;
-                    applyFloatOption(value, options.shadows.bias);
+                    options.viewOverrides.shadowsEnabled = true;
+                    options.viewOverrides.shadowBias = true;
+                    options.view.shadows.enabled = true;
+                    applyFloatOption(value, options.view.shadows.bias);
                 } else {
                     options.missingShadowBiasValue = true;
                 }
@@ -298,16 +364,20 @@ namespace ark {
 
             constexpr std::string_view shadowBiasPrefix = "--shadow-bias=";
             if (hasPrefix(argument, shadowBiasPrefix)) {
-                options.shadows.enabled = true;
-                applyFloatOption(argument.substr(shadowBiasPrefix.size()), options.shadows.bias);
+                options.viewOverrides.shadowsEnabled = true;
+                options.viewOverrides.shadowBias = true;
+                options.view.shadows.enabled = true;
+                applyFloatOption(argument.substr(shadowBiasPrefix.size()), options.view.shadows.bias);
                 continue;
             }
 
             if (argument == "--shadow-extent") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.shadows.enabled = true;
-                    applyU32Option(value, options.shadows.mapExtent);
+                    options.viewOverrides.shadowsEnabled = true;
+                    options.viewOverrides.shadowExtent = true;
+                    options.view.shadows.enabled = true;
+                    applyU32Option(value, options.view.shadows.mapExtent);
                 } else {
                     options.missingShadowExtentValue = true;
                 }
@@ -316,17 +386,21 @@ namespace ark {
 
             constexpr std::string_view shadowExtentPrefix = "--shadow-extent=";
             if (hasPrefix(argument, shadowExtentPrefix)) {
-                options.shadows.enabled = true;
-                applyU32Option(argument.substr(shadowExtentPrefix.size()), options.shadows.mapExtent);
+                options.viewOverrides.shadowsEnabled = true;
+                options.viewOverrides.shadowExtent = true;
+                options.view.shadows.enabled = true;
+                applyU32Option(argument.substr(shadowExtentPrefix.size()), options.view.shadows.mapExtent);
                 continue;
             }
 
             if (argument == "--shadow-bounds") {
                 std::string_view value;
                 if (takeValue(arguments, argumentIndex, value)) {
-                    options.shadows.enabled = true;
-                    options.shadows.fitSceneBounds = false;
-                    applyFloatOption(value, options.shadows.orthographicHalfExtent);
+                    options.viewOverrides.shadowsEnabled = true;
+                    options.viewOverrides.shadowBounds = true;
+                    options.view.shadows.enabled = true;
+                    options.view.shadows.fitSceneBounds = false;
+                    applyFloatOption(value, options.view.shadows.orthographicHalfExtent);
                 } else {
                     options.missingShadowBoundsValue = true;
                 }
@@ -335,18 +409,22 @@ namespace ark {
 
             constexpr std::string_view shadowBoundsPrefix = "--shadow-bounds=";
             if (hasPrefix(argument, shadowBoundsPrefix)) {
-                options.shadows.enabled = true;
-                options.shadows.fitSceneBounds = false;
+                options.viewOverrides.shadowsEnabled = true;
+                options.viewOverrides.shadowBounds = true;
+                options.view.shadows.enabled = true;
+                options.view.shadows.fitSceneBounds = false;
                 applyFloatOption(argument.substr(shadowBoundsPrefix.size()),
-                                 options.shadows.orthographicHalfExtent);
+                                 options.view.shadows.orthographicHalfExtent);
                 continue;
             }
 
             constexpr std::string_view bloomMipsPrefix = "--bloom-mips=";
             if (hasPrefix(argument, bloomMipsPrefix)) {
-                options.postProcessing.bloom.enabled = true;
+                options.viewOverrides.bloomEnabled = true;
+                options.viewOverrides.bloomMipCount = true;
+                options.view.postProcessing.bloom.enabled = true;
                 applyU32Option(argument.substr(bloomMipsPrefix.size()),
-                               options.postProcessing.bloom.maxMipCount);
+                               options.view.postProcessing.bloom.maxMipCount);
                 continue;
             }
 
@@ -385,35 +463,28 @@ namespace ark {
         }
 
         ApplicationDesc desc{};
-        desc.defaultModelPath = resolved.scene.modelPath;
-        desc.defaultModelTransform = resolved.scene.modelTransform;
-        desc.defaultAdditionalModels = resolved.scene.additionalModels;
-        desc.defaultEnvironmentPath = resolved.scene.environmentPath;
-        desc.defaultEnvironmentIntensity = resolved.scene.environmentIntensity;
-        desc.defaultOverrideLighting = resolved.scene.overrideLighting;
-        desc.defaultLighting = resolved.scene.lighting;
+        desc.defaultScene = resolved.scene;
         desc.rendererQuality = resolved.quality;
-        desc.toneMapping = options.toneMapping;
-        desc.postProcessing = sanitizePostProcessingSettings(options.postProcessing);
-        desc.shadows = options.shadows;
+        desc.view = resolved.view;
+        applySandboxViewOverrides(options, desc.view);
         desc.camera = hasModelPathOverride && options.preset.scene == RendererScenePreset::Default
-                          ? SandboxCameraControllerDesc{}
-                          : makeSandboxCameraDesc(options.preset.scene);
+                          ? OrbitCameraProfileDesc{}
+                          : resolved.camera;
         if (options.preset.scene == RendererScenePreset::ShadowValidation) {
-            desc.shadows.enabled = true;
-            desc.shadows.strength = desc.shadows.strength <= 0.0f ? 1.0f : desc.shadows.strength;
-            if (desc.shadows.orthographicHalfExtent < 64.0f) {
-                desc.shadows.orthographicHalfExtent = 64.0f;
+            desc.view.shadows.enabled = true;
+            desc.view.shadows.strength = desc.view.shadows.strength <= 0.0f ? 1.0f : desc.view.shadows.strength;
+            if (desc.view.shadows.orthographicHalfExtent < 64.0f) {
+                desc.view.shadows.orthographicHalfExtent = 64.0f;
             }
-            if (desc.shadows.farPlane < 256.0f) {
-                desc.shadows.farPlane = 256.0f;
+            if (desc.view.shadows.farPlane < 256.0f) {
+                desc.view.shadows.farPlane = 256.0f;
             }
-            if (desc.shadows.lightDistance < 96.0f) {
-                desc.shadows.lightDistance = 96.0f;
+            if (desc.view.shadows.lightDistance < 96.0f) {
+                desc.view.shadows.lightDistance = 96.0f;
             }
         }
         desc.useDebugOrientationEnvironment =
-            resolved.scene.environmentFallback == SceneEnvironmentFallbackPolicy::DebugOrientation;
+            desc.defaultScene.environmentFallback == SceneEnvironmentFallbackPolicy::DebugOrientation;
         return desc;
     }
 

@@ -220,23 +220,7 @@ namespace ark {
             }
 
             bool createDefaultSceneResource(const RendererDesc& desc) {
-                SceneResourceLoadDesc loadDesc{};
-                loadDesc.modelPath = desc.defaultModelPath;
-                loadDesc.modelTransform = desc.defaultModelTransform;
-                loadDesc.modelFallback = SceneModelFallbackPolicy::DefaultSandboxModel;
-                loadDesc.additionalModels = desc.defaultAdditionalModels;
-                loadDesc.environmentPath = desc.defaultEnvironmentPath;
-                loadDesc.environmentFallback = desc.useDebugOrientationEnvironment
-                                                   ? SceneEnvironmentFallbackPolicy::DebugOrientation
-                                                   : SceneEnvironmentFallbackPolicy::DefaultHdrThenProcedural;
-                loadDesc.sceneName = "DefaultSandboxScene";
-                loadDesc.modelName = "DefaultSandboxModel";
-                loadDesc.environmentName = "DefaultSandboxEnvironment";
-                loadDesc.environmentIntensity = desc.defaultEnvironmentIntensity;
-                loadDesc.overrideLighting = desc.defaultOverrideLighting;
-                loadDesc.lighting = desc.defaultLighting;
-
-                if (!m_DefaultSceneResource.load(m_Backend->device(), loadDesc)) {
+                if (!m_DefaultSceneResource.load(m_Backend->device(), desc.defaultScene)) {
                     ARK_WARN("Renderer default scene resource was not loaded");
                     return false;
                 }

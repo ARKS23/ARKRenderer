@@ -9,13 +9,25 @@
 #include <string_view>
 
 namespace ark {
+    struct SandboxViewOverrideMask {
+        bool toneMappingOperator = false;
+        bool bloomEnabled = false;
+        bool bloomIntensity = false;
+        bool bloomScatter = false;
+        bool bloomThreshold = false;
+        bool bloomSoftKnee = false;
+        bool bloomMipCount = false;
+        bool shadowsEnabled = false;
+        bool shadowStrength = false;
+        bool shadowBias = false;
+        bool shadowExtent = false;
+        bool shadowBounds = false;
+    };
+
     struct SandboxLaunchOptions {
         RendererPresetDesc preset;
-        ToneMappingSettings toneMapping{1.0f, 2.2f, ToneMappingOperator::ACES};
-        PostProcessingSettings postProcessing{
-            BloomSettings{true, 0.12f, 0.6f, 1.0f, 0.5f, 6},
-        };
-        ShadowSettings shadows{true, 1.0f, 0.0015f, 2048, 64.0f, 0.1f, 256.0f, 96.0f};
+        RenderViewProfileDesc view;
+        SandboxViewOverrideMask viewOverrides;
         bool useDebugOrientationEnvironment = false;
         Path modelPathOverride;
         Path environmentPathOverride;

@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
 #include <string>
 
 namespace ark {
@@ -139,6 +142,71 @@ namespace ark {
 
             return sanitizeRendererQualityDesc(quality);
         }
+
+        RenderViewProfileDesc makeViewDesc(RendererScenePreset preset) {
+            RenderViewProfileDesc view{};
+
+            switch (preset) {
+            case RendererScenePreset::Default:
+            case RendererScenePreset::MaterialBall:
+            case RendererScenePreset::SpecularValidation:
+            case RendererScenePreset::BloomValidation:
+            case RendererScenePreset::Sponza:
+            case RendererScenePreset::ShadowValidation:
+            case RendererScenePreset::DebugOrientation:
+                break;
+            }
+
+            return view;
+        }
+
+        OrbitCameraProfileDesc makeInteractiveCameraDesc(RendererScenePreset preset) {
+            OrbitCameraProfileDesc camera{};
+
+            switch (preset) {
+            case RendererScenePreset::Default:
+            case RendererScenePreset::Sponza:
+            case RendererScenePreset::ShadowValidation:
+                camera.target = glm::vec3{0.0f, 3.2f, 0.6f};
+                camera.distance = 26.0f;
+                camera.yawRadians = glm::radians(18.0f);
+                camera.pitchRadians = glm::radians(-12.0f);
+                camera.nearPlane = 0.05f;
+                camera.farPlane = 512.0f;
+                break;
+            case RendererScenePreset::MaterialBall:
+            case RendererScenePreset::SpecularValidation:
+            case RendererScenePreset::BloomValidation:
+            case RendererScenePreset::DebugOrientation:
+                break;
+            }
+
+            return camera;
+        }
+
+        OrbitCameraProfileDesc makeCaptureCameraDesc(RendererScenePreset preset) {
+            OrbitCameraProfileDesc camera = makeInteractiveCameraDesc(preset);
+
+            switch (preset) {
+            case RendererScenePreset::Default:
+                camera.target = glm::vec3{0.0f, 3.2f, 0.6f};
+                camera.distance = 16.0f;
+                camera.yawRadians = glm::radians(90.0f);
+                camera.pitchRadians = glm::radians(-8.0f);
+                camera.nearPlane = 0.05f;
+                camera.farPlane = 512.0f;
+                break;
+            case RendererScenePreset::MaterialBall:
+            case RendererScenePreset::SpecularValidation:
+            case RendererScenePreset::BloomValidation:
+            case RendererScenePreset::Sponza:
+            case RendererScenePreset::ShadowValidation:
+            case RendererScenePreset::DebugOrientation:
+                break;
+            }
+
+            return camera;
+        }
     } // namespace
 
     RendererScenePreset parseRendererScenePreset(std::string_view name, RendererScenePreset fallback) {
@@ -204,6 +272,31 @@ namespace ark {
         ResolvedRendererPreset resolved{};
         resolved.scene = makeSceneDesc(desc.scene);
         resolved.quality = makeQualityDesc(desc.quality);
+        resolved.view = makeViewDesc(desc.scene);
+        resolved.camera = makeInteractiveCameraDesc(desc.scene);
+        resolved.captureCamera = makeCaptureCameraDesc(desc.scene);
         return resolved;
+    }
+
+    void applyOrbitCameraProfile(RenderView& view,
+                                 const OrbitCameraProfileDesc& camera,
+                                 rhi::Extent2D extent) {
+        const float aspect =
+            extent.height == 0 ? 1.0f : static_cast<float>(extent.width) / static_cast<float>(extent.height);
+        const float cosPitch = std::cos(camera.pitchRadians);
+        const glm::vec3 forward = glm::normalize(glm::vec3{
+            cosPitch * std::sin(camera.yawRadians),
+            std::sin(camera.pitchRadians),
+            cosPitch * std::cos(camera.yawRadians),
+        });
+        const glm::vec3 cameraPosition = camera.target - forward * camera.distance;
+        glm::mat4 projection = glm::perspectiveRH_ZO(camera.verticalFovRadians,
+                                                     aspect,
+                                                     camera.nearPlane,
+                                                     camera.farPlane);
+        projection[1][1] *= -1.0f;
+        view.setMatrices(glm::lookAt(cameraPosition, camera.target, glm::vec3{0.0f, 1.0f, 0.0f}),
+                         projection,
+                         cameraPosition);
     }
 } // namespace ark
