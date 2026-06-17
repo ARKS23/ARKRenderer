@@ -1,5 +1,49 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-17, Phase 0.62)
+
+ARKRenderer has completed Phase 0.62: Default Composite Scene Visual Regression Loop.
+
+Key changes:
+- `ark_frame_validation_smoke` now supports both fixture-model cases and renderer-preset scene cases.
+- Added `default_composite_scene` validation using `RendererScenePreset::Default`, which loads Sponza plus DamagedHelmet.
+- The default composite case uses a fixed side courtyard camera so the artifact includes both the Sponza scene and DamagedHelmet.
+- The case validates loaded model count, valid scene bounds, active shadow map binding, LDR statistics, and golden image diff.
+- The default composite path enables ShadowPass scene-bounds fitting, Bloom, ACES tone mapping, skybox, diffuse irradiance, specular prefilter, and BRDF LUT resources in a low-cost validation setup.
+- Added committed golden baseline:
+  - `tests/golden/frame_validation/default_composite_scene.png`
+- Existing `material_ball_validation_fixture.png` and `specular_ibl_validation_fixture.png` golden diffs remain unchanged.
+- README now mentions the default composite frame validation / golden baseline.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_frame_validation_smoke ark_scene_resource_smoke ark_shadow_pass_smoke ark_renderer_preset_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(frame_validation|scene_resource|shadow_pass|renderer_preset)_smoke" --output-on-failure
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe --update-golden
+ctest --test-dir build/msvc-vcpkg -C Debug -R ark_frame_validation_smoke --output-on-failure
+git diff --check
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, sponza, shadow-validation, and sponza manual `--shadow-bounds`
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 4/4
+ark_frame_validation_smoke --update-golden passed
+ark_frame_validation_smoke passed with default_composite_scene golden diff mean/max/mismatch all 0
+git diff --check: only CRLF warnings, no whitespace errors
+full Debug build passed
+full CTest passed: 30/30
+sandbox hidden-window smoke passed for default, sponza, shadow-validation, and sponza manual --shadow-bounds
+```
+
+Notes:
+- The default composite golden is intentionally low resolution and uses low-cost validation IBL resources to keep smoke time reasonable.
+- The golden now depends on Sponza transform, DamagedHelmet placement, default lighting, shadow fitting, Bloom, ACES, and IBL bake behavior.
+- If the default composite golden becomes noisy across GPUs, keep the statistical checks and revisit strict PNG diff thresholds before loosening them too far.
+
 ## Latest Update (2026-06-17, Phase 0.61)
 
 ARKRenderer has completed Phase 0.61: Scene Bounds / Shadow Bounds Fitting Foundation.

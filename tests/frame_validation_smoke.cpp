@@ -8,15 +8,21 @@
 #include "core/Memory.h"
 #include "renderer/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
+#include "renderer/EnvironmentBrdfLutGenerator.h"
+#include "renderer/EnvironmentBrdfLutResource.h"
+#include "renderer/EnvironmentIrradianceGenerator.h"
 #include "renderer/EnvironmentResource.h"
+#include "renderer/EnvironmentSpecularPrefilterGenerator.h"
 #include "renderer/FrameContext.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
+#include "renderer/RendererPreset.h"
 #include "renderer/SandboxEnvironment.h"
-#include "renderer/passes/ForwardPass.h"
 #include "renderer/passes/BloomPass.h"
+#include "renderer/passes/ForwardPass.h"
+#include "renderer/passes/ShadowPass.h"
 #include "renderer/passes/SkyboxPass.h"
 #include "renderer/passes/ToneMappingPass.h"
 #include "rhi/Buffer.h"
@@ -46,6 +52,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -136,13 +143,35 @@ namespace {
         float mismatchedPixelRatio = 0.0f;
     };
 
+    enum class FrameValidationSceneMode {
+        FixtureModel,
+        RendererPreset,
+    };
+
     struct FrameValidationCaseDesc {
+        FrameValidationSceneMode sceneMode = FrameValidationSceneMode::FixtureModel;
         ark::Path fixtureRelativePath;
         const char* fixtureName = "";
         const char* fixtureId = "";
         const char* sceneModelName = "";
+        ark::RendererScenePreset scenePreset = ark::RendererScenePreset::Default;
         ark::ToneMappingSettings toneMapping;
         ark::PostProcessingSettings postProcessing;
+        ark::ShadowSettings shadowSettings;
+        bool useSceneCamera = true;
+        bool useFixedCamera = false;
+        bool enableEnvironmentBake = false;
+        bool requireSceneBounds = false;
+        bool requireAdditionalModel = false;
+        bool requireShadowMap = false;
+        bool validateCompositeStats = false;
+        glm::vec3 cameraTarget{0.0f};
+        float cameraDistance = 4.0f;
+        float cameraYawRadians = 0.0f;
+        float cameraPitchRadians = 0.0f;
+        float cameraFovYRadians = glm::radians(60.0f);
+        float cameraNearPlane = 0.1f;
+        float cameraFarPlane = 100.0f;
         bool compareGolden = true;
         bool writeArtifact = true;
     };
@@ -409,6 +438,67 @@ namespace {
 
         if (stats.minAlpha < 0.99f || stats.meanAlpha < 0.99f) {
             std::cerr << "LDR frame validation alpha is not opaque\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        return true;
+    }
+
+    float ldrLuminanceAt(const std::vector<ark::u8>& bytes, ark::u32 x, ark::u32 y, ark::rhi::Extent2D extent) {
+        const ark::usize offset =
+            static_cast<ark::usize>((static_cast<ark::u64>(y) * extent.width + x) * LdrFrameBytesPerPixel);
+        const glm::vec3 rgb{
+            static_cast<float>(bytes[offset + 0]) / 255.0f,
+            static_cast<float>(bytes[offset + 1]) / 255.0f,
+            static_cast<float>(bytes[offset + 2]) / 255.0f,
+        };
+        return glm::dot(rgb, glm::vec3{0.2126f, 0.7152f, 0.0722f});
+    }
+
+    float computeLdrRegionMeanLuminance(const std::vector<ark::u8>& bytes,
+                                        ark::rhi::Extent2D extent,
+                                        ark::u32 minX,
+                                        ark::u32 minY,
+                                        ark::u32 maxX,
+                                        ark::u32 maxY) {
+        if (bytes.empty() || minX >= maxX || minY >= maxY || maxX > extent.width || maxY > extent.height) {
+            return 0.0f;
+        }
+
+        double sum = 0.0;
+        ark::u64 count = 0;
+        for (ark::u32 y = minY; y < maxY; ++y) {
+            for (ark::u32 x = minX; x < maxX; ++x) {
+                sum += ldrLuminanceAt(bytes, x, y, extent);
+                ++count;
+            }
+        }
+
+        return count == 0 ? 0.0f : static_cast<float>(sum / static_cast<double>(count));
+    }
+
+    bool validateDefaultCompositeStats(const std::vector<ark::u8>& bytes,
+                                       const LdrFrameColorStats& stats) {
+        const glm::vec3 channelRange = stats.maxRgb - stats.minRgb;
+        if (std::max({channelRange.r, channelRange.g, channelRange.b}) < 0.08f ||
+            stats.maxLuminance - stats.meanLuminance < 0.015f) {
+            std::cerr << "Default composite frame lacks enough HDR/post-process visual variation\n";
+            printLdrStats(stats);
+            return false;
+        }
+
+        const ark::u32 centerMinX = FrameExtent.width / 4u;
+        const ark::u32 centerMaxX = FrameExtent.width - centerMinX;
+        const ark::u32 centerMinY = FrameExtent.height / 4u;
+        const ark::u32 centerMaxY = FrameExtent.height - centerMinY;
+        const float centerMean =
+            computeLdrRegionMeanLuminance(bytes, FrameExtent, centerMinX, centerMinY, centerMaxX, centerMaxY);
+        const float topMean =
+            computeLdrRegionMeanLuminance(bytes, FrameExtent, 0u, 0u, FrameExtent.width, FrameExtent.height / 5u);
+        if (std::abs(centerMean - topMean) < 0.003f) {
+            std::cerr << "Default composite frame center and sky/edge regions are too similar: centerMean="
+                      << centerMean << " topMean=" << topMean << '\n';
             printLdrStats(stats);
             return false;
         }
@@ -705,32 +795,70 @@ namespace {
         return false;
     }
 
-    bool renderValidationFrame(ark::rhi::RenderDevice& device,
-                               ark::rhi::DeviceContext& context,
-                               ark::rhi::FrameResource& frame,
-                               ark::SkyboxPass& skyboxPass,
-                               ark::ForwardPass& forwardPass,
-                               ark::rhi::Texture& sceneColor,
-                               ark::rhi::TextureView& sceneColorView,
-                               ark::rhi::Texture& depth,
-                               ark::rhi::TextureView& depthView,
-                               ark::EnvironmentCubeResource& skyboxCube,
-                               ark::EnvironmentResource& environment,
-                               ark::ModelResource& model,
-                               const char* sceneModelName,
-                               ark::RenderView& view) {
-        ark::RenderScene scene{};
-        scene.setEnvironment(ark::SceneEnvironment{
-            .environment = &environment,
-            .intensity = 1.0f,
+    void applyFixedOrbitCamera(ark::RenderView& view,
+                               const FrameValidationCaseDesc& desc,
+                               ark::rhi::Extent2D extent) {
+        const float aspect =
+            extent.height == 0 ? 1.0f : static_cast<float>(extent.width) / static_cast<float>(extent.height);
+        const float cosPitch = std::cos(desc.cameraPitchRadians);
+        const glm::vec3 forward = glm::normalize(glm::vec3{
+            cosPitch * std::sin(desc.cameraYawRadians),
+            std::sin(desc.cameraPitchRadians),
+            cosPitch * std::cos(desc.cameraYawRadians),
         });
-        ark::SceneLighting lighting{};
-        lighting.mainLight.direction = glm::vec3{-0.25f, -0.55f, -0.80f};
-        lighting.mainLight.color = glm::vec3{1.0f, 0.97f, 0.90f};
-        lighting.ambientColor = glm::vec3{0.04f, 0.05f, 0.06f};
-        scene.setLighting(lighting);
-        scene.addModel(model, glm::mat4{1.0f}, sceneModelName);
+        const glm::vec3 cameraPosition = desc.cameraTarget - forward * desc.cameraDistance;
+        glm::mat4 projection = glm::perspectiveRH_ZO(desc.cameraFovYRadians,
+                                                     aspect,
+                                                     desc.cameraNearPlane,
+                                                     desc.cameraFarPlane);
+        projection[1][1] *= -1.0f;
+        view.setMatrices(glm::lookAt(cameraPosition,
+                                     desc.cameraTarget,
+                                     glm::vec3{0.0f, 1.0f, 0.0f}),
+                         projection,
+                         cameraPosition);
+    }
 
+    bool createEnvironmentCubeResource(ark::rhi::RenderDevice& device,
+                                       ark::EnvironmentCubeResource& resource,
+                                       std::string debugName,
+                                       ark::rhi::Extent2D faceExtent,
+                                       ark::u32 mipLevels) {
+        ark::EnvironmentCubeResourceDesc desc{};
+        desc.debugName = std::move(debugName);
+        desc.faceExtent = faceExtent;
+        desc.format = ark::rhi::Format::RGBA16Float;
+        desc.mipLevels = mipLevels;
+        return resource.create(device, desc);
+    }
+
+    bool createBrdfLutResource(ark::rhi::RenderDevice& device,
+                               ark::EnvironmentBrdfLutResource& resource,
+                               ark::rhi::Extent2D extent) {
+        ark::EnvironmentBrdfLutResourceDesc desc{};
+        desc.debugName = "FrameValidationCompositeBrdfLut";
+        desc.extent = extent;
+        desc.format = ark::rhi::Format::RGBA16Float;
+        return resource.create(device, desc);
+    }
+
+    bool renderValidationSceneFrame(ark::rhi::RenderDevice& device,
+                                    ark::rhi::DeviceContext& context,
+                                    ark::rhi::FrameResource& frame,
+                                    ark::ShadowPass* shadowPass,
+                                    ark::SkyboxPass& skyboxPass,
+                                    ark::ForwardPass& forwardPass,
+                                    ark::rhi::Texture& sceneColor,
+                                    ark::rhi::TextureView& sceneColorView,
+                                    ark::rhi::Texture& depth,
+                                    ark::rhi::TextureView& depthView,
+                                    ark::RenderScene& scene,
+                                    ark::EnvironmentCubeResource& skyboxCube,
+                                    ark::EnvironmentCubeResource* irradianceCube,
+                                    ark::EnvironmentCubeResource* prefilteredSpecularCube,
+                                    ark::EnvironmentBrdfLutResource* brdfLut,
+                                    ark::RenderView& view,
+                                    bool requireShadowMap) {
         ark::RenderQueue queue{};
         queue.build(scene, view.cameraPosition());
         if (queue.empty()) {
@@ -748,10 +876,27 @@ namespace {
         frameContext.frameResource = &frame;
         frameContext.sceneColorView = &sceneColorView;
         frameContext.environmentCube = &skyboxCube;
+        frameContext.irradianceCube = irradianceCube;
+        frameContext.prefilteredSpecularCube = prefilteredSpecularCube;
+        frameContext.brdfLut = brdfLut;
         frameContext.extent = FrameExtent;
         frameContext.colorFormat = ark::rhi::Format::RGBA16Float;
         frameContext.depthFormat = ark::rhi::Format::D32Float;
         frameContext.clearColor = ark::rhi::ClearColor{0.0f, 0.0f, 0.0f, 1.0f};
+
+        if (shadowPass) {
+            if (!shadowPass->prepare(frameContext) || !shadowPass->execute(frameContext)) {
+                std::cerr << "Frame validation shadow pass failed\n";
+                return false;
+            }
+
+            if (requireShadowMap &&
+                (!frameContext.shadowMapView || !frameContext.shadowSampler ||
+                 frameContext.shadowStrength <= 0.0f)) {
+                std::cerr << "Frame validation expected a shadow map, but shadow resources were not bound\n";
+                return false;
+            }
+        }
 
         if (!skyboxPass.prepare(frameContext) || !forwardPass.prepare(frameContext)) {
             std::cerr << "Frame validation pass prepare failed\n";
@@ -951,51 +1096,140 @@ namespace {
             return false;
         }
 
-        const ark::Path modelPath = findFixturePath(desc.fixtureRelativePath);
-        if (modelPath.empty()) {
-            std::cerr << "Failed to find " << desc.fixtureName << '\n';
-            return false;
+        ark::RenderScene fixtureScene{};
+        ark::asset::ModelData fixtureModelData{};
+        ark::ModelResource fixtureModel{};
+        ark::EnvironmentResource fixtureEnvironment{};
+        ark::SceneResource presetSceneResource{};
+        ark::RenderScene* activeScene = nullptr;
+        ark::EnvironmentResource* activeEnvironment = nullptr;
+        const ark::asset::ModelData* cameraModelData = nullptr;
+        ark::Path goldenSeedPath;
+
+        if (desc.sceneMode == FrameValidationSceneMode::FixtureModel) {
+            const ark::Path modelPath = findFixturePath(desc.fixtureRelativePath);
+            if (modelPath.empty()) {
+                std::cerr << "Failed to find " << desc.fixtureName << '\n';
+                return false;
+            }
+
+            fixtureModelData = ark::asset::loadGltfModel(modelPath);
+            if (fixtureModelData.empty()) {
+                std::cerr << "Failed to load " << desc.fixtureName << '\n';
+                return false;
+            }
+
+            if (!fixtureModel.create(device, fixtureModelData)) {
+                std::cerr << "Failed to create " << desc.fixtureName << " model resource\n";
+                return false;
+            }
+
+            const ark::asset::ImageData environmentImage = ark::makeProceduralSandboxEnvironmentImage();
+            ark::EnvironmentResourceDesc environmentDesc{};
+            environmentDesc.debugName = "FrameValidationProceduralEnvironment";
+            if (!fixtureEnvironment.create(device, environmentImage, environmentDesc)) {
+                std::cerr << "Failed to create frame validation environment\n";
+                return false;
+            }
+
+            fixtureScene.setEnvironment(ark::SceneEnvironment{
+                .environment = &fixtureEnvironment,
+                .intensity = 1.0f,
+            });
+            ark::SceneLighting lighting{};
+            lighting.mainLight.direction = glm::vec3{-0.25f, -0.55f, -0.80f};
+            lighting.mainLight.color = glm::vec3{1.0f, 0.97f, 0.90f};
+            lighting.ambientColor = glm::vec3{0.04f, 0.05f, 0.06f};
+            fixtureScene.setLighting(lighting);
+            fixtureScene.addModel(fixtureModel, glm::mat4{1.0f}, desc.sceneModelName);
+
+            activeScene = &fixtureScene;
+            activeEnvironment = &fixtureEnvironment;
+            cameraModelData = &fixtureModelData;
+            goldenSeedPath = modelPath;
+        } else {
+            ark::ResolvedRendererPreset resolved = ark::resolveRendererPreset(ark::RendererPresetDesc{
+                .scene = desc.scenePreset,
+                .quality = ark::RendererQualityPreset::Low,
+            });
+            if (!presetSceneResource.load(device, resolved.scene)) {
+                std::cerr << "Failed to load frame validation renderer preset scene\n";
+                return false;
+            }
+
+            const ark::SceneResourceLoadReport& report = presetSceneResource.report();
+            if (desc.requireAdditionalModel && report.loadedModelCount < 2) {
+                std::cerr << "Frame validation composite scene did not load the expected additional model\n";
+                return false;
+            }
+
+            if (desc.requireSceneBounds && !presetSceneResource.scene().hasBounds()) {
+                std::cerr << "Frame validation composite scene did not produce valid scene bounds\n";
+                return false;
+            }
+
+            activeScene = &presetSceneResource.scene();
+            activeEnvironment = presetSceneResource.environment();
+            cameraModelData = &presetSceneResource.modelData();
+            goldenSeedPath = report.resolvedModelPath;
         }
 
-        const ark::asset::ModelData modelData = ark::asset::loadGltfModel(modelPath);
-        if (modelData.empty()) {
-            std::cerr << "Failed to load " << desc.fixtureName << '\n';
-            return false;
-        }
-
-        ark::ModelResource model{};
-        if (!model.create(device, modelData)) {
-            std::cerr << "Failed to create " << desc.fixtureName << " model resource\n";
-            return false;
-        }
-
-        const ark::asset::ImageData environmentImage = ark::makeProceduralSandboxEnvironmentImage();
-        ark::EnvironmentResource environment{};
-        ark::EnvironmentResourceDesc environmentDesc{};
-        environmentDesc.debugName = "FrameValidationProceduralEnvironment";
-        if (!environment.create(device, environmentImage, environmentDesc)) {
-            std::cerr << "Failed to create frame validation environment\n";
+        if (!activeScene || !activeEnvironment) {
+            std::cerr << "Frame validation scene did not provide an environment\n";
             return false;
         }
 
         ark::EnvironmentCubeResource skyboxCube{};
-        ark::EnvironmentCubeResourceDesc cubeDesc{};
-        cubeDesc.debugName = "FrameValidationSkyboxCube";
-        cubeDesc.faceExtent = ark::rhi::Extent2D{32, 32};
-        cubeDesc.format = ark::rhi::Format::RGBA16Float;
-        cubeDesc.mipLevels = 1;
-        if (!skyboxCube.create(device, cubeDesc)) {
+        const ark::rhi::Extent2D skyboxFaceExtent =
+            desc.enableEnvironmentBake ? ark::rhi::Extent2D{64, 64} : ark::rhi::Extent2D{32, 32};
+        if (!createEnvironmentCubeResource(device,
+                                           skyboxCube,
+                                           "FrameValidationSkyboxCube",
+                                           skyboxFaceExtent,
+                                           1)) {
             std::cerr << "Failed to create frame validation skybox cube\n";
             return false;
         }
 
-        ark::EnvironmentCubeConverter converter{};
-        converter.setup(device);
+        ark::EnvironmentCubeResource irradianceCube{};
+        ark::EnvironmentCubeResource prefilteredSpecularCube{};
+        ark::EnvironmentBrdfLutResource brdfLut{};
+        if (desc.enableEnvironmentBake) {
+            if (!createEnvironmentCubeResource(device,
+                                               irradianceCube,
+                                               "FrameValidationCompositeIrradianceCube",
+                                               ark::rhi::Extent2D{8, 8},
+                                               1) ||
+                !createEnvironmentCubeResource(device,
+                                               prefilteredSpecularCube,
+                                               "FrameValidationCompositeSpecularCube",
+                                               ark::rhi::Extent2D{32, 32},
+                                               ark::rhi::calculateMipLevelCount(ark::rhi::Extent2D{32, 32})) ||
+                !createBrdfLutResource(device, brdfLut, ark::rhi::Extent2D{32, 32})) {
+                std::cerr << "Failed to create frame validation IBL bake resources\n";
+                return false;
+            }
+        }
 
+        ark::EnvironmentCubeConverter converter{};
+        ark::EnvironmentIrradianceGenerator irradianceGenerator{};
+        ark::EnvironmentSpecularPrefilterGenerator specularPrefilterGenerator{};
+        ark::EnvironmentBrdfLutGenerator brdfLutGenerator{};
+        converter.setup(device);
+        if (desc.enableEnvironmentBake) {
+            irradianceGenerator.setup(device);
+            specularPrefilterGenerator.setup(device);
+            brdfLutGenerator.setup(device);
+        }
+
+        ark::ShadowPass shadowPass{};
         ark::SkyboxPass skyboxPass{};
         ark::ForwardPass forwardPass{};
         ark::BloomPass bloomPass{};
         ark::ToneMappingPass toneMappingPass{};
+        if (desc.shadowSettings.enabled) {
+            shadowPass.setup(device);
+        }
         skyboxPass.setup(device);
         forwardPass.setup(device);
         bloomPass.setup(device);
@@ -1007,13 +1241,13 @@ namespace {
             return false;
         }
 
-        if (!environment.upload(context)) {
+        if (!activeEnvironment->upload(context)) {
             std::cerr << "Failed to upload frame validation environment\n";
             return false;
         }
 
         ark::EnvironmentCubeConversionDesc conversionDesc{};
-        conversionDesc.source = &environment;
+        conversionDesc.source = activeEnvironment;
         conversionDesc.target = &skyboxCube;
         conversionDesc.debugName = "FrameValidationSkyboxConversion";
         if (!converter.convert(context, conversionDesc)) {
@@ -1021,28 +1255,71 @@ namespace {
             return false;
         }
 
+        if (desc.enableEnvironmentBake) {
+            ark::EnvironmentIrradianceGenerationDesc irradianceDesc{};
+            irradianceDesc.source = &skyboxCube;
+            irradianceDesc.target = &irradianceCube;
+            irradianceDesc.sampleDelta = 0.5f;
+            irradianceDesc.debugName = "FrameValidationCompositeIrradiance";
+            if (!irradianceGenerator.generate(context, irradianceDesc)) {
+                std::cerr << "Failed to generate frame validation irradiance cube\n";
+                return false;
+            }
+
+            ark::EnvironmentSpecularPrefilterDesc specularDesc{};
+            specularDesc.source = &skyboxCube;
+            specularDesc.target = &prefilteredSpecularCube;
+            specularDesc.sampleCount = 16;
+            specularDesc.debugName = "FrameValidationCompositeSpecularPrefilter";
+            if (!specularPrefilterGenerator.generate(context, specularDesc)) {
+                std::cerr << "Failed to generate frame validation specular prefilter\n";
+                return false;
+            }
+
+            ark::EnvironmentBrdfLutGenerationDesc brdfDesc{};
+            brdfDesc.target = &brdfLut;
+            brdfDesc.sampleCount = 64;
+            brdfDesc.debugName = "FrameValidationCompositeBrdfLut";
+            if (!brdfLutGenerator.generate(context, brdfDesc)) {
+                std::cerr << "Failed to generate frame validation BRDF LUT\n";
+                return false;
+            }
+        }
+
         ark::RenderView view{};
-        if (!applyFirstSceneCamera(view, modelData, FrameExtent)) {
+        bool cameraApplied = false;
+        if (desc.useFixedCamera) {
+            applyFixedOrbitCamera(view, desc, FrameExtent);
+            cameraApplied = true;
+        } else if (desc.useSceneCamera && cameraModelData) {
+            cameraApplied = applyFirstSceneCamera(view, *cameraModelData, FrameExtent);
+        }
+
+        if (!cameraApplied) {
             std::cerr << "Frame validation fixture does not provide a usable perspective scene camera\n";
             return false;
         }
         view.setToneMappingSettings(desc.toneMapping);
         view.setPostProcessingSettings(desc.postProcessing);
+        view.setShadowSettings(desc.shadowSettings);
 
-        if (!renderValidationFrame(device,
-                                   context,
-                                   frame,
-                                   skyboxPass,
-                                   forwardPass,
-                                   *sceneColor,
-                                   *sceneColorView,
-                                   *depth,
-                                   *depthView,
-                                   skyboxCube,
-                                   environment,
-                                   model,
-                                   desc.sceneModelName,
-                                   view)) {
+        if (!renderValidationSceneFrame(device,
+                                        context,
+                                        frame,
+                                        desc.shadowSettings.enabled ? &shadowPass : nullptr,
+                                        skyboxPass,
+                                        forwardPass,
+                                        *sceneColor,
+                                        *sceneColorView,
+                                        *depth,
+                                        *depthView,
+                                        *activeScene,
+                                        skyboxCube,
+                                        desc.enableEnvironmentBake ? &irradianceCube : nullptr,
+                                        desc.enableEnvironmentBake ? &prefilteredSpecularCube : nullptr,
+                                        desc.enableEnvironmentBake ? &brdfLut : nullptr,
+                                        view,
+                                        desc.requireShadowMap)) {
             return false;
         }
 
@@ -1142,8 +1419,12 @@ namespace {
             return false;
         }
 
+        if (desc.validateCompositeStats && !validateDefaultCompositeStats(result.ldrBytes, result.ldrStats)) {
+            return false;
+        }
+
         if (desc.compareGolden &&
-            !validateGolden(result.ldrBytes, FrameExtent, modelPath, desc.fixtureId, options)) {
+            !validateGolden(result.ldrBytes, FrameExtent, goldenSeedPath, desc.fixtureId, options)) {
             return false;
         }
 
@@ -1166,6 +1447,31 @@ namespace {
         return settings;
     }
 
+    ark::PostProcessingSettings makeDefaultCompositePostProcessingSettings() {
+        ark::PostProcessingSettings settings{};
+        settings.bloom.enabled = true;
+        settings.bloom.intensity = 0.12f;
+        settings.bloom.scatter = 0.6f;
+        settings.bloom.threshold = 1.0f;
+        settings.bloom.softKnee = 0.5f;
+        settings.bloom.maxMipCount = 6;
+        return settings;
+    }
+
+    ark::ShadowSettings makeDefaultCompositeShadowSettings() {
+        ark::ShadowSettings settings{};
+        settings.enabled = true;
+        settings.strength = 1.0f;
+        settings.bias = 0.0015f;
+        settings.mapExtent = 1024;
+        settings.orthographicHalfExtent = 64.0f;
+        settings.nearPlane = 0.1f;
+        settings.farPlane = 256.0f;
+        settings.lightDistance = 96.0f;
+        settings.fitSceneBounds = true;
+        return settings;
+    }
+
     FrameValidationCaseDesc makeBloomValidationCase(const char* fixtureId) {
         FrameValidationCaseDesc desc{};
         desc.fixtureRelativePath = ark::Path{"assets/models/bloom_validation_fixture.gltf"};
@@ -1173,6 +1479,31 @@ namespace {
         desc.fixtureId = fixtureId;
         desc.sceneModelName = "FrameValidationBloomFixture";
         desc.compareGolden = false;
+        return desc;
+    }
+
+    FrameValidationCaseDesc makeDefaultCompositeCase() {
+        FrameValidationCaseDesc desc{};
+        desc.sceneMode = FrameValidationSceneMode::RendererPreset;
+        desc.fixtureName = "default composite scene";
+        desc.fixtureId = "default_composite_scene";
+        desc.scenePreset = ark::RendererScenePreset::Default;
+        desc.toneMapping = ark::ToneMappingSettings{1.0f, 2.2f, ark::ToneMappingOperator::ACES};
+        desc.postProcessing = makeDefaultCompositePostProcessingSettings();
+        desc.shadowSettings = makeDefaultCompositeShadowSettings();
+        desc.useSceneCamera = false;
+        desc.useFixedCamera = true;
+        desc.enableEnvironmentBake = true;
+        desc.requireSceneBounds = true;
+        desc.requireAdditionalModel = true;
+        desc.requireShadowMap = true;
+        desc.validateCompositeStats = true;
+        desc.cameraTarget = glm::vec3{0.0f, 3.2f, 0.6f};
+        desc.cameraDistance = 16.0f;
+        desc.cameraYawRadians = glm::radians(90.0f);
+        desc.cameraPitchRadians = glm::radians(-8.0f);
+        desc.cameraNearPlane = 0.05f;
+        desc.cameraFarPlane = 512.0f;
         return desc;
     }
 
@@ -1269,6 +1600,7 @@ namespace {
 
         return validateFrameCase(specular, options) &&
                validateFrameCase(materialBall, options) &&
+               validateFrameCase(makeDefaultCompositeCase(), options) &&
                validateBloomVisualDiff(options) &&
                validateToneMappingVisualDiff(options);
     }

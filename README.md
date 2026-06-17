@@ -9,6 +9,7 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 - HDR 环境、equirectangular-to-cubemap、Skybox、Diffuse IBL、Specular IBL 和 BRDF LUT。
 - Directional shadow map 基础路径，默认按 scene bounds 自动拟合；显式 `--shadow-bounds` 会切换为手动 bounds。
 - HDR scene color、Physically Based Bloom、ToneMapping 和 frame validation smoke tests。
+- 默认组合场景 frame validation / golden baseline，覆盖 Sponza + DamagedHelmet、Shadow、Bloom、ACES ToneMapping 和 IBL。
 - sandbox 轨道相机、scene preset、quality preset、默认 Sponza + DamagedHelmet 组合场景和资源 fallback。
 
 ## 构建
@@ -54,6 +55,18 @@ build\msvc-vcpkg\Debug\ark_sandbox.exe assets\models\material_ball_validation_fi
 说明：当前已接入 KTX-Software / libktx 的最小路径，Sponza 现有 KTX1 RGBA8 diffuse/baseColor 贴图可以进入 `TextureCache` / `TextureResource`。压缩 KTX、BasisU、完整 KTX2 转码和 Sponza 缺失的完整 PBR 贴图集仍是后续工作；不支持的纹理仍会走 texture load failure fallback。
 
 `--preset sponza` 会显示纯 Sponza；显式传入模型路径时不会自动追加默认 DamagedHelmet。
+
+默认组合场景的视觉回归 baseline 位于：
+
+```text
+tests/golden/frame_validation/default_composite_scene.png
+```
+
+更新 frame validation golden：
+
+```powershell
+build\msvc-vcpkg\Debug\ark_frame_validation_smoke.exe --update-golden
+```
 
 ## 文档
 
