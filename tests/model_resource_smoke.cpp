@@ -3,6 +3,7 @@
 #include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
 #include "renderer/Bounds.h"
+#include "renderer/Frustum.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
@@ -881,6 +882,162 @@ namespace {
         return true;
     }
 
+    bool validateRenderQueueObjectWorldBounds() {
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+
+        ark::MeshResource meshResource{};
+        if (!meshResource.create(device, makeTriangle("ObjectBoundsTriangle", 0, 0.0f))) {
+            std::cerr << "Object world bounds MeshResource create failed\n";
+            return false;
+        }
+
+        ark::MaterialTextureSet textures{};
+        textures.baseColor = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
+        textures.normal = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
+        textures.metallicRoughness =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MetallicRoughnessDefault);
+        textures.occlusion = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::OcclusionDefault);
+        textures.emissive = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::Black);
+
+        ark::asset::MaterialData material{};
+        material.debugName = "ObjectBoundsMaterial";
+        material.baseColorTexturePath = "object_bounds_dummy.png";
+
+        ark::MaterialResource materialResource{};
+        if (!materialResource.create(material, textures)) {
+            std::cerr << "Object world bounds MaterialResource create failed\n";
+            return false;
+        }
+
+        glm::mat4 transform{1.0f};
+        transform = glm::translate(transform, glm::vec3{5.0f, -2.0f, 3.0f});
+        transform = glm::scale(transform, glm::vec3{2.0f, 4.0f, 1.0f});
+
+        ark::RenderScene scene{};
+        scene.addObject(meshResource, materialResource, transform, "ObjectWorldBounds");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        if (drawItems.size() != 1 || queue.stats().totalItems != 1 || queue.stats().invalidBoundsItems != 0) {
+            std::cerr << "Object world bounds queue stats are invalid\n";
+            return false;
+        }
+
+        const ark::Bounds3& itemBounds = drawItems[0].worldBounds;
+        if (!itemBounds.isValid() ||
+            !nearVec3(itemBounds.min, glm::vec3{4.0f, -2.0f, 3.0f}) ||
+            !nearVec3(itemBounds.max, glm::vec3{6.0f, 2.0f, 3.0f})) {
+            std::cerr << "RenderQueue object world bounds are invalid\n";
+            return false;
+        }
+
+        const ark::Bounds3& sceneBounds = scene.bounds();
+        if (!sceneBounds.isValid() ||
+            !nearVec3(sceneBounds.min, itemBounds.min) ||
+            !nearVec3(sceneBounds.max, itemBounds.max)) {
+            std::cerr << "RenderScene and RenderQueue object bounds diverged\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateRenderQueueFrustumCulling() {
+        FakeRenderDevice device{};
+        ark::TextureCache textureCache{};
+
+        ark::MeshResource meshResource{};
+        if (!meshResource.create(device, makeTriangle("CullTriangle", 0, 0.0f))) {
+            std::cerr << "Frustum culling MeshResource create failed\n";
+            return false;
+        }
+
+        ark::MaterialTextureSet textures{};
+        textures.baseColor = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
+        textures.normal = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
+        textures.metallicRoughness =
+            textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::MetallicRoughnessDefault);
+        textures.occlusion = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::OcclusionDefault);
+        textures.emissive = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::Black);
+
+        auto createQueueMaterial = [&textures](ark::MaterialResource& resource,
+                                               ark::asset::AlphaMode alphaMode,
+                                               const char* name) {
+            ark::asset::MaterialData material{};
+            material.debugName = name;
+            material.baseColorTexturePath = "visibility_dummy.png";
+            material.alphaMode = alphaMode;
+            return resource.create(material, textures);
+        };
+
+        ark::MaterialResource opaqueMaterial{};
+        ark::MaterialResource nearBlendMaterial{};
+        ark::MaterialResource farBlendMaterial{};
+        ark::MaterialResource culledMaterial{};
+        if (!createQueueMaterial(opaqueMaterial, ark::asset::AlphaMode::Opaque, "OpaqueVisible") ||
+            !createQueueMaterial(nearBlendMaterial, ark::asset::AlphaMode::Blend, "NearBlendVisible") ||
+            !createQueueMaterial(farBlendMaterial, ark::asset::AlphaMode::Blend, "FarBlendVisible") ||
+            !createQueueMaterial(culledMaterial, ark::asset::AlphaMode::Mask, "CulledMask")) {
+            std::cerr << "Frustum culling materials create failed\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        scene.addObject(meshResource,
+                        farBlendMaterial,
+                        glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 0.0f, 0.8f}),
+                        "FarBlendVisible");
+        scene.addObject(meshResource,
+                        opaqueMaterial,
+                        glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 0.0f, 0.2f}),
+                        "OpaqueVisible");
+        scene.addObject(meshResource,
+                        culledMaterial,
+                        glm::translate(glm::mat4{1.0f}, glm::vec3{4.0f, 0.0f, 0.5f}),
+                        "CulledMask");
+        scene.addObject(meshResource,
+                        nearBlendMaterial,
+                        glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 0.0f, 0.3f}),
+                        "NearBlendVisible");
+
+        ark::RenderQueue fullQueue{};
+        fullQueue.build(scene);
+        if (fullQueue.size() != 4 || fullQueue.stats().totalItems != 4 ||
+            fullQueue.stats().visibleItems != 4 || fullQueue.stats().culledItems != 0 ||
+            fullQueue.stats().invalidBoundsItems != 0) {
+            std::cerr << "Default RenderQueue build should keep all valid items visible\n";
+            return false;
+        }
+
+        const ark::Frustum frustum = ark::Frustum::fromViewProjection(glm::mat4{1.0f});
+        ark::RenderQueueBuildDesc desc{};
+        desc.scene = &scene;
+        desc.cameraPosition = glm::vec3{0.0f};
+        desc.cameraFrustum = &frustum;
+        desc.enableFrustumCulling = true;
+
+        ark::RenderQueue culledQueue{};
+        culledQueue.build(desc);
+        const std::span<const ark::DrawItem> drawItems = culledQueue.drawItems();
+        if (drawItems.size() != 3 || culledQueue.stats().totalItems != 4 ||
+            culledQueue.stats().visibleItems != 3 || culledQueue.stats().culledItems != 1 ||
+            culledQueue.stats().invalidBoundsItems != 0) {
+            std::cerr << "Frustum culling queue stats are invalid\n";
+            return false;
+        }
+
+        if (drawItems[0].debugName != "OpaqueVisible" ||
+            drawItems[1].debugName != "FarBlendVisible" ||
+            drawItems[2].debugName != "NearBlendVisible") {
+            std::cerr << "Frustum culling broke bucket order or blend sorting\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateLocalModelResourceDeferredReset() {
         const ark::Path texturePath = findTexturePath();
         if (texturePath.empty()) {
@@ -1281,6 +1438,30 @@ namespace {
             !nearVec3(modelBounds.min, glm::vec3{-0.5f, 0.0f, 0.0f}) ||
             !nearVec3(modelBounds.max, glm::vec3{3.5f, 2.0f, 0.0f})) {
             std::cerr << "ModelResource instance local bounds are invalid\n";
+            return false;
+        }
+
+        glm::mat4 sceneTransform{1.0f};
+        sceneTransform = glm::translate(sceneTransform, glm::vec3{10.0f, -1.0f, 2.0f});
+
+        ark::RenderScene scene{};
+        scene.addModel(modelResource, sceneTransform, "InstanceBoundsSceneModel");
+
+        ark::RenderQueue queue{};
+        queue.build(scene);
+        const std::span<const ark::DrawItem> drawItems = queue.drawItems();
+        if (drawItems.size() != 2 || queue.stats().totalItems != 2 || queue.stats().invalidBoundsItems != 0) {
+            std::cerr << "Instance bounds RenderQueue stats are invalid\n";
+            return false;
+        }
+
+        if (!drawItems[0].worldBounds.isValid() ||
+            !nearVec3(drawItems[0].worldBounds.min, glm::vec3{9.5f, -1.0f, 2.0f}) ||
+            !nearVec3(drawItems[0].worldBounds.max, glm::vec3{10.5f, 0.0f, 2.0f}) ||
+            !drawItems[1].worldBounds.isValid() ||
+            !nearVec3(drawItems[1].worldBounds.min, glm::vec3{12.5f, -1.0f, 2.0f}) ||
+            !nearVec3(drawItems[1].worldBounds.max, glm::vec3{13.5f, 1.0f, 2.0f})) {
+            std::cerr << "RenderQueue model instance world bounds are invalid\n";
             return false;
         }
 
@@ -1866,6 +2047,8 @@ int main() {
                    validateTextureCacheKtxPath() &&
                    validateTextureCacheFallbacks() &&
                    validateMaterialResourceTextureSlots() && validateMeshResourceDeferredRelease() &&
+                   validateRenderQueueObjectWorldBounds() &&
+                   validateRenderQueueFrustumCulling() &&
                    validateLocalModelResourceDeferredReset() && validateExternalModelResourceDeferredReset() &&
                    validateModelResource() &&
                    validateModelResourceInstanceBounds() &&

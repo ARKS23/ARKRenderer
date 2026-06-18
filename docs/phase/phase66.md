@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-已完成 0.66.0 文档与范围确认，以及 0.66.1 Frustum 数据结构。
+已完成 0.66.0 文档与范围确认、0.66.1 Frustum 数据结构、0.66.2 DrawItem World Bounds、0.66.3 Visibility Build Path、0.66.4 Sandbox Visibility Diagnostics、0.66.5 Tests，以及 0.66.6 验证与收尾。
 
 Phase 0.61 ~ 0.65 已经完成了 scene bounds、shadow scene-fit、PCF shadow filtering、sandbox debug UI 和运行时参数调节基础。当前默认 sandbox 已经具备 Sponza + DamagedHelmet、Shadow、Bloom、ACES ToneMapping、IBL、KTX texture path 和 debug UI。下一阶段适合把现有 bounds 能力推进到可见性系统，为后续 CSM、shadow debug visualization 和更复杂场景性能优化打基础。
 
@@ -222,6 +222,13 @@ struct RenderQueueStats {
 - 统计 invalid bounds item 数量。
 - 补充必要中文注释。
 
+实现结果：
+- `DrawItem` 新增 `worldBounds`，作为 CPU visibility / debug 用的粗粒度 world-space AABB。
+- `RenderQueue` 在收集 `SceneModel` primitive instance 和 `SceneObject` 时，使用 `mesh.localBounds()` 与最终 `modelMatrix` 计算 draw-item world bounds。
+- 新增最小版 `RenderQueueStats`，当前记录 `totalItems` 与 `invalidBoundsItems`，为 0.66.3 的 visible / culled stats 预留扩展点。
+- 保持 opaque / mask / blend bucket 逻辑和 Blend back-to-front 排序不变。
+- 当前阶段只补齐 world bounds 数据，不启用 camera frustum culling。
+
 ### 0.66.3 Visibility Build Path
 
 - 新增可选 frustum culling build path。
@@ -229,6 +236,15 @@ struct RenderQueueStats {
 - 默认保持兼容旧调用。
 - 明确 Forward queue 和 Shadow caster queue 的关系。
 - 如调整 FrameContext，需要保持 ShadowPass 不消费 camera-cull 后的队列。
+
+实现结果：
+- 新增 `RenderQueueBuildDesc`，通过 `scene / cameraPosition / cameraFrustum / enableFrustumCulling` 显式描述 build 策略。
+- 旧接口 `build(scene)` 与 `build(scene, cameraPosition)` 保持兼容，默认不启用 frustum culling，仍生成全量 draw queue。
+- `build(desc)` 在 `enableFrustumCulling=true` 且提供 `cameraFrustum` 时按 `DrawItem::worldBounds` 执行 CPU object-level culling。
+- `RenderQueueStats` 扩展为 `totalItems / visibleItems / culledItems / invalidBoundsItems`。
+- invalid bounds 保守视为 visible，避免资源异常或尚未生成 bounds 的对象被误裁剪。
+- 当前阶段仍不改变 ShadowPass / FrameRenderer 消费路径；Shadow caster 队列不会被 camera frustum culling 隐式影响。
+- 测试覆盖默认全量队列、显式 culling 队列、invalid bounds 保守策略、empty desc、bucket 顺序与 Blend 远到近排序。
 
 ### 0.66.4 Sandbox Visibility Diagnostics
 
@@ -238,6 +254,13 @@ struct RenderQueueStats {
   - 开发阶段默认关闭，便于回归；
   - 测试稳定后 sandbox 可默认开启 forward culling；
   - Shadow caster path 保持不受 camera culling 影响。
+
+实现结果：
+- `RenderView` 新增 `VisibilitySettings`，当前只包含 `enableFrustumCulling`；sandbox UI 仍通过 `SandboxRuntimeSettings` 写回 `RenderView`，不直接修改 renderer 内部对象。
+- `Renderer` 每帧始终构建完整 `m_RenderQueue`，作为 shadow caster / fallback full queue；当 `visibility.enableFrustumCulling=true` 时，额外构建 `m_ForwardRenderQueue`。
+- `FrameContext` 新增可选 `forwardQueue`；`ShadowPass` 继续消费 `queue`，`ForwardPass` 优先消费 `forwardQueue`，不存在时回退到 `queue`。
+- `SandboxDebugUi` 新增 `Visibility` 面板，显示 Forward visible / total、culled、invalid bounds 和 shadow caster 数量，并提供 `Frustum Culling` 开关。
+- UI 统计来自上一帧 renderer 提交到 overlay 的 `FrameContext`，因此保持 UI 生命周期简单，允许一帧延迟。
 
 ### 0.66.5 Tests
 
@@ -251,6 +274,12 @@ struct RenderQueueStats {
 - Shadow caster queue 不使用 camera-cull 后的 forward visible queue。
 - sandbox UI settings bridge 中 visibility 开关可写回 runtime settings。
 
+实现结果：
+- 新增 / 更新 `ark_frustum_smoke`、`ark_render_scene_queue_smoke`、`ark_model_resource_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_sandbox_ui_settings_smoke` 与 `ark_framework_headers_smoke` 覆盖本阶段契约。
+- `ark_forward_pass_pipeline_smoke` 覆盖 `FrameContext::forwardQueue` 优先级，确认 ForwardPass 使用 camera-visible queue，同时保留 `queue` 作为 shadow / fallback full queue。
+- `ark_sandbox_ui_settings_smoke` 与 `ark_framework_headers_smoke` 覆盖 `VisibilitySettings` 从 preset / runtime settings 写回 `RenderView` 的路径。
+- `ark_render_scene_queue_smoke` 覆盖默认全量队列、显式 frustum culling、invalid bounds 保守可见、bucket 顺序和透明排序。
+
 ### 0.66.6 验证与收尾
 
 - 更新 `docs/phase/phase66.md` 实施状态。
@@ -260,6 +289,12 @@ struct RenderQueueStats {
 - sandbox hidden-window smoke。
 - 如启用 UI 统计，手动确认默认 Sponza + DamagedHelmet 场景中 stats 正常变化。
 - 提交并推送。
+
+验证结果：
+- Targeted build 通过：`ark_render_scene_queue_smoke`、`ark_model_resource_smoke`、`ark_frustum_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_sandbox_ui_settings_smoke`、`ark_framework_headers_smoke`、`ark_sandbox`。
+- Targeted CTest 通过：7/7。
+- Full Debug CTest 通过：32/32。
+- Sandbox hidden-window smoke 通过：`ark_sandbox.exe` 启动稳定运行 4 秒后由脚本关闭。
 
 ## 风险与约束
 

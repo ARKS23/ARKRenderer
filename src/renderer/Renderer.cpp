@@ -11,6 +11,7 @@
 #include "renderer/FrameContext.h"
 #include "renderer/FrameOverlay.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/Frustum.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
@@ -152,12 +153,27 @@ namespace ark {
                 prepareDefaultBrdfLut(context, renderScene);
                 // Phase 0.9 起 Renderer 负责把 scene 扁平化为本帧 draw queue。
                 m_RenderQueue.build(renderScene, view.cameraPosition());
+                RenderQueue* forwardQueue = nullptr;
+                if (view.visibilitySettings().enableFrustumCulling) {
+                    const Frustum cameraFrustum =
+                        Frustum::fromViewProjection(view.projectionMatrix() * view.viewMatrix());
+                    RenderQueueBuildDesc forwardQueueDesc{};
+                    forwardQueueDesc.scene = &renderScene;
+                    forwardQueueDesc.cameraPosition = view.cameraPosition();
+                    forwardQueueDesc.cameraFrustum = &cameraFrustum;
+                    forwardQueueDesc.enableFrustumCulling = true;
+                    m_ForwardRenderQueue.build(forwardQueueDesc);
+                    forwardQueue = &m_ForwardRenderQueue;
+                } else {
+                    m_ForwardRenderQueue.clear();
+                }
 
                 FrameContext frameContext{};
                 frameContext.frameIndex = frame.frameIndex;
                 frameContext.scene = &renderScene;
                 frameContext.view = &view;
                 frameContext.queue = &m_RenderQueue;
+                frameContext.forwardQueue = forwardQueue;
                 frameContext.device = &m_Backend->device();
                 frameContext.context = &context;
                 frameContext.swapChain = &swapChain;
@@ -528,6 +544,7 @@ namespace ark {
             EnvironmentSpecularPrefilterGenerator m_EnvironmentSpecularPrefilterGenerator;
             EnvironmentBrdfLutGenerator m_EnvironmentBrdfLutGenerator;
             RenderQueue m_RenderQueue;
+            RenderQueue m_ForwardRenderQueue;
             RendererQualityDesc m_Quality;
             rhi::Extent2D m_Extent{};
             rhi::ClearColor m_ClearColor{};

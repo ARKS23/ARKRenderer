@@ -1,6 +1,7 @@
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/EnvironmentResource.h"
+#include "renderer/Frustum.h"
 #include "renderer/MeshResource.h"
 #include "renderer/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
@@ -132,6 +133,13 @@ namespace {
             return false;
         }
 
+        if (drawItems[0].worldBounds.isValid() || drawItems[1].worldBounds.isValid() ||
+            queue.stats().totalItems != 2 || queue.stats().visibleItems != 2 ||
+            queue.stats().culledItems != 0 || queue.stats().invalidBoundsItems != 2) {
+            std::cerr << "RenderQueue did not track invalid draw item bounds\n";
+            return false;
+        }
+
         scene.clear();
         if (scene.hasBounds()) {
             std::cerr << "RenderScene clear did not reset bounds\n";
@@ -151,6 +159,54 @@ namespace {
         queue.build(scene);
         if (!queue.empty()) {
             std::cerr << "RenderQueue did not clear stale draw items\n";
+            return false;
+        }
+        if (queue.stats().totalItems != 0 || queue.stats().visibleItems != 0 ||
+            queue.stats().culledItems != 0 || queue.stats().invalidBoundsItems != 0) {
+            std::cerr << "RenderQueue did not reset stats for empty builds\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateBuildDescInvalidBoundsRemainVisible() {
+        ark::TextureResource texture{};
+        ark::MeshResource meshA{};
+        ark::MeshResource meshB{};
+        ark::MaterialResource materialA{};
+        ark::MaterialResource materialB{};
+        if (!createMaterial(materialA, texture, ark::asset::AlphaMode::Opaque, "InvalidA") ||
+            !createMaterial(materialB, texture, ark::asset::AlphaMode::Mask, "InvalidB")) {
+            std::cerr << "Failed to create invalid bounds culling materials\n";
+            return false;
+        }
+
+        ark::RenderScene scene{};
+        scene.addObject(meshA, materialA, translated(20.0f, 0.0f, 0.0f), "InvalidA");
+        scene.addObject(meshB, materialB, translated(-20.0f, 0.0f, 0.0f), "InvalidB");
+
+        const ark::Frustum frustum = ark::Frustum::fromViewProjection(glm::mat4{1.0f});
+        ark::RenderQueueBuildDesc desc{};
+        desc.scene = &scene;
+        desc.cameraFrustum = &frustum;
+        desc.enableFrustumCulling = true;
+
+        ark::RenderQueue queue{};
+        queue.build(desc);
+        if (queue.size() != 2 || queue.stats().totalItems != 2 ||
+            queue.stats().visibleItems != 2 || queue.stats().culledItems != 0 ||
+            queue.stats().invalidBoundsItems != 2) {
+            std::cerr << "Frustum culling should keep invalid bounds visible\n";
+            return false;
+        }
+
+        ark::RenderQueue emptyQueue{};
+        emptyQueue.build(ark::RenderQueueBuildDesc{});
+        if (!emptyQueue.empty() || emptyQueue.stats().totalItems != 0 ||
+            emptyQueue.stats().visibleItems != 0 || emptyQueue.stats().culledItems != 0 ||
+            emptyQueue.stats().invalidBoundsItems != 0) {
+            std::cerr << "RenderQueue build desc without scene should produce an empty queue\n";
             return false;
         }
 
@@ -285,6 +341,7 @@ namespace {
 
 int main() {
     return validateSceneQueueBuild() &&
+                   validateBuildDescInvalidBoundsRemainVisible() &&
                    validateAlphaBucketOrder() &&
                    validateBlendBucketBackToFrontSort()
                ? EXIT_SUCCESS

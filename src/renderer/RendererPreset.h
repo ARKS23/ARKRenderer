@@ -49,6 +49,7 @@ namespace ark {
             ShadowFilterMode::Pcf3x3,
             1.0f,
         };
+        VisibilitySettings visibility{};
     };
 
     struct OrbitCameraProfileDesc {

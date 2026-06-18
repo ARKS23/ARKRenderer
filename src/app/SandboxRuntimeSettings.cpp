@@ -13,6 +13,7 @@ namespace ark {
         view.setToneMappingSettings(settings.view.toneMapping);
         view.setPostProcessingSettings(settings.view.postProcessing);
         view.setShadowSettings(settings.view.shadows);
+        view.setVisibilitySettings(settings.view.visibility);
     }
 
     InputSnapshot filterSandboxInputForUiCapture(const InputSnapshot& input,

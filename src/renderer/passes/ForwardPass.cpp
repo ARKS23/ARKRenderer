@@ -323,6 +323,10 @@ namespace ark {
 
             return frameContext.swapChain ? frameContext.swapChain->getDesc().depthFormat : rhi::Format::Unknown;
         }
+
+        const RenderQueue* resolveForwardQueue(const FrameContext& frameContext) {
+            return frameContext.forwardQueue ? frameContext.forwardQueue : frameContext.queue;
+        }
     } // namespace
 
     ForwardPass::~ForwardPass() = default;
@@ -351,12 +355,13 @@ namespace ark {
             return false;
         }
 
-        if (!frameContext.queue || frameContext.queue->empty()) {
+        const RenderQueue* queue = resolveForwardQueue(frameContext);
+        if (!queue || queue->empty()) {
             return true;
         }
 
         usize drawIndex = 0;
-        for (const DrawItem& item : frameContext.queue->drawItems()) {
+        for (const DrawItem& item : queue->drawItems()) {
             if (!item.isDrawable()) {
                 ARK_ERROR("ForwardPass queue contains an invalid draw item");
                 return false;
@@ -397,12 +402,13 @@ namespace ark {
         if (!updateCameraUniform(frameContext, frameSlot) || !updateLightingUniform(frameContext, frameSlot)) {
             return false;
         }
-        if (!frameContext.queue || frameContext.queue->empty()) {
+        const RenderQueue* queue = resolveForwardQueue(frameContext);
+        if (!queue || queue->empty()) {
             return true;
         }
 
         usize drawIndex = 0;
-        for (const DrawItem& item : frameContext.queue->drawItems()) {
+        for (const DrawItem& item : queue->drawItems()) {
             if (!item.isDrawable() ||
                 !drawMeshItem(frameContext, frameSlot, drawIndex, *item.mesh, *item.material, item.modelMatrix)) {
                 return false;
@@ -673,7 +679,8 @@ namespace ark {
     }
 
     usize ForwardPass::drawItemCount(const FrameContext& frameContext) const {
-        return frameContext.queue ? frameContext.queue->size() : 0;
+        const RenderQueue* queue = resolveForwardQueue(frameContext);
+        return queue ? queue->size() : 0;
     }
 
     bool ForwardPass::ensureDrawDescriptorResources(u32 frameSlot, usize drawCount) {

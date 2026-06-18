@@ -22,12 +22,14 @@ int main() {
     desc.view.shadows.mapExtent = 2048;
     desc.view.shadows.filterMode = ark::ShadowFilterMode::Pcf5x5;
     desc.view.shadows.filterRadiusTexels = 2.5f;
+    desc.view.visibility.enableFrustumCulling = true;
 
     ark::SandboxRuntimeSettings runtimeSettings = ark::makeSandboxRuntimeSettings(desc);
     if (!runtimeSettings.uiVisible ||
         runtimeSettings.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
         runtimeSettings.view.postProcessing.bloom.intensity != 0.12f ||
-        runtimeSettings.view.shadows.filterMode != ark::ShadowFilterMode::Pcf5x5) {
+        runtimeSettings.view.shadows.filterMode != ark::ShadowFilterMode::Pcf5x5 ||
+        !runtimeSettings.view.visibility.enableFrustumCulling) {
         return EXIT_FAILURE;
     }
 
@@ -39,7 +41,8 @@ int main() {
     ark::applySandboxRuntimeSettings(view, runtimeSettings);
     if (view.postProcessingSettings().bloom.intensity <= 0.0f ||
         view.shadowSettings().mapExtent != 4096 ||
-        view.shadowSettings().filterRadiusTexels != 8.0f) {
+        view.shadowSettings().filterRadiusTexels != 8.0f ||
+        !view.visibilitySettings().enableFrustumCulling) {
         return EXIT_FAILURE;
     }
 

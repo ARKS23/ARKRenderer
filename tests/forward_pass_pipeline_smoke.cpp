@@ -971,6 +971,73 @@ namespace {
         return true;
     }
 
+    bool validateForwardPassUsesForwardQueueOverride() {
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        FakeSwapChain swapChain{};
+        ark::TextureCache textureCache{};
+        ark::MeshResource mesh{};
+        ark::MaterialResource material{};
+
+        if (!mesh.create(device, makeTriangle()) ||
+            !createMaterial(device, textureCache, material, ark::asset::AlphaMode::Opaque, false)) {
+            std::cerr << "Failed to create ForwardPass queue override resources\n";
+            return false;
+        }
+
+        ark::RenderScene fullScene{};
+        fullScene.addObject(mesh, material, glm::mat4{1.0f}, "FullA");
+        glm::mat4 secondTransform{1.0f};
+        secondTransform[3][0] = 2.0f;
+        fullScene.addObject(mesh, material, secondTransform, "FullB");
+
+        ark::RenderScene visibleScene{};
+        visibleScene.addObject(mesh, material, glm::mat4{1.0f}, "ForwardOnly");
+
+        ark::RenderQueue fullQueue{};
+        fullQueue.build(fullScene);
+        ark::RenderQueue forwardQueue{};
+        forwardQueue.build(visibleScene);
+        if (fullQueue.size() != 2 || forwardQueue.size() != 1) {
+            std::cerr << "ForwardPass queue override test produced invalid queues\n";
+            return false;
+        }
+
+        ark::RenderView view{};
+        view.setDefaultPerspective(swapChain.getDesc().extent);
+
+        ark::ForwardPass pass{};
+        pass.setup(device);
+
+        context.frame.frameSlot = 0;
+        context.frame.frameIndex = 0;
+
+        ark::FrameContext frameContext{};
+        frameContext.frameIndex = 0;
+        frameContext.scene = &fullScene;
+        frameContext.view = &view;
+        frameContext.queue = &fullQueue;
+        frameContext.forwardQueue = &forwardQueue;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.swapChain = &swapChain;
+        frameContext.frameResource = &context.frame;
+        frameContext.extent = swapChain.getDesc().extent;
+
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "ForwardPass queue override path failed\n";
+            return false;
+        }
+
+        if (context.indexedDraws != 1 || context.materialUniformUpdates != 1 ||
+            context.lightingUniformUpdates != 1) {
+            std::cerr << "ForwardPass should consume forwardQueue instead of the full shadow queue\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateSceneLightingAndRenderView() {
         ark::RenderScene scene{};
         const ark::SceneLighting& defaultLighting = scene.lighting();
@@ -1385,6 +1452,7 @@ int main() {
                    validateForwardPassSceneSpecularResources() &&
                    validateForwardPassSpecularIblMaterialGridUniforms() &&
                    validateForwardPassUsesFrameContextFormats() &&
+                   validateForwardPassUsesForwardQueueOverride() &&
                    validateDoubleSidedCullModes()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

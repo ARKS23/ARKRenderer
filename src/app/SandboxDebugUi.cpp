@@ -3,6 +3,7 @@
 #include "app/Window.h"
 #include "core/Log.h"
 #include "renderer/FrameContext.h"
+#include "renderer/RenderQueue.h"
 #include "rhi/RenderDevice.h"
 #include "rhi/SwapChain.h"
 #include "rhi/vulkan/VulkanCommandContext.h"
@@ -109,6 +110,7 @@ namespace ark {
             drawToneMappingPanel();
             drawBloomPanel();
             drawShadowPanel();
+            drawVisibilityPanel();
             drawDiagnosticsPanel();
 
             ImGui::End();
@@ -137,6 +139,8 @@ namespace ark {
         }
 
         bool render(FrameContext& frameContext) {
+            captureVisibilityDiagnostics(frameContext);
+
             if (!m_Settings.uiVisible) {
                 return true;
             }
@@ -236,6 +240,21 @@ namespace ark {
             ImGui::SliderFloat("Manual Bounds", &shadows.orthographicHalfExtent, 1.0f, 128.0f, "%.1f");
         }
 
+        void drawVisibilityPanel() {
+            if (!ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
+                return;
+            }
+
+            VisibilitySettings& visibility = m_Settings.view.visibility;
+            ImGui::Checkbox("Frustum Culling", &visibility.enableFrustumCulling);
+            ImGui::Text("Forward: %zu / %zu",
+                        m_LastForwardStats.visibleItems,
+                        m_LastForwardStats.totalItems);
+            ImGui::Text("Culled: %zu", m_LastForwardStats.culledItems);
+            ImGui::Text("Invalid Bounds: %zu", m_LastForwardStats.invalidBoundsItems);
+            ImGui::Text("Shadow Casters: %zu", m_LastShadowStats.visibleItems);
+        }
+
         void drawDiagnosticsPanel() {
             if (!ImGui::CollapsingHeader("Diagnostics")) {
                 return;
@@ -250,11 +269,24 @@ namespace ark {
             ImGui::Text("Shadow: %s / %s",
                         shadows.enabled ? "On" : "Off",
                         shadowFilterLabel(shadows.filterMode));
+            ImGui::Text("Culling: %s",
+                        m_Settings.view.visibility.enableFrustumCulling ? "On" : "Off");
+        }
+
+        void captureVisibilityDiagnostics(const FrameContext& frameContext) {
+            const RenderQueue* shadowQueue = frameContext.queue;
+            const RenderQueue* forwardQueue =
+                frameContext.forwardQueue ? frameContext.forwardQueue : frameContext.queue;
+
+            m_LastForwardStats = forwardQueue ? forwardQueue->stats() : RenderQueueStats{};
+            m_LastShadowStats = shadowQueue ? shadowQueue->stats() : RenderQueueStats{};
         }
 
         Window& m_Window;
         SandboxRuntimeSettings& m_Settings;
         rhi::vulkan::VulkanImGuiBackend m_Backend;
+        RenderQueueStats m_LastForwardStats{};
+        RenderQueueStats m_LastShadowStats{};
         bool m_FrameBegun = false;
         bool m_DrawDataReady = false;
     };

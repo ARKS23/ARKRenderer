@@ -1,6 +1,8 @@
 #include "renderer/RenderQueue.h"
 
 #include "renderer/material/MaterialResource.h"
+#include "renderer/Frustum.h"
+#include "renderer/MeshResource.h"
 #include "renderer/ModelResource.h"
 #include "renderer/RenderScene.h"
 
@@ -22,10 +24,24 @@ namespace ark {
             return glm::dot(delta, delta);
         }
 
-        void sortBlendBucket(std::vector<DrawItem>& blendItems) {
-            std::stable_sort(blendItems.begin(), blendItems.end(), [](const DrawItem& lhs, const DrawItem& rhs) {
-                return lhs.sortDistanceSq > rhs.sortDistanceSq;
-            });
+        Bounds3 calculateWorldBounds(const MeshResource& mesh, const glm::mat4& modelMatrix) {
+            return transformBounds(mesh.localBounds(), modelMatrix);
+        }
+
+        void recordItemStats(RenderQueueStats& stats, const DrawItem& item) {
+            ++stats.totalItems;
+            if (!item.worldBounds.isValid()) {
+                ++stats.invalidBoundsItems;
+            }
+        }
+
+        bool shouldCullDrawItem(const RenderQueueBuildDesc& desc, const DrawItem& item) {
+            if (!desc.enableFrustumCulling || !desc.cameraFrustum) {
+                return false;
+            }
+
+            // invalid bounds 保守视为可见，避免资源异常时误删 draw item。
+            return !desc.cameraFrustum->intersects(item.worldBounds);
         }
 
         void pushDrawItem(std::vector<DrawItem>& opaqueItems,
@@ -44,14 +60,50 @@ namespace ark {
                 break;
             }
         }
+
+        void submitDrawItem(const RenderQueueBuildDesc& desc,
+                            RenderQueueStats& stats,
+                            std::vector<DrawItem>& opaqueItems,
+                            std::vector<DrawItem>& maskItems,
+                            std::vector<DrawItem>& blendItems,
+                            DrawItem item) {
+            recordItemStats(stats, item);
+            if (shouldCullDrawItem(desc, item)) {
+                ++stats.culledItems;
+                return;
+            }
+
+            ++stats.visibleItems;
+            pushDrawItem(opaqueItems, maskItems, blendItems, std::move(item));
+        }
+
+        void sortBlendBucket(std::vector<DrawItem>& blendItems) {
+            std::stable_sort(blendItems.begin(), blendItems.end(), [](const DrawItem& lhs, const DrawItem& rhs) {
+                return lhs.sortDistanceSq > rhs.sortDistanceSq;
+            });
+        }
     } // namespace
 
     void RenderQueue::build(const RenderScene& scene) {
-        build(scene, glm::vec3{0.0f});
+        RenderQueueBuildDesc desc{};
+        desc.scene = &scene;
+        build(desc);
     }
 
     void RenderQueue::build(const RenderScene& scene, const glm::vec3& cameraPosition) {
+        RenderQueueBuildDesc desc{};
+        desc.scene = &scene;
+        desc.cameraPosition = cameraPosition;
+        build(desc);
+    }
+
+    void RenderQueue::build(const RenderQueueBuildDesc& desc) {
         clear();
+        if (!desc.scene) {
+            return;
+        }
+
+        const RenderScene& scene = *desc.scene;
         std::vector<DrawItem> opaqueItems;
         std::vector<DrawItem> maskItems;
         std::vector<DrawItem> blendItems;
@@ -75,9 +127,10 @@ namespace ark {
                 item.mesh = mesh;
                 item.material = material;
                 item.modelMatrix = model.transform * instance.localTransform;
+                item.worldBounds = calculateWorldBounds(*mesh, item.modelMatrix);
                 item.debugName = instance.debugName.empty() ? model.debugName : instance.debugName;
-                item.sortDistanceSq = sortDistanceSq(item.modelMatrix, cameraPosition);
-                pushDrawItem(opaqueItems, maskItems, blendItems, std::move(item));
+                item.sortDistanceSq = sortDistanceSq(item.modelMatrix, desc.cameraPosition);
+                submitDrawItem(desc, m_Stats, opaqueItems, maskItems, blendItems, std::move(item));
             }
         }
 
@@ -90,9 +143,10 @@ namespace ark {
             item.mesh = object.mesh;
             item.material = object.material;
             item.modelMatrix = object.transform;
+            item.worldBounds = calculateWorldBounds(*object.mesh, item.modelMatrix);
             item.debugName = object.debugName;
-            item.sortDistanceSq = sortDistanceSq(item.modelMatrix, cameraPosition);
-            pushDrawItem(opaqueItems, maskItems, blendItems, std::move(item));
+            item.sortDistanceSq = sortDistanceSq(item.modelMatrix, desc.cameraPosition);
+            submitDrawItem(desc, m_Stats, opaqueItems, maskItems, blendItems, std::move(item));
         }
 
         sortBlendBucket(blendItems);
@@ -109,5 +163,6 @@ namespace ark {
 
     void RenderQueue::clear() {
         m_DrawItems.clear();
+        m_Stats = {};
     }
 } // namespace ark

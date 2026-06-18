@@ -613,6 +613,9 @@ int main() {
     shadowSettings.filterMode = ark::ShadowFilterMode::Pcf5x5;
     shadowSettings.filterRadiusTexels = 2.0f;
     renderView.setShadowSettings(shadowSettings);
+    ark::VisibilitySettings visibilitySettings{};
+    visibilitySettings.enableFrustumCulling = true;
+    renderView.setVisibilitySettings(visibilitySettings);
     if (renderView.toneMappingSettings().exposure != 1.25f ||
         renderView.toneMappingSettings().outputGamma != 2.2f ||
         renderView.toneMappingSettings().operatorType != ark::ToneMappingOperator::ACES ||
@@ -623,6 +626,7 @@ int main() {
         renderView.shadowSettings().filterMode != ark::ShadowFilterMode::Pcf5x5 ||
         renderView.shadowSettings().filterRadiusTexels != 2.0f ||
         !renderView.shadowSettings().fitSceneBounds ||
+        !renderView.visibilitySettings().enableFrustumCulling ||
         ark::parseShadowFilterMode("pcf-3x3") != ark::ShadowFilterMode::Pcf3x3 ||
         ark::parseShadowFilterMode("pcf5") != ark::ShadowFilterMode::Pcf5x5 ||
         ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {

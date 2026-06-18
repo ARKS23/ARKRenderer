@@ -30,6 +30,7 @@ namespace ark {
         RenderScene* scene = nullptr;
         const RenderView* view = nullptr;
         RenderQueue* queue = nullptr;
+        RenderQueue* forwardQueue = nullptr;
 
         rhi::RenderDevice* device = nullptr;
         rhi::DeviceContext* context = nullptr;

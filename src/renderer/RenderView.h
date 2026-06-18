@@ -47,6 +47,10 @@ namespace ark {
         float filterRadiusTexels = 1.0f;
     };
 
+    struct VisibilitySettings {
+        bool enableFrustumCulling = false;
+    };
+
     ToneMappingOperator parseToneMappingOperator(
         std::string_view name,
         ToneMappingOperator fallback = ToneMappingOperator::Reinhard);
@@ -143,6 +147,14 @@ namespace ark {
             m_ShadowSettings = sanitizeShadowSettings(settings);
         }
 
+        const VisibilitySettings& visibilitySettings() const {
+            return m_VisibilitySettings;
+        }
+
+        void setVisibilitySettings(const VisibilitySettings& settings) {
+            m_VisibilitySettings = settings;
+        }
+
     private:
         static bool isFinitePositive(float value) {
             return std::isfinite(value) && value > 0.0f;
@@ -196,5 +208,6 @@ namespace ark {
         ToneMappingSettings m_ToneMappingSettings;
         PostProcessingSettings m_PostProcessingSettings;
         ShadowSettings m_ShadowSettings;
+        VisibilitySettings m_VisibilitySettings;
     };
 } // namespace ark
