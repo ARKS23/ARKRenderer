@@ -230,6 +230,7 @@ if(ARK_BUILD_TESTS AND BUILD_TESTING)
     ark_add_smoke_test(ark_post_processing_settings_smoke tests/post_processing_settings_smoke.cpp)
     ark_add_smoke_test(ark_bloom_validation_fixture_smoke tests/bloom_validation_fixture_smoke.cpp)
     ark_add_smoke_test(ark_bounds_smoke tests/bounds_smoke.cpp)
+    ark_add_smoke_test(ark_frustum_smoke tests/frustum_smoke.cpp)
     ark_add_smoke_test(ark_texture_loader_smoke tests/texture_loader_smoke.cpp)
 
     if(ARK_DXC_SUPPORTED)
