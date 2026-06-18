@@ -3,6 +3,7 @@
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "renderer/FrameContext.h"
+#include "renderer/FrameOverlay.h"
 #include "renderer/RenderPass.h"
 #include "renderer/passes/BloomPass.h"
 #include "renderer/passes/ClearPass.h"
@@ -49,6 +50,10 @@ namespace ark {
             }
 
             bool render(FrameContext& frameContext) override {
+                return render(frameContext, nullptr);
+            }
+
+            bool render(FrameContext& frameContext, FrameOverlay* overlay) override {
                 if (!frameContext.context || !frameContext.swapChain || !frameContext.backBufferView ||
                     !frameContext.backBufferView->getTexture()) {
                     ARK_ERROR("FrameRenderer requires DeviceContext, SwapChain and backbuffer");
@@ -157,6 +162,22 @@ namespace ark {
 
                 frameContext.context->endRendering();
 
+                if (overlay && overlay->isEnabled()) {
+                    frameContext.colorFormat = frameContext.swapChain->getDesc().colorFormat;
+                    frameContext.depthFormat = rhi::Format::Unknown;
+                    if (!beginOverlayRendering(frameContext)) {
+                        return false;
+                    }
+
+                    setViewportAndScissor(frameContext);
+                    if (!overlay->render(frameContext)) {
+                        frameContext.context->endRendering();
+                        return false;
+                    }
+
+                    frameContext.context->endRendering();
+                }
+
                 // present 前必须把 backbuffer 转回 Present 状态。
                 const std::array<rhi::ResourceBarrier, 1> toPresent{{
                     rhi::ResourceBarrier{
@@ -232,6 +253,15 @@ namespace ark {
                 renderingDesc.colorAttachment.loadOp = rhi::LoadOp::Clear;
                 renderingDesc.colorAttachment.storeOp = rhi::StoreOp::Store;
                 renderingDesc.colorAttachment.clearColor = frameContext.clearColor;
+                return frameContext.context->beginRendering(renderingDesc);
+            }
+
+            bool beginOverlayRendering(FrameContext& frameContext) {
+                rhi::RenderingDesc renderingDesc{};
+                renderingDesc.extent = frameContext.extent;
+                renderingDesc.colorAttachment.view = frameContext.backBufferView;
+                renderingDesc.colorAttachment.loadOp = rhi::LoadOp::Load;
+                renderingDesc.colorAttachment.storeOp = rhi::StoreOp::Store;
                 return frameContext.context->beginRendering(renderingDesc);
             }
 

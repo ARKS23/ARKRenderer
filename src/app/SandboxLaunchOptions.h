@@ -31,6 +31,7 @@ namespace ark {
         RenderViewProfileDesc view;
         SandboxViewOverrideMask viewOverrides;
         bool useDebugOrientationEnvironment = false;
+        bool debugUiEnabled = true;
         Path modelPathOverride;
         Path environmentPathOverride;
         u32 ignoredExtraPositionalArgumentCount = 0;

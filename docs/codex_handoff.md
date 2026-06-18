@@ -1,6 +1,45 @@
 # Codex Handoff Summary
 
-## Latest Update (2026-06-18, Phase 0.64)
+## Latest Update (2026-06-18, Phase 0.65)
+
+ARKRenderer has completed Phase 0.65: Sandbox Debug UI / Runtime Tuning Foundation.
+
+Key changes:
+- Added a sandbox debug UI path based on Dear ImGui + GLFW/Vulkan backends.
+- Added `SandboxRuntimeSettings` so runtime UI edits are copied from startup config once, then written into `RenderView` every frame without being overwritten by immutable `ApplicationDesc`.
+- Added `FrameOverlay` as the renderer/UI boundary; `Renderer` and `FrameRenderer` accept an optional overlay without exposing ImGui types in renderer public headers.
+- `FrameRenderer` now draws the overlay after tone mapping to the swapchain backbuffer and before the Present barrier.
+- Added `SandboxDebugUi` with Tone Mapping, Bloom, Shadow, and basic Diagnostics panels.
+- Added `VulkanImGuiBackend` minimal lifecycle wrapper for GLFW/Vulkan backend init, new-frame, draw data rendering, min image count update, and shutdown.
+- Sandbox CLI now supports `--ui` and `--no-ui`; UI is enabled by default for sandbox, disabled only when requested.
+- Sandbox can toggle UI visibility at runtime with F1.
+- Added UI input capture filtering so camera rotation/zoom/reset do not consume mouse/keyboard input while ImGui wants it.
+- Added `ark_sandbox_ui_settings_smoke` and extended dependency/framework smoke coverage for ImGui backend symbols, runtime settings bridge, input filtering, and UI CLI flags.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_sandbox_ui_settings_smoke ark_dependency_smoke ark_framework_headers_smoke ark_renderer_preset_smoke ark_sandbox
+ctest --test-dir build\msvc-vcpkg -C Debug -R "ark_(sandbox_ui_settings_smoke|dependency_smoke|framework_headers_smoke|renderer_preset_smoke)$" --output-on-failure
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build\msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, --no-ui, and --preset shadow-validation
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 4/4
+full Debug build passed
+full CTest passed: 31/31
+sandbox hidden-window smoke passed for default, --no-ui, and shadow-validation
+```
+
+Notes:
+- Renderer core still does not depend on ImGui types; ImGui headers are limited to the Vulkan private backend, sandbox UI implementation, dependency smoke, and the historical `ImGuiPass` placeholder.
+- This phase intentionally avoids a full editor, gizmos, resource browsers, and frame-validation UI rendering.
+- Environment and camera panels are intentionally not expanded yet; runtime camera state and public scene/resource control should be cleaned up before making those interactive.
+
+## Previous Update (2026-06-18, Phase 0.64)
 
 ARKRenderer has completed Phase 0.64: Shadow Quality / Stability Pass.
 

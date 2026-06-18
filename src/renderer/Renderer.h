@@ -6,6 +6,7 @@
 #include "rhi/RHICommon.h"
 
 namespace ark {
+    class FrameOverlay;
     class RenderScene;
     class RenderView;
 
@@ -23,7 +24,7 @@ namespace ark {
     public:
         virtual ~Renderer() = default;
 
-        virtual void render(RenderScene& scene, const RenderView& view) = 0;
+        virtual void render(RenderScene& scene, const RenderView& view, FrameOverlay* overlay = nullptr) = 0;
         virtual void resize(unsigned width, unsigned height) = 0;
     };
 

@@ -12,5 +12,6 @@ namespace ark {
         bool middleMouseDown = false;
         bool shiftDown = false;
         bool resetPressed = false;
+        bool debugUiTogglePressed = false;
     };
 } // namespace ark

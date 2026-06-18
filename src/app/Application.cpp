@@ -2,6 +2,8 @@
 
 #include "app/GlfwWindow.h"
 #include "app/SandboxCameraController.h"
+#include "app/SandboxDebugUi.h"
+#include "app/SandboxRuntimeSettings.h"
 #include "core/Log.h"
 #include "core/Memory.h"
 #include "core/ScopeExit.h"
@@ -60,11 +62,14 @@ namespace ark {
         m_Renderer = createRenderer(rendererDesc);
 
         RenderScene scene;
+        SandboxRuntimeSettings runtimeSettings = makeSandboxRuntimeSettings(m_Desc);
         RenderView view;
-        view.setToneMappingSettings(m_Desc.view.toneMapping);
-        view.setPostProcessingSettings(m_Desc.view.postProcessing);
-        view.setShadowSettings(m_Desc.view.shadows);
-        SandboxCameraController cameraController{makeSandboxCameraControllerDesc(m_Desc.camera)};
+        applySandboxRuntimeSettings(view, runtimeSettings);
+        SandboxCameraController cameraController{makeSandboxCameraControllerDesc(runtimeSettings.camera)};
+        Scope<SandboxDebugUi> debugUi;
+        if (m_Desc.debugUiEnabled) {
+            debugUi = makeScope<SandboxDebugUi>(*m_Window, runtimeSettings);
+        }
         rhi::Extent2D currentExtent = rendererDesc.extent;
         cameraController.setViewportExtent(currentExtent);
         cameraController.writeTo(view);
@@ -79,12 +84,24 @@ namespace ark {
                 cameraController.setViewportExtent(currentExtent);
             }
 
-            cameraController.update(m_Window->getInputSnapshot());
+            InputSnapshot input = m_Window->getInputSnapshot();
+            if (debugUi && input.debugUiTogglePressed) {
+                runtimeSettings.uiVisible = !runtimeSettings.uiVisible;
+            }
+
+            if (debugUi) {
+                debugUi->beginFrame();
+                debugUi->buildPanels();
+                debugUi->endFrame();
+                input = filterSandboxInputForUiCapture(input,
+                                                       debugUi->wantsCaptureMouse(),
+                                                       debugUi->wantsCaptureKeyboard());
+            }
+
+            cameraController.update(input);
             cameraController.writeTo(view);
-            view.setToneMappingSettings(m_Desc.view.toneMapping);
-            view.setPostProcessingSettings(m_Desc.view.postProcessing);
-            view.setShadowSettings(m_Desc.view.shadows);
-            m_Renderer->render(scene, view);
+            applySandboxRuntimeSettings(view, runtimeSettings);
+            m_Renderer->render(scene, view, debugUi.get());
         }
 
         ARK_INFO("ARKRenderer exited normally");

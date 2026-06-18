@@ -4,6 +4,7 @@
 #include "rhi/RHICommon.h"
 
 namespace ark {
+    class FrameOverlay;
     struct FrameContext;
 
     namespace rhi {
@@ -17,6 +18,7 @@ namespace ark {
 
         virtual void setup(rhi::RenderDevice& device) = 0;
         virtual bool render(FrameContext& frameContext) = 0;
+        virtual bool render(FrameContext& frameContext, FrameOverlay* overlay) = 0;
         virtual void resize(rhi::Extent2D extent) = 0;
     };
 

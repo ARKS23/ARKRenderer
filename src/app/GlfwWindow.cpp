@@ -135,6 +135,10 @@ namespace ark {
         m_Input.resetPressed = resetDown && !m_PreviousResetDown;
         m_PreviousResetDown = resetDown;
 
+        const bool debugUiToggleDown = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
+        m_Input.debugUiTogglePressed = debugUiToggleDown && !m_PreviousDebugUiToggleDown;
+        m_PreviousDebugUiToggleDown = debugUiToggleDown;
+
         m_PreviousCursorPosition = cursorPosition;
         m_HasPreviousCursorPosition = true;
     }

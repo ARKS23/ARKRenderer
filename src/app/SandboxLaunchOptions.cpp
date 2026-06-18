@@ -157,6 +157,16 @@ namespace ark {
                 continue;
             }
 
+            if (argument == "--ui") {
+                options.debugUiEnabled = true;
+                continue;
+            }
+
+            if (argument == "--no-ui") {
+                options.debugUiEnabled = false;
+                continue;
+            }
+
             if (argument == "--bloom") {
                 options.viewOverrides.bloomEnabled = true;
                 options.view.postProcessing.bloom.enabled = true;
@@ -541,6 +551,7 @@ namespace ark {
         }
         desc.useDebugOrientationEnvironment =
             desc.defaultScene.environmentFallback == SceneEnvironmentFallbackPolicy::DebugOrientation;
+        desc.debugUiEnabled = options.debugUiEnabled;
         return desc;
     }
 

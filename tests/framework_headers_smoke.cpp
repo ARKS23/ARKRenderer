@@ -3,6 +3,7 @@
 #include "app/Input.h"
 #include "app/SandboxCameraController.h"
 #include "app/SandboxLaunchOptions.h"
+#include "app/SandboxRuntimeSettings.h"
 #include "app/Window.h"
 #include "asset/GltfLoader.h"
 #include "asset/MeshData.h"
@@ -19,6 +20,7 @@
 #include "core/Types.h"
 #include "renderer/FrameContext.h"
 #include "renderer/FrameRenderer.h"
+#include "renderer/FrameOverlay.h"
 #include "renderer/Bounds.h"
 #include "renderer/CubemapOrientation.h"
 #include "renderer/EnvironmentBrdfLutGenerator.h"
@@ -127,6 +129,7 @@ int main() {
     applicationDesc.view.shadows.filterMode = ark::ShadowFilterMode::Pcf3x3;
     applicationDesc.view.shadows.filterRadiusTexels = 1.5f;
     applicationDesc.useDebugOrientationEnvironment = true;
+    applicationDesc.debugUiEnabled = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
 
@@ -522,6 +525,14 @@ int main() {
         ark::ToneMappingOperator::Linear) {
         return EXIT_FAILURE;
     }
+    constexpr std::array<std::string_view, 1> noUiArguments{
+        "--no-ui",
+    };
+    const ark::ApplicationDesc noUiSandboxApplicationDesc =
+        ark::makeSandboxApplicationDesc(noUiArguments);
+    if (noUiSandboxApplicationDesc.debugUiEnabled) {
+        return EXIT_FAILURE;
+    }
     ark::SceneResourceLoadDesc sceneResourceLoadDesc{};
     sceneResourceLoadDesc.modelPath = rendererDesc.defaultScene.modelPath;
     sceneResourceLoadDesc.modelTransform = rendererDesc.defaultScene.modelTransform;
@@ -580,10 +591,15 @@ int main() {
     inputSnapshot.cursorDelta = glm::vec2{0.5f, -0.25f};
     inputSnapshot.scrollDelta = glm::vec2{0.0f, 1.0f};
     inputSnapshot.rightMouseDown = true;
+    inputSnapshot.debugUiTogglePressed = true;
     ark::SandboxCameraController sandboxCameraController{};
     sandboxCameraController.setViewportExtent(swapChainDesc.extent);
     sandboxCameraController.update(inputSnapshot);
     sandboxCameraController.writeTo(renderView);
+    ark::SandboxRuntimeSettings runtimeSettings =
+        ark::makeSandboxRuntimeSettings(applicationDesc);
+    ark::applySandboxRuntimeSettings(renderView, runtimeSettings);
+    ark::FrameOverlay* frameOverlay = nullptr;
     ark::ToneMappingSettings toneMappingSettings{};
     toneMappingSettings.exposure = 1.25f;
     toneMappingSettings.outputGamma = 2.2f;
@@ -710,6 +726,8 @@ int main() {
     (void)sceneLighting;
     (void)sceneEnvironment;
     (void)renderView;
+    (void)runtimeSettings;
+    (void)frameOverlay;
     (void)inputSnapshot;
     (void)sandboxCameraController;
     (void)renderQueue;

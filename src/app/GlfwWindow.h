@@ -27,5 +27,6 @@ namespace ark {
         glm::vec2 m_PendingScrollDelta{0.0f};
         bool m_HasPreviousCursorPosition = false;
         bool m_PreviousResetDown = false;
+        bool m_PreviousDebugUiToggleDown = false;
     };
 } // namespace ark

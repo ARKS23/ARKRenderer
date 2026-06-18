@@ -9,6 +9,7 @@
 #include "renderer/EnvironmentIrradianceGenerator.h"
 #include "renderer/EnvironmentSpecularPrefilterGenerator.h"
 #include "renderer/FrameContext.h"
+#include "renderer/FrameOverlay.h"
 #include "renderer/FrameRenderer.h"
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
@@ -112,7 +113,7 @@ namespace ark {
                 ARK_INFO("Renderer shutdown");
             }
 
-            void render(RenderScene& scene, const RenderView& view) override {
+            void render(RenderScene& scene, const RenderView& view, FrameOverlay* overlay = nullptr) override {
                 // 窗口最小化或 swapchain 尚未创建时跳过当前帧，避免用 0 尺寸重建 swapchain。
                 if (m_RenderingPaused || !m_Backend->swapChain()) {
                     return;
@@ -169,7 +170,7 @@ namespace ark {
                 frameContext.prefilteredSpecularCube = resolveFramePrefilteredSpecularCube(renderScene);
                 frameContext.brdfLut = resolveFrameBrdfLut(renderScene);
 
-                if (!m_FrameRenderer->render(frameContext)) {
+                if (!m_FrameRenderer->render(frameContext, overlay)) {
                     context.end();
                     return;
                 }

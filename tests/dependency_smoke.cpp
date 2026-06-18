@@ -11,6 +11,8 @@
 #include <fmt/core.h>
 #include <glm/glm.hpp>
 #include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
 #include <ktx.h>
 #include <spdlog/spdlog.h>
 #include <spirv_reflect.h>
@@ -69,6 +71,16 @@ int main() {
 
     ImGui::CreateContext();
     ImGui::GetIO().DisplaySize = ImVec2{640.0F, 480.0F};
+    ImGui_ImplVulkan_InitInfo vulkanInitInfo{};
+    vulkanInitInfo.ApiVersion = VK_API_VERSION_1_3;
+    vulkanInitInfo.MinImageCount = 2;
+    vulkanInitInfo.ImageCount = 2;
+    vulkanInitInfo.UseDynamicRendering = true;
+    vulkanInitInfo.PipelineInfoMain.PipelineRenderingCreateInfo.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    vulkanInitInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    const auto glfwInitForVulkan = &ImGui_ImplGlfw_InitForVulkan;
+    const auto vulkanRenderDrawData = &ImGui_ImplVulkan_RenderDrawData;
     ImGui::DestroyContext();
 
 #if ARK_HAS_DXC
@@ -82,12 +94,13 @@ int main() {
     glfwGetVersion(&glfwMajor, &glfwMinor, &glfwRevision);
 
     const std::string report =
-        fmt::format("ARKRenderer dependencies OK | Vulkan header {} | GLFW {}.{}.{} | ImGui {} | STB {} | KTX {} | glm.z {}",
+        fmt::format("ARKRenderer dependencies OK | Vulkan header {} | GLFW {}.{}.{} | ImGui {} | ImGui backends {} | STB {} | KTX {} | glm.z {}",
                     VK_HEADER_VERSION,
                     glfwMajor,
                     glfwMinor,
                     glfwRevision,
                     IMGUI_VERSION,
+                    (glfwInitForVulkan && vulkanRenderDrawData) ? "linked" : "missing",
                     STBI_VERSION,
                     ktxErrorString(ktxStatus),
                     sampleVector.z);

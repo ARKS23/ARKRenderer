@@ -14,6 +14,7 @@ namespace ark {
         RenderViewProfileDesc view;
         OrbitCameraProfileDesc camera;
         bool useDebugOrientationEnvironment = false;
+        bool debugUiEnabled = true;
     };
 
     class Application {
