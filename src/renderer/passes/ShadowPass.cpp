@@ -67,6 +67,85 @@ namespace ark {
             return std::isfinite(rangeMin) && std::isfinite(rangeMax) && rangeMin <= rangeMax;
         }
 
+        bool computeTexelSize(float rangeMin, float rangeMax, u32 mapExtent, float& texelSize) {
+            if (mapExtent == 0) {
+                return false;
+            }
+
+            const float rangeSize = rangeMax - rangeMin;
+            if (!std::isfinite(rangeSize) || rangeSize <= 0.0f) {
+                return false;
+            }
+
+            texelSize = rangeSize / static_cast<float>(mapExtent);
+            if (!std::isfinite(texelSize) || texelSize <= 0.0f) {
+                return false;
+            }
+
+            return true;
+        }
+
+        void snapHorizontalRangeToReferenceTexelGrid(float& rangeMin,
+                                                     float& rangeMax,
+                                                     float referenceCoord,
+                                                     u32 mapExtent) {
+            float texelSize = 0.0f;
+            if (!computeTexelSize(rangeMin, rangeMax, mapExtent, texelSize)) {
+                return;
+            }
+
+            if (!std::isfinite(referenceCoord)) {
+                return;
+            }
+
+            const float referenceTexelCoord = (referenceCoord - rangeMin) / texelSize;
+            const float snappedReferenceOffset =
+                std::floor(referenceTexelCoord + 0.5f) * texelSize;
+            const float snappedRangeMin = referenceCoord - snappedReferenceOffset;
+            const float offset = snappedRangeMin - rangeMin;
+            rangeMin += offset;
+            rangeMax += offset;
+        }
+
+        void snapVerticalRangeToReferenceTexelGrid(float& rangeMin,
+                                                   float& rangeMax,
+                                                   float referenceCoord,
+                                                   u32 mapExtent) {
+            float texelSize = 0.0f;
+            if (!computeTexelSize(rangeMin, rangeMax, mapExtent, texelSize)) {
+                return;
+            }
+
+            if (!std::isfinite(referenceCoord)) {
+                return;
+            }
+
+            // The Vulkan projection flips Y by negating the scale term after glm::orthoRH_ZO.
+            // With that convention, final shadow texel Y is proportional to -(bottom + y).
+            const float referenceTexelCoord = -(rangeMin + referenceCoord) / texelSize;
+            const float snappedReferenceOffset =
+                std::floor(referenceTexelCoord + 0.5f) * texelSize;
+            const float snappedRangeMin = -referenceCoord - snappedReferenceOffset;
+            const float offset = snappedRangeMin - rangeMin;
+            rangeMin += offset;
+            rangeMax += offset;
+        }
+
+        void stabilizeLightProjectionRange(float& left,
+                                           float& right,
+                                           float& bottom,
+                                           float& top,
+                                           const glm::mat4& lightView,
+                                           const ShadowSettings& settings) {
+            if (!settings.stabilizeProjection) {
+                return;
+            }
+
+            const glm::vec4 stableReference = lightView * glm::vec4{0.0f, 0.0f, 0.0f, 1.0f};
+            snapHorizontalRangeToReferenceTexelGrid(left, right, stableReference.x, settings.mapExtent);
+            snapVerticalRangeToReferenceTexelGrid(bottom, top, stableReference.y, settings.mapExtent);
+        }
+
         glm::mat4 makeFixedLightViewProjection(const SceneLighting& lighting, const ShadowSettings& settings) {
             const glm::vec3 lightDirection = normalizeLightDirection(lighting.mainLight.direction);
             const glm::vec3 lightTarget{0.0f, 0.0f, 0.0f};
@@ -100,7 +179,7 @@ namespace ark {
                                                     lightTarget,
                                                     chooseLightUp(lightDirection));
 
-            // 第一版只用 scene world AABB 拟合单张 directional shadow map；CSM 和 texel snapping 后续再接。
+            // 当前仍是单张 directional shadow map；先把 scene-fit projection 稳定到 shadow texel grid。
             float left = std::numeric_limits<float>::max();
             float right = std::numeric_limits<float>::lowest();
             float bottom = std::numeric_limits<float>::max();
@@ -130,6 +209,7 @@ namespace ark {
             top += padding;
             expandRangeToMinHalfExtent(left, right, settings.orthographicHalfExtent);
             expandRangeToMinHalfExtent(bottom, top, settings.orthographicHalfExtent);
+            stabilizeLightProjectionRange(left, right, bottom, top, lightView, settings);
 
             const float nearPlane = std::max(settings.nearPlane, minDepth - padding);
             const float farPlane = std::max({settings.farPlane, maxDepth + padding, nearPlane + 0.01f});
@@ -153,6 +233,28 @@ namespace ark {
         rhi::Extent2D makeShadowExtent(const ShadowSettings& settings) {
             return rhi::Extent2D{settings.mapExtent, settings.mapExtent};
         }
+
+        void clearFrameShadowBindings(FrameContext& frameContext) {
+            frameContext.shadowMapView = nullptr;
+            frameContext.shadowSampler = nullptr;
+            frameContext.shadowStrength = 0.0f;
+            frameContext.shadowBias = ShadowSettings{}.bias;
+            frameContext.shadowFilterMode = static_cast<float>(ShadowFilterMode::Hard);
+            frameContext.shadowFilterRadiusTexels = 0.0f;
+        }
+
+        void publishFrameShadowBindings(FrameContext& frameContext,
+                                        rhi::TextureView* shadowMapView,
+                                        rhi::Sampler* shadowSampler) {
+            const ShadowSettings& settings = frameContext.view->shadowSettings();
+            frameContext.shadowMapView = shadowMapView;
+            frameContext.shadowSampler = shadowSampler;
+            frameContext.lightViewProjection = makeLightViewProjection(frameContext);
+            frameContext.shadowStrength = settings.strength;
+            frameContext.shadowBias = settings.bias;
+            frameContext.shadowFilterMode = static_cast<float>(settings.filterMode);
+            frameContext.shadowFilterRadiusTexels = settings.filterRadiusTexels;
+        }
     } // namespace
 
     ShadowPass::~ShadowPass() = default;
@@ -167,9 +269,7 @@ namespace ark {
 
     bool ShadowPass::prepare(FrameContext& frameContext) {
         if (!isShadowEnabled(frameContext)) {
-            frameContext.shadowMapView = nullptr;
-            frameContext.shadowSampler = nullptr;
-            frameContext.shadowStrength = 0.0f;
+            clearFrameShadowBindings(frameContext);
             return true;
         }
 
@@ -184,11 +284,7 @@ namespace ark {
         }
 
         if (!frameContext.queue || frameContext.queue->empty()) {
-            frameContext.shadowMapView = m_ShadowMapView.get();
-            frameContext.shadowSampler = m_ShadowSampler.get();
-            frameContext.lightViewProjection = makeLightViewProjection(frameContext);
-            frameContext.shadowStrength = frameContext.view->shadowSettings().strength;
-            frameContext.shadowBias = frameContext.view->shadowSettings().bias;
+            publishFrameShadowBindings(frameContext, m_ShadowMapView.get(), m_ShadowSampler.get());
             return true;
         }
 
@@ -203,11 +299,7 @@ namespace ark {
             }
         }
 
-        frameContext.shadowMapView = m_ShadowMapView.get();
-        frameContext.shadowSampler = m_ShadowSampler.get();
-        frameContext.lightViewProjection = makeLightViewProjection(frameContext);
-        frameContext.shadowStrength = frameContext.view->shadowSettings().strength;
-        frameContext.shadowBias = frameContext.view->shadowSettings().bias;
+        publishFrameShadowBindings(frameContext, m_ShadowMapView.get(), m_ShadowSampler.get());
         return true;
     }
 
@@ -426,8 +518,8 @@ namespace ark {
 
         rhi::SamplerDesc samplerDesc{};
         samplerDesc.debugName = "ShadowMapSampler";
-        samplerDesc.minFilter = rhi::FilterMode::Linear;
-        samplerDesc.magFilter = rhi::FilterMode::Linear;
+        samplerDesc.minFilter = rhi::FilterMode::Nearest;
+        samplerDesc.magFilter = rhi::FilterMode::Nearest;
         samplerDesc.mipFilter = rhi::FilterMode::Nearest;
         samplerDesc.addressU = rhi::AddressMode::ClampToEdge;
         samplerDesc.addressV = rhi::AddressMode::ClampToEdge;

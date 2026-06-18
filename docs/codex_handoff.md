@@ -1,5 +1,45 @@
 # Codex Handoff Summary
 
+## Latest Update (2026-06-18, Phase 0.64)
+
+ARKRenderer has completed Phase 0.64: Shadow Quality / Stability Pass.
+
+Key changes:
+- Added `ShadowFilterMode` with `Hard`, `Pcf3x3`, and `Pcf5x5`.
+- Extended `ShadowSettings` with `stabilizeProjection`, `filterMode`, and `filterRadiusTexels`.
+- `FrameContext` and `ForwardPass` now carry shadow filter mode/radius through `LightingUniform.shadow.zw`.
+- `RendererPreset` default view now enables PCF 3x3 with a 1 texel filter radius.
+- Sandbox CLI now supports `--shadow-filter hard|pcf3x3|pcf5x5` and `--shadow-filter-radius <float>` through the existing override mask flow.
+- `ShadowPass` now publishes and clears all shadow filter fields consistently for enabled, empty-queue, and disabled paths.
+- Scene-fit directional shadow projection now supports texel snapping via `ShadowSettings::stabilizeProjection`, using world origin as the stable reference point.
+- `mesh.frag.hlsl` now implements deterministic shader PCF for 3x3 and 5x5 kernels, deriving texel size from `g_ShadowMap.GetDimensions()`.
+- Shadow map sampler now uses nearest filtering so raw-depth taps are compared in shader before PCF averaging.
+- Added and updated smoke coverage for shadow settings parsing/sanitization, preset defaults, CLI overrides, ShadowPass binding publication, texel snapping, shader PCF source markers, and frame validation.
+
+Validation completed:
+```powershell
+cmake --build --preset msvc-vcpkg-debug --target ark_shader_assets_smoke ark_forward_pass_pipeline_smoke ark_shadow_pass_smoke ark_renderer_preset_smoke ark_framework_headers_smoke ark_frame_validation_smoke ark_sandbox
+ctest --test-dir build/msvc-vcpkg -C Debug -R "ark_(shader_assets|forward_pass_pipeline|shadow_pass|renderer_preset|framework_headers|frame_validation)_smoke" --output-on-failure
+cmake --build --preset msvc-vcpkg-debug
+ctest --test-dir build/msvc-vcpkg -C Debug --output-on-failure
+ark_sandbox hidden-window smoke for default, sponza, shadow-validation, and sponza pcf5x5 override
+```
+
+Results:
+```text
+targeted build passed
+targeted CTest passed: 6/6
+ark_frame_validation_smoke passed without golden update
+full Debug build passed
+full CTest passed: 30/30
+sandbox hidden-window smoke passed for default, sponza, shadow-validation, and sponza-pcf5
+```
+
+Notes:
+- This phase still uses a single directional shadow map; it does not add CSM/cascades.
+- The PCF kernel is deterministic grid PCF, chosen for stable golden validation and predictable tuning.
+- If single-map quality becomes insufficient for large Sponza views, the next meaningful shadow step is CSM planning with split policy, atlas/resource ownership, and debug visualization.
+
 ## Latest Update (2026-06-17, Phase 0.63)
 
 ARKRenderer has completed Phase 0.63: Renderer Public Scene / Resource API Closure.

@@ -99,6 +99,8 @@ ConstantBuffer<MaterialUniform> g_Material;
 
 static const float AlphaModeMask = 1.0f;
 static const float AlphaModeBlend = 2.0f;
+static const float ShadowFilterPcf3x3 = 1.0f;
+static const float ShadowFilterPcf5x5 = 2.0f;
 static const float PI = 3.14159265359f;
 
 struct LightingUniform {
@@ -109,6 +111,7 @@ struct LightingUniform {
     float4 environment;
     float4 environmentSpecular;
     float4x4 lightViewProjection;
+    // x: strength, y: bias, z: filter mode, w: filter radius in texels.
     float4 shadow;
 };
 
@@ -287,6 +290,51 @@ float3 evaluateIndirectLighting(float3 n,
     return diffuseIbl * kd + specularIbl;
 }
 
+bool isShadowUvInside(float2 shadowUv) {
+    return shadowUv.x >= 0.0f && shadowUv.x <= 1.0f &&
+           shadowUv.y >= 0.0f && shadowUv.y <= 1.0f;
+}
+
+float2 sampleShadowTexelSize() {
+    uint shadowWidth = 0;
+    uint shadowHeight = 0;
+    g_ShadowMap.GetDimensions(shadowWidth, shadowHeight);
+    return float2(
+        shadowWidth > 0 ? rcp((float)shadowWidth) : 0.0f,
+        shadowHeight > 0 ? rcp((float)shadowHeight) : 0.0f
+    );
+}
+
+float sampleShadowCompare(float2 shadowUv, float receiverDepth, float bias) {
+    const float sampledDepth = g_ShadowMap.Sample(g_ShadowSampler, shadowUv).r;
+    return (receiverDepth - bias) <= sampledDepth ? 1.0f : 0.0f;
+}
+
+float sampleShadowPcf(float2 shadowUv, float receiverDepth, float bias, int kernelRadius, float radiusTexels) {
+    const float2 texelSize = sampleShadowTexelSize();
+    const float radiusScale = max(radiusTexels, 0.0f);
+    if (kernelRadius <= 0 || radiusScale <= 0.0f || texelSize.x <= 0.0f || texelSize.y <= 0.0f) {
+        return sampleShadowCompare(shadowUv, receiverDepth, bias);
+    }
+
+    float visibility = 0.0f;
+    float sampleCount = 0.0f;
+    [loop]
+    for (int y = -kernelRadius; y <= kernelRadius; ++y) {
+        [loop]
+        for (int x = -kernelRadius; x <= kernelRadius; ++x) {
+            const float2 sampleOffset = float2((float)x, (float)y) * texelSize * radiusScale;
+            const float2 sampleUv = shadowUv + sampleOffset;
+            visibility += isShadowUvInside(sampleUv)
+                ? sampleShadowCompare(sampleUv, receiverDepth, bias)
+                : 1.0f;
+            sampleCount += 1.0f;
+        }
+    }
+
+    return visibility / max(sampleCount, 1.0f);
+}
+
 float sampleShadowVisibility(float3 worldPosition, float nDotL) {
     if (g_Lighting.shadow.x <= 0.0f || nDotL <= 0.0f) {
         return 1.0f;
@@ -305,9 +353,14 @@ float sampleShadowVisibility(float3 worldPosition, float nDotL) {
         return 1.0f;
     }
 
-    const float sampledDepth = g_ShadowMap.Sample(g_ShadowSampler, shadowUv).r;
     const float bias = max(g_Lighting.shadow.y * (1.0f - nDotL), g_Lighting.shadow.y * 0.25f);
-    const float lit = (shadowNdc.z - bias) <= sampledDepth ? 1.0f : 0.0f;
+    float lit = sampleShadowCompare(shadowUv, shadowNdc.z, bias);
+    if (g_Lighting.shadow.z >= ShadowFilterPcf5x5 - 0.5f) {
+        lit = sampleShadowPcf(shadowUv, shadowNdc.z, bias, 2, g_Lighting.shadow.w);
+    } else if (g_Lighting.shadow.z >= ShadowFilterPcf3x3 - 0.5f) {
+        lit = sampleShadowPcf(shadowUv, shadowNdc.z, bias, 1, g_Lighting.shadow.w);
+    }
+
     return lerp(1.0f, lit, saturate(g_Lighting.shadow.x));
 }
 

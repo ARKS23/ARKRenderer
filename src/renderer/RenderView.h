@@ -20,6 +20,12 @@ namespace ark {
         ACES = 2,
     };
 
+    enum class ShadowFilterMode : u32 {
+        Hard = 0,
+        Pcf3x3 = 1,
+        Pcf5x5 = 2,
+    };
+
     struct ToneMappingSettings {
         float exposure = 1.0f;
         float outputGamma = 2.2f;
@@ -36,11 +42,17 @@ namespace ark {
         float farPlane = 64.0f;
         float lightDistance = 16.0f;
         bool fitSceneBounds = true;
+        bool stabilizeProjection = true;
+        ShadowFilterMode filterMode = ShadowFilterMode::Hard;
+        float filterRadiusTexels = 1.0f;
     };
 
     ToneMappingOperator parseToneMappingOperator(
         std::string_view name,
         ToneMappingOperator fallback = ToneMappingOperator::Reinhard);
+    ShadowFilterMode parseShadowFilterMode(
+        std::string_view name,
+        ShadowFilterMode fallback = ShadowFilterMode::Hard);
 
     class RenderView {
     public:
@@ -163,6 +175,15 @@ namespace ark {
             sanitized.nearPlane = std::clamp(sanitized.nearPlane, 0.01f, 512.0f);
             sanitized.farPlane = std::clamp(sanitized.farPlane, sanitized.nearPlane + 0.01f, 1024.0f);
             sanitized.lightDistance = std::clamp(sanitized.lightDistance, 1.0f, 512.0f);
+            if (sanitized.filterMode != ShadowFilterMode::Hard &&
+                sanitized.filterMode != ShadowFilterMode::Pcf3x3 &&
+                sanitized.filterMode != ShadowFilterMode::Pcf5x5) {
+                sanitized.filterMode = ShadowFilterMode::Hard;
+            }
+            if (!std::isfinite(sanitized.filterRadiusTexels)) {
+                sanitized.filterRadiusTexels = 1.0f;
+            }
+            sanitized.filterRadiusTexels = std::clamp(sanitized.filterRadiusTexels, 0.0f, 8.0f);
             if (sanitized.strength <= 0.0f) {
                 sanitized.enabled = false;
             }

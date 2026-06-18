@@ -22,6 +22,8 @@ namespace ark {
         bool shadowBias = false;
         bool shadowExtent = false;
         bool shadowBounds = false;
+        bool shadowFilterMode = false;
+        bool shadowFilterRadius = false;
     };
 
     struct SandboxLaunchOptions {
@@ -44,6 +46,8 @@ namespace ark {
         bool missingShadowBiasValue = false;
         bool missingShadowExtentValue = false;
         bool missingShadowBoundsValue = false;
+        bool missingShadowFilterValue = false;
+        bool missingShadowFilterRadiusValue = false;
     };
 
     SandboxLaunchOptions parseSandboxLaunchOptions(std::span<const std::string_view> arguments);

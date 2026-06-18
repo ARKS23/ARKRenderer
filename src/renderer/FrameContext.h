@@ -51,5 +51,7 @@ namespace ark {
         glm::mat4 lightViewProjection{1.0f};
         float shadowStrength = 0.0f;
         float shadowBias = 0.0015f;
+        float shadowFilterMode = 0.0f;
+        float shadowFilterRadiusTexels = 0.0f;
     };
 } // namespace ark

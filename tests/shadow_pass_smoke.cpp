@@ -48,6 +48,23 @@ namespace {
         return glm::vec3{clip} / clip.w;
     }
 
+    glm::vec2 projectShadowTexel(const glm::mat4& matrix,
+                                 const glm::vec3& point,
+                                 ark::u32 mapExtent) {
+        const glm::vec3 ndc = projectPoint(matrix, point);
+        return (glm::vec2{ndc.x, ndc.y} * 0.5f + glm::vec2{0.5f}) *
+               static_cast<float>(mapExtent);
+    }
+
+    bool isProjectedPointTexelAligned(const glm::mat4& matrix,
+                                      const glm::vec3& point,
+                                      ark::u32 mapExtent,
+                                      float epsilon = 0.001f) {
+        const glm::vec2 shadowTexel = projectShadowTexel(matrix, point, mapExtent);
+        return near(shadowTexel.x, std::round(shadowTexel.x), epsilon) &&
+               near(shadowTexel.y, std::round(shadowTexel.y), epsilon);
+    }
+
     bool containsBinding(const std::vector<ark::rhi::DescriptorBindingDesc>& bindings,
                          ark::u32 binding,
                          ark::rhi::DescriptorType type,
@@ -479,6 +496,9 @@ namespace {
         frameContext.shadowMapView = reinterpret_cast<ark::rhi::TextureView*>(0x1);
         frameContext.shadowSampler = reinterpret_cast<ark::rhi::Sampler*>(0x1);
         frameContext.shadowStrength = 1.0f;
+        frameContext.shadowBias = 0.2f;
+        frameContext.shadowFilterMode = static_cast<float>(ark::ShadowFilterMode::Pcf5x5);
+        frameContext.shadowFilterRadiusTexels = 4.0f;
 
         if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
             std::cerr << "ShadowPass disabled path failed\n";
@@ -486,7 +506,11 @@ namespace {
         }
 
         if (frameContext.shadowMapView || frameContext.shadowSampler ||
-            frameContext.shadowStrength != 0.0f || context.beginRenderingCalls != 0 ||
+            frameContext.shadowStrength != 0.0f ||
+            !near(frameContext.shadowBias, ark::ShadowSettings{}.bias) ||
+            frameContext.shadowFilterMode != static_cast<float>(ark::ShadowFilterMode::Hard) ||
+            frameContext.shadowFilterRadiusTexels != 0.0f ||
+            context.beginRenderingCalls != 0 ||
             context.indexedDraws != 0) {
             std::cerr << "ShadowPass disabled path should clear frame shadow bindings without rendering\n";
             return false;
@@ -523,6 +547,8 @@ namespace {
         shadows.mapExtent = 512;
         shadows.orthographicHalfExtent = 18.0f;
         shadows.lightDistance = 32.0f;
+        shadows.filterMode = ark::ShadowFilterMode::Pcf5x5;
+        shadows.filterRadiusTexels = 2.0f;
         view.setShadowSettings(shadows);
 
         pass.setup(device);
@@ -587,8 +613,26 @@ namespace {
 
         if (!frameContext.shadowMapView || !frameContext.shadowSampler ||
             !near(frameContext.shadowStrength, 0.55f) ||
-            !near(frameContext.shadowBias, 0.003f)) {
+            !near(frameContext.shadowBias, 0.003f) ||
+            frameContext.shadowFilterMode != static_cast<float>(ark::ShadowFilterMode::Pcf5x5) ||
+            !near(frameContext.shadowFilterRadiusTexels, 2.0f)) {
             std::cerr << "ShadowPass did not publish frame shadow resources\n";
+            return false;
+        }
+
+        if (device.samplerDescs.empty()) {
+            std::cerr << "ShadowPass did not create a shadow sampler\n";
+            return false;
+        }
+
+        const ark::rhi::SamplerDesc& shadowSamplerDesc = device.samplerDescs.back();
+        if (shadowSamplerDesc.debugName != "ShadowMapSampler" ||
+            shadowSamplerDesc.minFilter != ark::rhi::FilterMode::Nearest ||
+            shadowSamplerDesc.magFilter != ark::rhi::FilterMode::Nearest ||
+            shadowSamplerDesc.mipFilter != ark::rhi::FilterMode::Nearest ||
+            shadowSamplerDesc.addressU != ark::rhi::AddressMode::ClampToEdge ||
+            shadowSamplerDesc.addressV != ark::rhi::AddressMode::ClampToEdge) {
+            std::cerr << "ShadowPass shadow sampler should expose raw-depth taps for shader PCF\n";
             return false;
         }
 
@@ -664,7 +708,7 @@ namespace {
         scene.setLighting(lighting);
         scene.addObject(mesh,
                         material,
-                        glm::translate(glm::mat4{1.0f}, glm::vec3{24.0f, 0.0f, 0.0f}),
+                        glm::translate(glm::mat4{1.0f}, glm::vec3{23.37f, 0.0f, 0.41f}),
                         "FittedShadowObject");
         queue.build(scene);
         if (!scene.hasBounds()) {
@@ -701,8 +745,21 @@ namespace {
         }
 
         const glm::vec3 fittedCenter = projectPoint(frameContext.lightViewProjection, scene.bounds().center());
-        if (!near(fittedCenter.x, 0.0f, 0.001f) ||
-            !near(fittedCenter.y, 0.0f, 0.001f) ||
+        const glm::mat4 stabilizedLightViewProjection = frameContext.lightViewProjection;
+        if (!isProjectedPointTexelAligned(stabilizedLightViewProjection,
+                                          glm::vec3{0.0f},
+                                          shadows.mapExtent)) {
+            const glm::vec2 texel = projectShadowTexel(stabilizedLightViewProjection,
+                                                       glm::vec3{0.0f},
+                                                       shadows.mapExtent);
+            std::cerr << "ShadowPass stabilized scene fitting did not align stable reference to texel grid: "
+                      << texel.x << ", " << texel.y << "\n";
+            return false;
+        }
+
+        const float halfTexelNdc = 1.0f / static_cast<float>(shadows.mapExtent);
+        if (!near(fittedCenter.x, 0.0f, halfTexelNdc) ||
+            !near(fittedCenter.y, 0.0f, halfTexelNdc) ||
             fittedCenter.z < 0.0f ||
             fittedCenter.z > 1.0f) {
             std::cerr << "ShadowPass scene fitting did not center scene bounds: "
@@ -712,7 +769,25 @@ namespace {
             return false;
         }
 
+        shadows.stabilizeProjection = false;
+        fittedView.setShadowSettings(shadows);
+        frameContext.view = &fittedView;
+        if (!pass.prepare(frameContext)) {
+            std::cerr << "ShadowPass unstabilized scene-fit prepare failed\n";
+            return false;
+        }
+
+        const glm::mat4 unstabilizedLightViewProjection = frameContext.lightViewProjection;
+        if (isProjectedPointTexelAligned(unstabilizedLightViewProjection,
+                                         glm::vec3{0.0f},
+                                         shadows.mapExtent,
+                                         0.00001f)) {
+            std::cerr << "ShadowPass unstabilized scene fitting should not force stable reference to texel grid\n";
+            return false;
+        }
+
         shadows.fitSceneBounds = false;
+        shadows.stabilizeProjection = true;
         manualView.setShadowSettings(shadows);
         frameContext.view = &manualView;
         if (!pass.prepare(frameContext)) {

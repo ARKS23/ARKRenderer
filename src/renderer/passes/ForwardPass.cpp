@@ -168,8 +168,8 @@ namespace ark {
             uniform.lightViewProjection = frameContext.lightViewProjection;
             uniform.shadow = glm::vec4{frameContext.shadowStrength,
                                        frameContext.shadowBias,
-                                       0.0f,
-                                       0.0f};
+                                       frameContext.shadowFilterMode,
+                                       frameContext.shadowFilterRadiusTexels};
 
             if (frameContext.view) {
                 uniform.cameraPosition = glm::vec4{frameContext.view->cameraPosition(), 1.0f};

@@ -124,6 +124,8 @@ int main() {
     applicationDesc.view.shadows.enabled = true;
     applicationDesc.view.shadows.strength = 0.5f;
     applicationDesc.view.shadows.mapExtent = 2048;
+    applicationDesc.view.shadows.filterMode = ark::ShadowFilterMode::Pcf3x3;
+    applicationDesc.view.shadows.filterRadiusTexels = 1.5f;
     applicationDesc.useDebugOrientationEnvironment = true;
 
     ark::rhi::NativeWindowHandle nativeWindow{};
@@ -437,7 +439,9 @@ int main() {
     if (!applicationDesc.view.shadows.enabled ||
         applicationDesc.view.shadows.strength != 0.5f ||
         applicationDesc.view.shadows.mapExtent != 2048 ||
-        !applicationDesc.view.shadows.fitSceneBounds) {
+        !applicationDesc.view.shadows.fitSceneBounds ||
+        applicationDesc.view.shadows.filterMode != ark::ShadowFilterMode::Pcf3x3 ||
+        applicationDesc.view.shadows.filterRadiusTexels != 1.5f) {
         return EXIT_FAILURE;
     }
     ark::RendererPresetDesc rendererPresetDesc{};
@@ -590,6 +594,8 @@ int main() {
     shadowSettings.strength = 0.75f;
     shadowSettings.bias = 0.002f;
     shadowSettings.mapExtent = 512;
+    shadowSettings.filterMode = ark::ShadowFilterMode::Pcf5x5;
+    shadowSettings.filterRadiusTexels = 2.0f;
     renderView.setShadowSettings(shadowSettings);
     if (renderView.toneMappingSettings().exposure != 1.25f ||
         renderView.toneMappingSettings().outputGamma != 2.2f ||
@@ -598,7 +604,11 @@ int main() {
         renderView.shadowSettings().strength != 0.75f ||
         renderView.shadowSettings().bias != 0.002f ||
         renderView.shadowSettings().mapExtent != 512 ||
+        renderView.shadowSettings().filterMode != ark::ShadowFilterMode::Pcf5x5 ||
+        renderView.shadowSettings().filterRadiusTexels != 2.0f ||
         !renderView.shadowSettings().fitSceneBounds ||
+        ark::parseShadowFilterMode("pcf-3x3") != ark::ShadowFilterMode::Pcf3x3 ||
+        ark::parseShadowFilterMode("pcf5") != ark::ShadowFilterMode::Pcf5x5 ||
         ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {
         return EXIT_FAILURE;
     }

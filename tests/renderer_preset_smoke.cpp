@@ -229,7 +229,10 @@ namespace {
                 !near(desc.view.shadows.orthographicHalfExtent, 64.0f) ||
                 !near(desc.view.shadows.farPlane, 256.0f) ||
                 !near(desc.view.shadows.lightDistance, 96.0f) ||
-                !desc.view.shadows.fitSceneBounds) {
+                !desc.view.shadows.fitSceneBounds ||
+                !desc.view.shadows.stabilizeProjection ||
+                desc.view.shadows.filterMode != ark::ShadowFilterMode::Pcf3x3 ||
+                !near(desc.view.shadows.filterRadiusTexels, 1.0f)) {
                 std::cerr << "Sandbox default scene application desc is invalid\n";
                 return false;
             }
@@ -295,7 +298,7 @@ namespace {
         }
 
         {
-            constexpr std::array<std::string_view, 7> args{
+            constexpr std::array<std::string_view, 10> args{
                 "--preset",
                 "shadow-validation",
                 "--shadow-strength=0.45",
@@ -303,6 +306,9 @@ namespace {
                 "0.004",
                 "--shadow-extent",
                 "2048",
+                "--shadow-filter=pcf5x5",
+                "--shadow-filter-radius",
+                "2.0",
             };
             const ark::SandboxLaunchOptions options =
                 ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
@@ -316,7 +322,9 @@ namespace {
                 desc.view.shadows.orthographicHalfExtent < 64.0f ||
                 desc.view.shadows.farPlane < 256.0f ||
                 desc.view.shadows.lightDistance < 96.0f ||
-                !desc.view.shadows.fitSceneBounds) {
+                !desc.view.shadows.fitSceneBounds ||
+                desc.view.shadows.filterMode != ark::ShadowFilterMode::Pcf5x5 ||
+                !near(desc.view.shadows.filterRadiusTexels, 2.0f)) {
                 std::cerr << "Sandbox shadow validation preset application desc is invalid\n";
                 return false;
             }
@@ -362,18 +370,22 @@ namespace {
         }
 
         {
-            constexpr std::array<std::string_view, 4> args{
+            constexpr std::array<std::string_view, 6> args{
                 "--shadow-strength",
                 "--shadow-bias",
                 "--shadow-extent",
                 "--shadow-bounds",
+                "--shadow-filter",
+                "--shadow-filter-radius",
             };
             const ark::SandboxLaunchOptions options =
                 ark::parseSandboxLaunchOptions(std::span<const std::string_view>{args});
             if (!options.missingShadowStrengthValue ||
                 !options.missingShadowBiasValue ||
                 !options.missingShadowExtentValue ||
-                !options.missingShadowBoundsValue) {
+                !options.missingShadowBoundsValue ||
+                !options.missingShadowFilterValue ||
+                !options.missingShadowFilterRadiusValue) {
                 std::cerr << "Sandbox missing shadow option value fallback behavior is invalid\n";
                 return false;
             }

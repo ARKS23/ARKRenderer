@@ -130,6 +130,14 @@ namespace ark {
                 shadows.fitSceneBounds = shadowOverrides.fitSceneBounds;
                 shadows.orthographicHalfExtent = shadowOverrides.orthographicHalfExtent;
             }
+            if (mask.shadowFilterMode) {
+                shadows.enabled = true;
+                shadows.filterMode = shadowOverrides.filterMode;
+            }
+            if (mask.shadowFilterRadius) {
+                shadows.enabled = true;
+                shadows.filterRadiusTexels = shadowOverrides.filterRadiusTexels;
+            }
         }
 
     } // namespace
@@ -415,6 +423,54 @@ namespace ark {
                 options.view.shadows.fitSceneBounds = false;
                 applyFloatOption(argument.substr(shadowBoundsPrefix.size()),
                                  options.view.shadows.orthographicHalfExtent);
+                continue;
+            }
+
+            if (argument == "--shadow-filter") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.viewOverrides.shadowsEnabled = true;
+                    options.viewOverrides.shadowFilterMode = true;
+                    options.view.shadows.enabled = true;
+                    options.view.shadows.filterMode =
+                        parseShadowFilterMode(value, options.view.shadows.filterMode);
+                } else {
+                    options.missingShadowFilterValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view shadowFilterPrefix = "--shadow-filter=";
+            if (hasPrefix(argument, shadowFilterPrefix)) {
+                options.viewOverrides.shadowsEnabled = true;
+                options.viewOverrides.shadowFilterMode = true;
+                options.view.shadows.enabled = true;
+                options.view.shadows.filterMode =
+                    parseShadowFilterMode(argument.substr(shadowFilterPrefix.size()),
+                                          options.view.shadows.filterMode);
+                continue;
+            }
+
+            if (argument == "--shadow-filter-radius") {
+                std::string_view value;
+                if (takeValue(arguments, argumentIndex, value)) {
+                    options.viewOverrides.shadowsEnabled = true;
+                    options.viewOverrides.shadowFilterRadius = true;
+                    options.view.shadows.enabled = true;
+                    applyFloatOption(value, options.view.shadows.filterRadiusTexels);
+                } else {
+                    options.missingShadowFilterRadiusValue = true;
+                }
+                continue;
+            }
+
+            constexpr std::string_view shadowFilterRadiusPrefix = "--shadow-filter-radius=";
+            if (hasPrefix(argument, shadowFilterRadiusPrefix)) {
+                options.viewOverrides.shadowsEnabled = true;
+                options.viewOverrides.shadowFilterRadius = true;
+                options.view.shadows.enabled = true;
+                applyFloatOption(argument.substr(shadowFilterRadiusPrefix.size()),
+                                 options.view.shadows.filterRadiusTexels);
                 continue;
             }
 

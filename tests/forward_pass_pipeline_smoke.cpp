@@ -1082,7 +1082,9 @@ namespace {
             !near(uniform.environment.x, 0.0f) ||
             !near(uniform.environment.y, 0.0f) ||
             !near(uniform.environment.w, 0.0f) ||
-            !near(uniform.environmentSpecular.x, 0.0f)) {
+            !near(uniform.environmentSpecular.x, 0.0f) ||
+            !near(uniform.shadow.z, 0.0f) ||
+            !near(uniform.shadow.w, 0.0f)) {
             std::cerr << "ForwardPass lighting uniform did not use scene lighting and view camera position\n";
             return false;
         }
@@ -1206,7 +1208,9 @@ namespace {
             !near(capture.lightingUniform.environment.w, 0.0f) ||
             !near(capture.lightingUniform.environmentSpecular.x, 0.0f) ||
             !near(capture.lightingUniform.shadow.x, 0.0f) ||
-            !near(capture.lightingUniform.shadow.y, 0.0015f)) {
+            !near(capture.lightingUniform.shadow.y, 0.0015f) ||
+            !near(capture.lightingUniform.shadow.z, 0.0f) ||
+            !near(capture.lightingUniform.shadow.w, 0.0f)) {
             std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
             return false;
         }

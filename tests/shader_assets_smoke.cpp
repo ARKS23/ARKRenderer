@@ -83,6 +83,13 @@ namespace {
             !containsText(shaderSource, "SamplerState g_ShadowSampler") ||
             !containsText(shaderSource, "lightViewProjection") ||
             !containsText(shaderSource, "sampleShadowVisibility") ||
+            !containsText(shaderSource, "ShadowFilterPcf3x3") ||
+            !containsText(shaderSource, "ShadowFilterPcf5x5") ||
+            !containsText(shaderSource, "sampleShadowCompare") ||
+            !containsText(shaderSource, "sampleShadowPcf") ||
+            !containsText(shaderSource, "GetDimensions") ||
+            !containsText(shaderSource, "g_Lighting.shadow.z") ||
+            !containsText(shaderSource, "g_Lighting.shadow.w") ||
             !containsText(shaderSource, "normalize(normal)") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||
