@@ -379,16 +379,19 @@ namespace {
         }
 
         bool deferReleaseTexture(ark::Scope<ark::rhi::Texture>& texture) override {
+            ++deferredTextureReleases;
             texture.reset();
             return true;
         }
 
         bool deferReleaseTextureView(ark::Scope<ark::rhi::TextureView>& textureView) override {
+            ++deferredTextureViewReleases;
             textureView.reset();
             return true;
         }
 
         bool deferReleaseSampler(ark::Scope<ark::rhi::Sampler>& sampler) override {
+            ++deferredSamplerReleases;
             sampler.reset();
             return true;
         }
@@ -431,6 +434,9 @@ namespace {
         int pipelineBinds = 0;
         int descriptorBinds = 0;
         int draws = 0;
+        int deferredTextureReleases = 0;
+        int deferredTextureViewReleases = 0;
+        int deferredSamplerReleases = 0;
     };
 
     bool validateDescriptorLayout(const ark::rhi::DescriptorSetLayoutDesc& desc) {
@@ -734,8 +740,97 @@ namespace {
 
         return true;
     }
+
+    bool validateRuntimeParameterUpdates() {
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        context.frame.frameSlot = 0;
+
+        ark::rhi::TextureDesc sourceDesc{};
+        sourceDesc.extent = ark::rhi::Extent2D{128, 64};
+        sourceDesc.format = ark::rhi::Format::RGBA16Float;
+        sourceDesc.usage = ark::rhi::TextureUsage::RenderTarget | ark::rhi::TextureUsage::ShaderResource;
+        FakeTexture sourceTexture{sourceDesc};
+        sourceTexture.setState(ark::rhi::ResourceState::ShaderResource);
+
+        ark::rhi::TextureViewDesc sourceViewDesc{};
+        sourceViewDesc.format = sourceDesc.format;
+        FakeTextureView sourceView{sourceTexture, sourceViewDesc};
+
+        ark::PostProcessingSettings postProcessing{};
+        postProcessing.bloom.enabled = true;
+        postProcessing.bloom.intensity = 0.2f;
+        postProcessing.bloom.scatter = 0.7f;
+        postProcessing.bloom.threshold = 1.4f;
+        postProcessing.bloom.softKnee = 0.35f;
+        postProcessing.bloom.maxMipCount = 4;
+
+        ark::RenderView view{};
+        view.setDefaultPerspective(sourceDesc.extent);
+        view.setPostProcessingSettings(postProcessing);
+
+        ark::BloomPass pass{};
+        pass.setup(device);
+
+        ark::FrameContext frameContext{};
+        frameContext.view = &view;
+        frameContext.context = &context;
+        frameContext.frameResource = &context.frame;
+        frameContext.sceneColorView = &sourceView;
+        frameContext.extent = sourceDesc.extent;
+        frameContext.colorFormat = ark::rhi::Format::RGBA16Float;
+
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "BloomPass runtime parameter setup failed\n";
+            return false;
+        }
+
+        const ark::usize initialTextureCount = device.textureDescs.size();
+        const int initialDeferredTextures = context.deferredTextureReleases;
+        const int initialDeferredViews = context.deferredTextureViewReleases;
+
+        postProcessing.bloom.intensity = 0.55f;
+        postProcessing.bloom.threshold = 2.0f;
+        view.setPostProcessingSettings(postProcessing);
+        frameContext.sceneColorView = &sourceView;
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "BloomPass runtime uniform update failed\n";
+            return false;
+        }
+
+        if (device.textureDescs.size() != initialTextureCount ||
+            context.deferredTextureReleases != initialDeferredTextures ||
+            context.deferredTextureViewReleases != initialDeferredViews ||
+            context.deferredSamplerReleases != 0 ||
+            context.uniforms.empty() ||
+            !near(context.uniforms.back().intensity, 0.55f) ||
+            !near(context.uniforms.back().threshold, 2.0f)) {
+            std::cerr << "BloomPass uniform-only UI changes should not rebuild render targets\n";
+            return false;
+        }
+
+        postProcessing.bloom.maxMipCount = 3;
+        view.setPostProcessingSettings(postProcessing);
+        frameContext.sceneColorView = &sourceView;
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "BloomPass runtime target rebuild failed\n";
+            return false;
+        }
+
+        if (context.deferredTextureReleases != initialDeferredTextures + 9 ||
+            context.deferredTextureViewReleases != initialDeferredViews + 9 ||
+            context.deferredSamplerReleases != 0 ||
+            device.textureDescs.size() != initialTextureCount + 7) {
+            std::cerr << "BloomPass max-mip UI changes should defer-release old render targets before rebuild\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateDisabledPath() && validateEnabledPath() ? EXIT_SUCCESS : EXIT_FAILURE;
+    return validateDisabledPath() && validateEnabledPath() && validateRuntimeParameterUpdates()
+               ? EXIT_SUCCESS
+               : EXIT_FAILURE;
 }

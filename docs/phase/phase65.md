@@ -446,6 +446,18 @@ Hotfix 记录：
   - targeted CTest passed: `ark_dependency_smoke`, `ark_framework_headers_smoke`, `ark_sandbox_ui_settings_smoke`
   - full Debug build passed
   - full CTest passed: 31/31
+- 用户反馈 sandbox 中调整 Shadow Map Extent 和 Bloom 参数会出现 `VK_NOT_READY` / `VK_ERROR_DEVICE_LOST`。
+- 根因判断：Debug UI 让 Shadow / Bloom 参数可以在运行时变化，但 `ShadowPass`、`BloomPass` 在尺寸或 mip 结构变化时会立即 `reset/clear` 旧 render target。旧 texture / view / sampler 可能仍被上一帧 GPU 命令或 descriptor 引用，提前析构会触发 device lost。Bloom 还把 intensity / threshold / scatter / soft knee 这类只影响 uniform 的参数纳入 target cache 判断，导致拖动 slider 时不必要地频繁重建 RT。
+- 修复：
+  - `ShadowPass` 的 shadow map / view / sampler 重建改为通过 `DeviceContext::deferRelease*` 延迟释放。
+  - `BloomPass` 的 downsample / upsample / composite targets 重建改为延迟释放。
+  - `BloomPass` 只在 frame extent 或 bloom mip level count 变化时重建 target；强度、阈值、scatter、soft knee 仅更新 uniform。
+  - `FrameRenderer` 的 scene color resize 路径也改为延迟释放，避免窗口 resize 时出现同类 in-flight texture 生命周期问题。
+- 复验：
+  - full Debug build passed
+  - targeted CTest passed: `ark_bloom_pass_smoke`, `ark_shadow_pass_smoke`
+  - full CTest passed: 31/31
+  - sandbox default UI hidden-window smoke stayed alive for 8s
 
 ## 风险与约束
 

@@ -44,15 +44,6 @@ namespace ark {
             return lhs.width == rhs.width && lhs.height == rhs.height;
         }
 
-        bool sameBloomSettings(const BloomSettings& lhs, const BloomSettings& rhs) {
-            return lhs.enabled == rhs.enabled &&
-                   lhs.intensity == rhs.intensity &&
-                   lhs.scatter == rhs.scatter &&
-                   lhs.threshold == rhs.threshold &&
-                   lhs.softKnee == rhs.softKnee &&
-                   lhs.maxMipCount == rhs.maxMipCount;
-        }
-
         rhi::Extent2D halfExtent(rhi::Extent2D extent) {
             return rhi::Extent2D{
                 .width = std::max(1u, extent.width / 2u),
@@ -139,7 +130,7 @@ namespace ark {
             return false;
         }
 
-        if (!ensureTargets(frameContext.extent, settings)) {
+        if (!ensureTargets(frameContext, frameContext.extent, settings)) {
             return false;
         }
 
@@ -163,7 +154,7 @@ namespace ark {
             return false;
         }
 
-        if (!ensureTargets(frameContext.extent, settings)) {
+        if (!ensureTargets(frameContext, frameContext.extent, settings)) {
             return false;
         }
 
@@ -329,9 +320,14 @@ namespace ark {
         return m_PipelineLayout != nullptr;
     }
 
-    bool BloomPass::ensureTargets(rhi::Extent2D extent, const BloomSettings& settings) {
+    bool BloomPass::ensureTargets(FrameContext& frameContext, rhi::Extent2D extent, const BloomSettings& settings) {
         if (!m_Device) {
             ARK_ERROR("BloomPass requires RenderDevice before creating targets");
+            return false;
+        }
+
+        if (!frameContext.context) {
+            ARK_ERROR("BloomPass requires DeviceContext before creating targets");
             return false;
         }
 
@@ -346,15 +342,16 @@ namespace ark {
             return false;
         }
 
-        if (sameExtent(m_Extent, extent) && sameBloomSettings(m_Settings, settings) &&
-            m_LevelCount == levelCount && m_DownsampleTargets.size() == levelCount &&
+        if (sameExtent(m_Extent, extent) && m_LevelCount == levelCount &&
+            m_DownsampleTargets.size() == levelCount &&
             m_CompositeTarget.view) {
             return true;
         }
 
-        m_DownsampleTargets.clear();
-        m_UpsampleTargets.clear();
-        m_CompositeTarget = {};
+        if (!releaseTargetsDeferred(frameContext)) {
+            return false;
+        }
+
         m_LevelCount = 0;
 
         m_DownsampleTargets.resize(levelCount);
@@ -380,7 +377,6 @@ namespace ark {
         }
 
         m_Extent = extent;
-        m_Settings = settings;
         m_LevelCount = levelCount;
         return true;
     }
@@ -420,6 +416,46 @@ namespace ark {
             resources.push_back(std::move(drawResources));
         }
 
+        return true;
+    }
+
+    bool BloomPass::releaseTargetDeferred(rhi::DeviceContext& context, Target& target) {
+        // UI 调整 max mips / viewport 时会运行期重建 bloom RT；旧资源必须等当前 frame slot 的 fence signal 后再析构。
+        if (target.view && !context.deferReleaseTextureView(target.view)) {
+            return false;
+        }
+        if (target.texture && !context.deferReleaseTexture(target.texture)) {
+            return false;
+        }
+
+        target.extent = {};
+        return true;
+    }
+
+    bool BloomPass::releaseTargetsDeferred(FrameContext& frameContext) {
+        if (!frameContext.context) {
+            ARK_ERROR("BloomPass requires DeviceContext for deferred target release");
+            return false;
+        }
+
+        for (Target& target : m_DownsampleTargets) {
+            if (!releaseTargetDeferred(*frameContext.context, target)) {
+                return false;
+            }
+        }
+        for (Target& target : m_UpsampleTargets) {
+            if (!releaseTargetDeferred(*frameContext.context, target)) {
+                return false;
+            }
+        }
+        if (!releaseTargetDeferred(*frameContext.context, m_CompositeTarget)) {
+            return false;
+        }
+
+        m_DownsampleTargets.clear();
+        m_UpsampleTargets.clear();
+        m_CompositeTarget = {};
+        m_Extent = {};
         return true;
     }
 

@@ -13,6 +13,7 @@ namespace ark {
         class Buffer;
         class DescriptorSet;
         class DescriptorSetLayout;
+        class DeviceContext;
         class PipelineLayout;
         class PipelineState;
         class RenderDevice;
@@ -54,9 +55,11 @@ namespace ark {
         bool createDescriptorResources();
         bool createShaderResources();
         bool createPipelineResources();
-        bool ensureTargets(rhi::Extent2D extent, const BloomSettings& settings);
+        bool ensureTargets(FrameContext& frameContext, rhi::Extent2D extent, const BloomSettings& settings);
         bool ensureDrawResources(u32 frameSlot, usize drawCount);
         bool createTarget(Target& target, rhi::Extent2D extent, const char* debugName);
+        bool releaseTargetDeferred(rhi::DeviceContext& context, Target& target);
+        bool releaseTargetsDeferred(FrameContext& frameContext);
         bool recordFullscreenPass(FrameContext& frameContext,
                                   u32 frameSlot,
                                   usize drawIndex,
@@ -78,7 +81,6 @@ namespace ark {
         std::vector<Target> m_DownsampleTargets;
         std::vector<Target> m_UpsampleTargets;
         Target m_CompositeTarget;
-        BloomSettings m_Settings;
         rhi::Extent2D m_Extent{};
         u32 m_LevelCount = 0;
     };

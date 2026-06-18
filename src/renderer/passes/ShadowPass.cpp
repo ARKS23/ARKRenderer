@@ -279,7 +279,7 @@ namespace ark {
         }
 
         const rhi::Extent2D shadowExtent = makeShadowExtent(frameContext.view->shadowSettings());
-        if (!ensureShadowTarget(shadowExtent)) {
+        if (!ensureShadowTarget(frameContext, shadowExtent)) {
             return false;
         }
 
@@ -484,9 +484,14 @@ namespace ark {
         return m_Pipeline != nullptr;
     }
 
-    bool ShadowPass::ensureShadowTarget(rhi::Extent2D extent) {
+    bool ShadowPass::ensureShadowTarget(FrameContext& frameContext, rhi::Extent2D extent) {
         if (!m_Device) {
             ARK_ERROR("ShadowPass requires RenderDevice for shadow target");
+            return false;
+        }
+
+        if (!frameContext.context) {
+            ARK_ERROR("ShadowPass requires DeviceContext for shadow target");
             return false;
         }
 
@@ -495,9 +500,10 @@ namespace ark {
             return true;
         }
 
-        m_ShadowMapView.reset();
-        m_ShadowMap.reset();
-        m_ShadowSampler.reset();
+        if (!releaseShadowTargetDeferred(frameContext)) {
+            return false;
+        }
+
         m_ShadowExtent = extent;
 
         rhi::TextureDesc textureDesc{};
@@ -526,6 +532,27 @@ namespace ark {
         samplerDesc.addressW = rhi::AddressMode::ClampToEdge;
         m_ShadowSampler = m_Device->createSampler(samplerDesc);
         return m_ShadowSampler != nullptr;
+    }
+
+    bool ShadowPass::releaseShadowTargetDeferred(FrameContext& frameContext) {
+        if (!frameContext.context) {
+            ARK_ERROR("ShadowPass requires DeviceContext for deferred shadow target release");
+            return false;
+        }
+
+        // Shadow map 尺寸可由 UI 实时调整；旧 shadow target 可能仍被上一帧 GPU 命令读取。
+        if (m_ShadowMapView && !frameContext.context->deferReleaseTextureView(m_ShadowMapView)) {
+            return false;
+        }
+        if (m_ShadowSampler && !frameContext.context->deferReleaseSampler(m_ShadowSampler)) {
+            return false;
+        }
+        if (m_ShadowMap && !frameContext.context->deferReleaseTexture(m_ShadowMap)) {
+            return false;
+        }
+
+        m_ShadowExtent = {};
+        return true;
     }
 
     bool ShadowPass::updateShadowUniform(FrameContext& frameContext, u32 frameSlot) {

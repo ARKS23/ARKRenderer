@@ -378,16 +378,19 @@ namespace {
         }
 
         bool deferReleaseTexture(ark::Scope<ark::rhi::Texture>& texture) override {
+            ++deferredTextureReleases;
             texture.reset();
             return true;
         }
 
         bool deferReleaseTextureView(ark::Scope<ark::rhi::TextureView>& textureView) override {
+            ++deferredTextureViewReleases;
             textureView.reset();
             return true;
         }
 
         bool deferReleaseSampler(ark::Scope<ark::rhi::Sampler>& sampler) override {
+            ++deferredSamplerReleases;
             sampler.reset();
             return true;
         }
@@ -434,6 +437,9 @@ namespace {
         int shadowUniformUpdates = 0;
         int textureUploads = 0;
         int bufferUploads = 0;
+        int deferredTextureReleases = 0;
+        int deferredTextureViewReleases = 0;
+        int deferredSamplerReleases = 0;
         int vertexBufferBinds = 0;
         int indexBufferBinds = 0;
         int indexedDraws = 0;
@@ -803,11 +809,58 @@ namespace {
 
         return true;
     }
+
+    bool validateShadowMapRuntimeResize() {
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        ark::RenderView view{};
+        ark::ShadowPass pass{};
+
+        ark::ShadowSettings shadows{};
+        shadows.enabled = true;
+        shadows.strength = 1.0f;
+        shadows.mapExtent = 512;
+        view.setShadowSettings(shadows);
+
+        pass.setup(device);
+
+        ark::FrameContext frameContext{};
+        frameContext.view = &view;
+        frameContext.context = &context;
+        frameContext.frameResource = &context.frame;
+
+        if (!pass.prepare(frameContext) || !frameContext.shadowMapView || !frameContext.shadowSampler) {
+            std::cerr << "ShadowPass runtime resize setup failed\n";
+            return false;
+        }
+
+        const ark::usize initialTextureCount = device.textureDescs.size();
+        shadows.mapExtent = 1024;
+        view.setShadowSettings(shadows);
+        if (!pass.prepare(frameContext)) {
+            std::cerr << "ShadowPass runtime resize prepare failed\n";
+            return false;
+        }
+
+        if (context.deferredTextureViewReleases != 1 ||
+            context.deferredSamplerReleases != 1 ||
+            context.deferredTextureReleases != 1 ||
+            device.textureDescs.size() != initialTextureCount + 1 ||
+            device.textureDescs.back().extent.width != 1024 ||
+            device.textureDescs.back().extent.height != 1024 ||
+            !frameContext.shadowMapView ||
+            !frameContext.shadowSampler) {
+            std::cerr << "ShadowPass map extent change should defer-release old shadow target before rebuild\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
     return validateShadowPassDisabledPath() && validateShadowPassDepthRender() &&
-                   validateShadowPassSceneBoundsFitting()
+                   validateShadowPassSceneBoundsFitting() && validateShadowMapRuntimeResize()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

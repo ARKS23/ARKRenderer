@@ -32,7 +32,8 @@ namespace ark {
         bool createDescriptorResources();
         bool createShaderResources();
         bool createPipelineResources();
-        bool ensureShadowTarget(rhi::Extent2D extent);
+        bool ensureShadowTarget(FrameContext& frameContext, rhi::Extent2D extent);
+        bool releaseShadowTargetDeferred(FrameContext& frameContext);
         bool updateShadowUniform(FrameContext& frameContext, u32 frameSlot);
         bool beginShadowRendering(FrameContext& frameContext);
         void setViewportAndScissor(FrameContext& frameContext);

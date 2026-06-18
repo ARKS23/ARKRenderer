@@ -67,7 +67,7 @@ namespace ark {
                     return false;
                 }
                 rhi::Texture* depthBuffer = depthBufferView->getTexture();
-                if (!ensureSceneColor(frameContext.extent)) {
+                if (!ensureSceneColor(frameContext)) {
                     return false;
                 }
                 rhi::Texture* sceneColor = m_SceneColor.get();
@@ -196,12 +196,18 @@ namespace ark {
             }
 
         private:
-            bool ensureSceneColor(rhi::Extent2D extent) {
+            bool ensureSceneColor(FrameContext& frameContext) {
                 if (!m_Device) {
                     ARK_ERROR("FrameRenderer requires RenderDevice before creating scene color");
                     return false;
                 }
 
+                if (!frameContext.context) {
+                    ARK_ERROR("FrameRenderer requires DeviceContext before creating scene color");
+                    return false;
+                }
+
+                const rhi::Extent2D extent = frameContext.extent;
                 if (!rhi::isValidExtent(extent)) {
                     ARK_ERROR("FrameRenderer requires a valid scene color extent");
                     return false;
@@ -212,8 +218,10 @@ namespace ark {
                     return true;
                 }
 
-                m_SceneColorView.reset();
-                m_SceneColor.reset();
+                if (!releaseSceneColorDeferred(frameContext)) {
+                    return false;
+                }
+
                 m_Extent = extent;
 
                 rhi::TextureDesc textureDesc{};
@@ -229,6 +237,24 @@ namespace ark {
                 viewDesc.format = SceneColorFormat;
                 m_SceneColorView = m_Device->createTextureView(*m_SceneColor, viewDesc);
                 return m_SceneColorView != nullptr;
+            }
+
+            bool releaseSceneColorDeferred(FrameContext& frameContext) {
+                if (!frameContext.context) {
+                    ARK_ERROR("FrameRenderer requires DeviceContext for deferred scene color release");
+                    return false;
+                }
+
+                // scene color 可能仍被上一帧 GPU 命令读取；resize 时也必须走延迟释放。
+                if (m_SceneColorView && !frameContext.context->deferReleaseTextureView(m_SceneColorView)) {
+                    return false;
+                }
+                if (m_SceneColor && !frameContext.context->deferReleaseTexture(m_SceneColor)) {
+                    return false;
+                }
+
+                m_Extent = {};
+                return true;
             }
 
             bool beginSceneRendering(FrameContext& frameContext, rhi::TextureView& depthBufferView) {
