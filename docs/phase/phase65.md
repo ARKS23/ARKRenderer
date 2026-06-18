@@ -428,6 +428,15 @@ Hotfix 记录：
   - sandbox default double-click-like smoke stayed alive for 12s
   - sandbox `--no-ui` stayed alive for 8s
   - sandbox `--preset shadow-validation` stayed alive for 8s
+- 用户随后反馈 sandbox 在默认启动日志到 environment bake 后仍会闪退，并出现 Vulkan validation：`VUID-VkShaderModuleCreateInfo-pCode-08740` / `DemoteToHelperInvocation`。
+- 根因判断：`mesh.frag.hlsl` 的 alpha mask `discard` 会编译成 SPIR-V `DemoteToHelperInvocation` capability，而 `VulkanDevice` 只启用了 dynamic rendering，没有显式启用 `shaderDemoteToHelperInvocation` device feature。
+- 修复：`VulkanDevice::createDevice()` 查询 `VkPhysicalDeviceVulkan13Features`，在不支持时提前报错，并在支持设备上启用 `shaderDemoteToHelperInvocation`。
+- 复验：
+  - targeted build passed: `ark_sandbox`, `ark_frame_validation_smoke`, `ark_forward_pass_pipeline_smoke`, `ark_dependency_smoke`
+  - targeted CTest passed: 3/3
+  - full Debug build passed
+  - full CTest passed: 31/31
+  - sandbox default / `--no-ui` / `--preset shadow-validation` hidden-window smoke stayed alive for 8s without demote validation error
 
 ## 风险与约束
 

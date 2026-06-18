@@ -255,9 +255,22 @@ namespace ark::rhi::vulkan {
 
         vkb::PhysicalDevice selectedPhysicalDevice = physicalDeviceResult.value();
         vkb::DeviceBuilder deviceBuilder(selectedPhysicalDevice);
+        VkPhysicalDeviceVulkan13Features supportedVulkan13Features{};
+        supportedVulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+        VkPhysicalDeviceFeatures2 supportedFeatures{};
+        supportedFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supportedFeatures.pNext = &supportedVulkan13Features;
+        vkGetPhysicalDeviceFeatures2(selectedPhysicalDevice.physical_device, &supportedFeatures);
+
+        if (supportedVulkan13Features.shaderDemoteToHelperInvocation != VK_TRUE) {
+            throw std::runtime_error("Vulkan device does not support shaderDemoteToHelperInvocation");
+        }
+
         VkPhysicalDeviceVulkan13Features vulkan13Features{};
         vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
         vulkan13Features.dynamicRendering = VK_TRUE;
+        // mesh alpha mask 的 discard 会编译成 DemoteToHelperInvocation，必须在 device feature 中显式开启。
+        vulkan13Features.shaderDemoteToHelperInvocation = VK_TRUE;
 
         deviceBuilder.add_pNext(&vulkan13Features);
 

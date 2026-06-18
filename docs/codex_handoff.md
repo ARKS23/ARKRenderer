@@ -39,6 +39,7 @@ Notes:
 - This phase intentionally avoids a full editor, gizmos, resource browsers, and frame-validation UI rendering.
 - Environment and camera panels are intentionally not expanded yet; runtime camera state and public scene/resource control should be cleaned up before making those interactive.
 - Hotfix: sandbox flash-crash was traced through WER to `ark_sandbox.exe+0x66ce58`, which maps to volk's global `vkGetDeviceProcAddr` function pointer variable. `VulkanImGuiBackend` must not call `ImGui_ImplVulkan_LoadFunctions()` with volk globals when using the vcpkg ImGui backend linked against `vulkan-1`; rely on the backend's normal Vulkan loader path instead. Revalidated full Debug build, full CTest 31/31, and sandbox default / `--no-ui` / `--preset shadow-validation` launch smoke.
+- Hotfix: a later sandbox startup crash showed Vulkan validation `VUID-VkShaderModuleCreateInfo-pCode-08740` for `DemoteToHelperInvocation`. `mesh.frag.hlsl` alpha-mask `discard` compiles to that SPIR-V capability, so `VulkanDevice` now queries Vulkan 1.3 device features and enables `shaderDemoteToHelperInvocation` alongside dynamic rendering, failing early if unsupported. Revalidated targeted build/CTest, full Debug build, full CTest 31/31, and sandbox default / `--no-ui` / `--preset shadow-validation` launch smoke.
 
 ## Previous Update (2026-06-18, Phase 0.64)
 
