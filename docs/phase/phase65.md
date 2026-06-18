@@ -416,6 +416,19 @@ sandbox hidden-window smoke passed for default, --no-ui, and shadow-validation
 - `--no-ui` 可禁用 UI。
 - 运行时按 F1 可显示/隐藏 UI。
 
+Hotfix 记录：
+
+- 用户反馈默认打开 sandbox 会闪退。
+- WER 报告显示 `0xc0000005`，异常偏移落在 volk 全局函数指针变量 `vkGetDeviceProcAddr`。
+- 根因判断：0.65 初版在 vcpkg ImGui Vulkan backend 已经链接 `vulkan-1` 的情况下，又手动调用 `ImGui_ImplVulkan_LoadFunctions()` 并走 volk 函数指针加载，存在把函数指针变量地址当成函数执行的风险。
+- 修复：`VulkanImGuiBackend` 不再调用 `ImGui_ImplVulkan_LoadFunctions()`，改为使用 vcpkg backend 默认的 Vulkan loader 链接路径。
+- 复验：
+  - full Debug build passed
+  - full CTest passed: 31/31
+  - sandbox default double-click-like smoke stayed alive for 12s
+  - sandbox `--no-ui` stayed alive for 8s
+  - sandbox `--preset shadow-validation` stayed alive for 8s
+
 ## 风险与约束
 
 - ImGui Vulkan backend 可能需要访问 Vulkan instance/device/queue/render pass 或 dynamic rendering 信息；如果当前 RHI 没有暴露这些句柄，要避免大面积打穿 RHI。

@@ -14,30 +14,12 @@
 
 namespace ark::rhi::vulkan {
     namespace {
-        struct ImGuiVulkanLoaderData {
-            VkInstance instance = VK_NULL_HANDLE;
-            VkDevice device = VK_NULL_HANDLE;
-        };
-
         void checkImGuiVkResult(VkResult result) {
             if (result != VK_SUCCESS) {
                 ARK_ERROR("Dear ImGui Vulkan backend error: {} ({})",
                           vkResultName(result),
                           static_cast<int>(result));
             }
-        }
-
-        PFN_vkVoidFunction loadImGuiVulkanFunction(const char* functionName, void* userData) {
-            const auto* loaderData = static_cast<const ImGuiVulkanLoaderData*>(userData);
-            if (!loaderData) {
-                return nullptr;
-            }
-
-            PFN_vkVoidFunction function = vkGetInstanceProcAddr(loaderData->instance, functionName);
-            if (!function && loaderData->device != VK_NULL_HANDLE) {
-                function = vkGetDeviceProcAddr(loaderData->device, functionName);
-            }
-            return function;
         }
     } // namespace
 
@@ -55,14 +37,7 @@ namespace ark::rhi::vulkan {
             return false;
         }
 
-        ImGuiVulkanLoaderData loaderData{};
-        loaderData.instance = device.getInstance();
-        loaderData.device = device.getDevice();
-        if (!ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_3, loadImGuiVulkanFunction, &loaderData)) {
-            ARK_ERROR("VulkanImGuiBackend failed to load Vulkan functions");
-            return false;
-        }
-
+        // vcpkg 的 ImGui Vulkan backend 已链接 vulkan-1；这里不要再把 volk 全局函数指针喂给 LoadFunctions。
         if (!ImGui_ImplGlfw_InitForVulkan(static_cast<GLFWwindow*>(desc.glfwWindow),
                                           desc.installGlfwCallbacks)) {
             ARK_ERROR("VulkanImGuiBackend failed to initialize GLFW backend");
