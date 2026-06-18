@@ -109,7 +109,7 @@ endif()
 set(ARK_RENDERER_THIRD_PARTY_LIBS
     Vulkan::Vulkan
     GPUOpen::VulkanMemoryAllocator
-    volk::volk
+    # 本项目自己以 VOLK_NAMESPACE 编译 volk 实现，避免 volk 全局 vk* 函数指针符号与 vcpkg ImGui Vulkan backend 冲突。
     volk::volk_headers
     vk-bootstrap::vk-bootstrap
     SPIRV-Headers::SPIRV-Headers
@@ -161,6 +161,7 @@ target_compile_definitions(ark_renderer
     PUBLIC
         GLFW_INCLUDE_NONE
         VK_NO_PROTOTYPES
+        VOLK_NAMESPACE
         SPIRV_REFLECT_USE_SYSTEM_SPIRV_H
         VMA_STATIC_VULKAN_FUNCTIONS=0
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0)

@@ -437,6 +437,15 @@ Hotfix 记录：
   - full Debug build passed
   - full CTest passed: 31/31
   - sandbox default / `--no-ui` / `--preset shadow-validation` hidden-window smoke stayed alive for 8s without demote validation error
+- 用户再次反馈默认 sandbox 仍在 environment bake 后闪退，但 `--no-ui` 路径可稳定运行。
+- 根因判断：项目使用 `VK_NO_PROTOTYPES + volk`，同时 vcpkg 的 `imgui::imgui` Vulkan backend 静态库按默认 Vulkan prototype 链接 `vulkan-1`。两种 loader 模式混在同一可执行文件时，`vkGetDeviceProcAddr` 名称会解析到 volk 全局函数指针变量，ImGui backend 在 dynamic rendering 初始化里调用 `vkGetDeviceProcAddr()` 时等价于跳到数据地址执行，WER 偏移仍落在 `vkGetDeviceProcAddr`。
+- 修复：不再链接 vcpkg 预编译的 `volk::volk` 静态库，改为链接 `volk::volk_headers`，并新增项目内 `src/rhi/vulkan/Volk.cpp` 以 `VOLK_NAMESPACE` 编译 volk 实现，避免全局 `vk*` 函数指针符号污染 vcpkg ImGui backend 的 Vulkan prototype 路径。
+- 复验：
+  - `--no-ui` hidden-window smoke stayed alive for 8s
+  - default UI hidden-window smoke stayed alive for 8s
+  - targeted CTest passed: `ark_dependency_smoke`, `ark_framework_headers_smoke`, `ark_sandbox_ui_settings_smoke`
+  - full Debug build passed
+  - full CTest passed: 31/31
 
 ## 风险与约束
 
