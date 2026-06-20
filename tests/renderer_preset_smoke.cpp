@@ -21,10 +21,13 @@ namespace {
             ark::resolveRendererPreset(ark::RendererPresetDesc{});
 
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
-            resolved.scene.additionalModels.size() != 1 ||
-            resolved.scene.additionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-            !near(resolved.scene.modelTransform[0][0], 5.0f) ||
-            !near(resolved.scene.additionalModels.front().transform[0][0], 2.4f) ||
+            resolved.scene.additionalModels.size() != 2 ||
+            resolved.scene.additionalModels[0].modelPath.filename() != "DamagedHelmet.gltf" ||
+            resolved.scene.additionalModels[1].modelPath.filename() != "shadow_probe_spheres.gltf" ||
+            !near(resolved.scene.modelTransform[0][0], 8.0f) ||
+            !near(resolved.scene.additionalModels[0].transform[0][0], 2.4f) ||
+            !near(resolved.scene.additionalModels[1].transform[0][0], 1.5f) ||
+            !near(resolved.scene.additionalModels[1].transform[3][1], 6.85f) ||
             !resolved.scene.environmentPath.empty() ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
@@ -100,7 +103,7 @@ namespace {
         resolved = ark::resolveRendererPreset(preset);
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
             !resolved.scene.additionalModels.empty() ||
-            !near(resolved.scene.modelTransform[0][0], 5.0f) ||
+            !near(resolved.scene.modelTransform[0][0], 8.0f) ||
             !resolved.scene.overrideLighting ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
@@ -113,6 +116,8 @@ namespace {
         preset.scene = ark::RendererScenePreset::ShadowValidation;
         resolved = ark::resolveRendererPreset(preset);
         if (resolved.scene.modelPath.filename() != "sponza.gltf" ||
+            resolved.scene.additionalModels.size() != 1 ||
+            resolved.scene.additionalModels.front().modelPath.filename() != "shadow_probe_spheres.gltf" ||
             resolved.scene.modelFallback != ark::SceneModelFallbackPolicy::DefaultSandboxModel ||
             resolved.scene.environmentFallback !=
                 ark::SceneEnvironmentFallbackPolicy::DebugOrientation ||
@@ -208,10 +213,13 @@ namespace {
             const ark::ApplicationDesc desc =
                 ark::makeSandboxApplicationDesc(std::span<const std::string_view>{});
             if (desc.defaultScene.modelPath.filename() != "sponza.gltf" ||
-                desc.defaultScene.additionalModels.size() != 1 ||
-                desc.defaultScene.additionalModels.front().modelPath.filename() != "DamagedHelmet.gltf" ||
-                !near(desc.defaultScene.modelTransform[0][0], 5.0f) ||
-                !near(desc.defaultScene.additionalModels.front().transform[0][0], 2.4f) ||
+                desc.defaultScene.additionalModels.size() != 2 ||
+                desc.defaultScene.additionalModels[0].modelPath.filename() != "DamagedHelmet.gltf" ||
+                desc.defaultScene.additionalModels[1].modelPath.filename() != "shadow_probe_spheres.gltf" ||
+                !near(desc.defaultScene.modelTransform[0][0], 8.0f) ||
+                !near(desc.defaultScene.additionalModels[0].transform[0][0], 2.4f) ||
+                !near(desc.defaultScene.additionalModels[1].transform[0][0], 1.5f) ||
+                !near(desc.defaultScene.additionalModels[1].transform[3][1], 6.85f) ||
                 !desc.defaultScene.overrideLighting ||
                 !near(desc.defaultScene.environmentIntensity, 0.55f) ||
                 desc.camera.distance < 22.0f ||
@@ -362,7 +370,7 @@ namespace {
                 !options.missingQualityValue ||
                 !options.missingToneMappingValue ||
                 desc.defaultScene.modelPath.filename() != "sponza.gltf" ||
-                desc.defaultScene.additionalModels.size() != 1 ||
+                desc.defaultScene.additionalModels.size() != 2 ||
                 !desc.useDebugOrientationEnvironment) {
                 std::cerr << "Sandbox missing option value fallback behavior is invalid\n";
                 return false;

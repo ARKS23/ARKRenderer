@@ -475,15 +475,15 @@ namespace {
         return true;
     }
 
-    bool validateSponzaHelmetCompositeSceneLoad() {
+    bool validateSponzaShadowProbeCompositeSceneLoad() {
         FakeRenderDevice device{};
 
         ark::SceneResourceLoadDesc desc{};
         desc.modelPath = "assets/models/sponza/sponza.gltf";
-        desc.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{5.0f});
+        desc.modelTransform = glm::scale(glm::mat4{1.0f}, glm::vec3{8.0f});
         desc.modelFallback = ark::SceneModelFallbackPolicy::None;
         desc.environmentFallback = ark::SceneEnvironmentFallbackPolicy::ProceduralOnly;
-        desc.modelName = "SponzaCompositeSceneResource";
+        desc.modelName = "SponzaShadowProbeSceneResource";
         desc.overrideLighting = true;
         desc.lighting.mainLight.direction = glm::vec3{-0.75f, -0.45f, -0.35f};
         desc.additionalModels.push_back(ark::SceneAdditionalModelDesc{
@@ -492,36 +492,49 @@ namespace {
                 glm::scale(glm::mat4{1.0f}, glm::vec3{2.4f}),
             "SponzaCompositeHelmet",
         });
+        desc.additionalModels.push_back(ark::SceneAdditionalModelDesc{
+            "assets/models/shadow_probe_spheres.gltf",
+            glm::translate(glm::mat4{1.0f}, glm::vec3{-4.0f, 6.85f, 0.0f}) *
+                glm::scale(glm::mat4{1.0f}, glm::vec3{1.5f}),
+            "SponzaCompositeShadowProbeSpheres",
+        });
 
         ark::SceneResource sceneResource{};
         if (!sceneResource.load(device, desc)) {
-            std::cerr << "SceneResource failed to load Sponza + DamagedHelmet composite scene\n";
+            std::cerr << "SceneResource failed to load Sponza shadow probe composite scene\n";
             return false;
         }
 
         const ark::SceneResourceLoadReport& report = sceneResource.report();
         if (!report.modelLoaded ||
-            report.loadedModelCount != 2 ||
+            report.loadedModelCount != 3 ||
             report.resolvedModelPath.filename() != "sponza.gltf" ||
-            report.resolvedAdditionalModelPaths.size() != 1 ||
-            report.resolvedAdditionalModelPaths.front().filename() != "DamagedHelmet.gltf" ||
-            sceneResource.scene().models().size() != 2 ||
-            sceneResource.scene().size() != 2 ||
-            sceneResource.additionalModelCount() != 1 ||
+            report.resolvedAdditionalModelPaths.size() != 2 ||
+            report.resolvedAdditionalModelPaths[0].filename() != "DamagedHelmet.gltf" ||
+            report.resolvedAdditionalModelPaths[1].filename() != "shadow_probe_spheres.gltf" ||
+            sceneResource.scene().models().size() != 3 ||
+            sceneResource.scene().size() != 3 ||
+            sceneResource.additionalModelCount() != 2 ||
             !sceneResource.additionalModel(0) ||
-            sceneResource.additionalModel(0)->primitiveCount() == 0) {
-            std::cerr << "Sponza + DamagedHelmet composite scene state is invalid\n";
+            sceneResource.additionalModel(0)->primitiveCount() == 0 ||
+            !sceneResource.additionalModel(1) ||
+            sceneResource.additionalModel(1)->primitiveCount() == 0) {
+            std::cerr << "Sponza shadow probe composite scene state is invalid\n";
             return false;
         }
 
         const glm::mat4& helmetTransform = sceneResource.scene().models()[1].transform;
-        if (sceneResource.scene().models()[0].transform[0][0] < 4.9f ||
-            sceneResource.scene().models()[0].transform[0][0] > 5.1f ||
+        const glm::mat4& probeTransform = sceneResource.scene().models()[2].transform;
+        if (sceneResource.scene().models()[0].transform[0][0] < 7.9f ||
+            sceneResource.scene().models()[0].transform[0][0] > 8.1f ||
             helmetTransform[3][1] < 2.8f || helmetTransform[3][1] > 3.0f ||
             helmetTransform[3][2] < 0.5f || helmetTransform[3][2] > 0.7f ||
             helmetTransform[0][0] < 2.3f || helmetTransform[0][0] > 2.5f ||
+            probeTransform[3][0] < -4.1f || probeTransform[3][0] > -3.9f ||
+            probeTransform[3][1] < 6.8f || probeTransform[3][1] > 6.9f ||
+            probeTransform[0][0] < 1.4f || probeTransform[0][0] > 1.6f ||
             sceneResource.scene().lighting().mainLight.direction.y > -0.4f) {
-            std::cerr << "Composite helmet transform is invalid\n";
+            std::cerr << "Composite shadow probe transforms are invalid\n";
             return false;
         }
 
@@ -537,8 +550,10 @@ namespace {
 
         ark::RenderQueue queue{};
         queue.build(sceneResource.scene());
-        if (queue.size() <= sceneResource.model()->instanceCount()) {
-            std::cerr << "Composite scene queue did not include the additional model\n";
+        if (queue.size() <= sceneResource.model()->instanceCount() ||
+            queue.stats().totalItems != queue.size() ||
+            queue.stats().visibleItems != queue.size()) {
+            std::cerr << "Composite scene queue did not include all shadow probe models\n";
             return false;
         }
 
@@ -562,7 +577,7 @@ int main() {
                    validateDebugOrientationEnvironment() &&
                    validateMissingEnvironmentFallback() &&
                    validateSponzaKtxSceneLoad() &&
-                   validateSponzaHelmetCompositeSceneLoad()
+                   validateSponzaShadowProbeCompositeSceneLoad()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

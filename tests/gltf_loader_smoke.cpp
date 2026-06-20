@@ -504,6 +504,66 @@ namespace {
         return true;
     }
 
+    bool validateShadowProbeSpheresFixture() {
+        constexpr std::size_t SphereCount = 5;
+        constexpr std::size_t SphereVertexCount = 1225;
+        constexpr std::size_t SphereIndexCount = 6912;
+
+        const ark::Path path = findFixturePath(ark::Path{"assets/models/shadow_probe_spheres.gltf"});
+        if (path.empty()) {
+            std::cerr << "Failed to find shadow probe spheres fixture\n";
+            return false;
+        }
+
+        const ark::asset::ModelData model = ark::asset::loadGltfModel(path);
+        if (model.empty() ||
+            model.meshes.size() != SphereCount ||
+            model.materials.size() != SphereCount ||
+            model.instances.size() != SphereCount) {
+            std::cerr << "Unexpected shadow probe spheres fixture shape\n";
+            return false;
+        }
+
+        for (std::size_t index = 0; index < SphereCount; ++index) {
+            const ark::asset::MeshPrimitiveData& mesh = model.meshes[index];
+            const ark::asset::MaterialData& material = model.materials[index];
+            const ark::asset::MeshPrimitiveInstanceData& instance = model.instances[index];
+
+            if (mesh.vertices.size() != SphereVertexCount ||
+                mesh.indices.size() != SphereIndexCount ||
+                mesh.materialIndex != index ||
+                instance.meshIndex != index ||
+                !material.hasBaseColorTexture() ||
+                material.baseColorTexturePath.filename() != "xiaowei.png" ||
+                material.alphaMode != ark::asset::AlphaMode::Opaque ||
+                material.doubleSided) {
+                std::cerr << "Unexpected shadow probe sphere mesh or material metadata\n";
+                return false;
+            }
+
+            const ark::asset::MeshVertex& sampleVertex = mesh.vertices[128];
+            const float normalLength =
+                std::sqrt(sampleVertex.normal[0] * sampleVertex.normal[0] +
+                          sampleVertex.normal[1] * sampleVertex.normal[1] +
+                          sampleVertex.normal[2] * sampleVertex.normal[2]);
+            if (!near(normalLength, 1.0f) || !validTangent(sampleVertex)) {
+                std::cerr << "Shadow probe sphere generated invalid basis data\n";
+                return false;
+            }
+        }
+
+        if (!near(model.instances.front().localTransform.matrix[12], -4.8f) ||
+            !near(model.instances.front().localTransform.matrix[0], 0.72f) ||
+            !near(model.instances.back().localTransform.matrix[12], 4.8f) ||
+            !near(model.instances.back().localTransform.matrix[14], 2.0f) ||
+            !near(model.instances.back().localTransform.matrix[10], 0.72f)) {
+            std::cerr << "Unexpected shadow probe sphere transforms\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateTextureCacheFixture() {
         const ark::Path path = findFixturePath(ark::Path{"assets/models/texture_cache_fixture.gltf"});
         if (path.empty()) {
@@ -771,6 +831,7 @@ int main() {
     return validateForwardFixture() && validateMultidrawFixture() && validateMultinodeFixture() &&
                    validateSpecularIblValidationFixture() &&
                    validateMaterialBallValidationFixture() &&
+                   validateShadowProbeSpheresFixture() &&
                    validateTextureCacheFixture() && validateSamplerFixture() && validateTangentFixture() &&
                    validateAlphaModesFixture() && validateTexcoord1Fixture() &&
                    validateTextureTransformFixture() && validateOptionalDamagedHelmetFixture()

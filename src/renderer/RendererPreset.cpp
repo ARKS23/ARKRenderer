@@ -20,7 +20,20 @@ namespace ark {
             "assets/models/sponza/sponza.gltf";
         constexpr const char* DamagedHelmetFixturePath =
             "assets/models/DamagedHelmet/DamagedHelmet.gltf";
-        constexpr float DefaultSponzaScale = 5.0f;
+        constexpr const char* ShadowProbeSpheresFixturePath =
+            "assets/models/shadow_probe_spheres.gltf";
+        constexpr float DefaultSponzaScale = 8.0f;
+
+        glm::mat4 makeDefaultDamagedHelmetTransform() {
+            return glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 2.9f, 0.6f}) *
+                   glm::scale(glm::mat4{1.0f}, glm::vec3{2.4f});
+        }
+
+        glm::mat4 makeShadowProbeSpheresTransform() {
+            // 高细分球体组用于观察接触阴影、受影和后续 cascade 覆盖，独立于历史 material ball golden fixture。
+            return glm::translate(glm::mat4{1.0f}, glm::vec3{-2.0f, 6.85f, 0.0f}) *
+                   glm::scale(glm::mat4{1.0f}, glm::vec3{1.5f});
+        }
 
         std::string normalizePresetName(std::string_view name) {
             std::string normalized{name};
@@ -54,9 +67,13 @@ namespace ark {
                 scene.lighting.ambientColor = glm::vec3{0.02f, 0.024f, 0.030f};
                 scene.additionalModels.push_back(SceneAdditionalModelDesc{
                     DamagedHelmetFixturePath,
-                    glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 2.9f, 0.6f}) *
-                        glm::scale(glm::mat4{1.0f}, glm::vec3{2.4f}),
+                    makeDefaultDamagedHelmetTransform(),
                     "DefaultSandboxDamagedHelmet",
+                });
+                scene.additionalModels.push_back(SceneAdditionalModelDesc{
+                    ShadowProbeSpheresFixturePath,
+                    makeShadowProbeSpheresTransform(),
+                    "DefaultSandboxShadowProbeSpheres",
                 });
                 break;
             case RendererScenePreset::MaterialBall:
@@ -101,6 +118,11 @@ namespace ark {
                 scene.modelName = "ShadowValidationModel";
                 scene.environmentName = "ShadowValidationEnvironment";
                 scene.environmentFallback = SceneEnvironmentFallbackPolicy::DebugOrientation;
+                scene.additionalModels.push_back(SceneAdditionalModelDesc{
+                    ShadowProbeSpheresFixturePath,
+                    makeShadowProbeSpheresTransform(),
+                    "ShadowValidationProbeSpheres",
+                });
                 break;
             case RendererScenePreset::DebugOrientation:
                 scene.environmentFallback = SceneEnvironmentFallbackPolicy::DebugOrientation;
