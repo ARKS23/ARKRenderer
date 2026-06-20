@@ -12,6 +12,14 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 - 默认组合场景 frame validation / golden baseline，覆盖 Sponza + DamagedHelmet、Shadow、Bloom、ACES ToneMapping 和 IBL。
 - sandbox 轨道相机、scene preset、quality preset、默认 Sponza + DamagedHelmet 组合场景和资源 fallback。
 
+## 坐标与光照约定
+
+- 项目世界坐标使用右手系。
+- 相机和光源 view matrix 使用 `glm::lookAt` / RH 语义。
+- 投影矩阵使用 `glm::perspectiveRH_ZO` / `glm::orthoRH_ZO`，NDC depth 范围为 `[0, 1]`。
+- Vulkan 渲染路径中会对投影矩阵执行 `projection[1][1] *= -1.0f` 以修正屏幕 Y 方向。
+- `DirectionalLight::direction` 表示光线传播方向，即从光源射向场景；shader 中会取反得到“着色点指向光源”的方向。
+
 ## 构建
 
 环境要求：

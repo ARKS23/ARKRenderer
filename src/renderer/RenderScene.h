@@ -17,6 +17,7 @@ namespace ark {
     class ModelResource;
 
     struct DirectionalLight {
+        // 光线传播方向：从光源射向场景；shader 中会取反得到“着色点指向光源”的方向。
         glm::vec3 direction{-0.35f, -0.8f, -0.45f};
         glm::vec3 color{1.0f, 0.96f, 0.88f};
     };
