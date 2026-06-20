@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Types.h"
+#include "renderer/ShadowCascade.h"
 #include "rhi/RHICommon.h"
 
 #include <glm/mat4x4.hpp>
@@ -54,5 +55,7 @@ namespace ark {
         float shadowBias = 0.0015f;
         float shadowFilterMode = 0.0f;
         float shadowFilterRadiusTexels = 0.0f;
+        // CSM 帧数据由阴影阶段生成，前向光照阶段消费；关闭阴影或重建资源时必须清空。
+        CascadeShadowFrameData cascadeShadows;
     };
 } // namespace ark

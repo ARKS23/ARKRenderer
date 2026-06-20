@@ -612,6 +612,11 @@ int main() {
     shadowSettings.mapExtent = 512;
     shadowSettings.filterMode = ark::ShadowFilterMode::Pcf5x5;
     shadowSettings.filterRadiusTexels = 2.0f;
+    shadowSettings.cascades.enabled = true;
+    shadowSettings.cascades.cascadeCount = 2;
+    shadowSettings.cascades.splitLambda = 0.7f;
+    shadowSettings.cascades.maxDistance = 120.0f;
+    shadowSettings.cascades.cascadeExtent = 1024;
     renderView.setShadowSettings(shadowSettings);
     ark::VisibilitySettings visibilitySettings{};
     visibilitySettings.enableFrustumCulling = true;
@@ -626,10 +631,27 @@ int main() {
         renderView.shadowSettings().filterMode != ark::ShadowFilterMode::Pcf5x5 ||
         renderView.shadowSettings().filterRadiusTexels != 2.0f ||
         !renderView.shadowSettings().fitSceneBounds ||
+        !renderView.shadowSettings().cascades.enabled ||
+        renderView.shadowSettings().cascades.cascadeCount != 2 ||
+        renderView.shadowSettings().cascades.splitLambda != 0.7f ||
+        renderView.shadowSettings().cascades.maxDistance != 120.0f ||
+        renderView.shadowSettings().cascades.cascadeExtent != 1024 ||
         !renderView.visibilitySettings().enableFrustumCulling ||
         ark::parseShadowFilterMode("pcf-3x3") != ark::ShadowFilterMode::Pcf3x3 ||
         ark::parseShadowFilterMode("pcf5") != ark::ShadowFilterMode::Pcf5x5 ||
         ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {
+        return EXIT_FAILURE;
+    }
+    ark::CascadeShadowFrameData cascadeFrameData{};
+    cascadeFrameData.enabled = true;
+    cascadeFrameData.cascadeCount = 2;
+    cascadeFrameData.cascadeExtent = 1024;
+    cascadeFrameData.cascades[0].nearDistance = 0.1f;
+    cascadeFrameData.cascades[0].farDistance = 16.0f;
+    frameContext.cascadeShadows = cascadeFrameData;
+    if (!frameContext.cascadeShadows.isEnabled() ||
+        frameContext.cascadeShadows.cascadeCount != 2 ||
+        frameContext.cascadeShadows.cascades[0].farDistance != 16.0f) {
         return EXIT_FAILURE;
     }
     ark::RenderQueue renderQueue{};

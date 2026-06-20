@@ -241,6 +241,8 @@ namespace ark {
             frameContext.shadowBias = ShadowSettings{}.bias;
             frameContext.shadowFilterMode = static_cast<float>(ShadowFilterMode::Hard);
             frameContext.shadowFilterRadiusTexels = 0.0f;
+            // 未来 CSM 数据和单 shadow binding 同生命周期；清空时避免 ForwardPass 读到旧帧 cascade。
+            frameContext.cascadeShadows = {};
         }
 
         void publishFrameShadowBindings(FrameContext& frameContext,

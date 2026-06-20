@@ -3,6 +3,7 @@
 #include "asset/MeshData.h"
 #include "core/Types.h"
 #include "renderer/PostProcessingSettings.h"
+#include "renderer/ShadowConstants.h"
 #include "rhi/RHICommon.h"
 
 #include <algorithm>
@@ -32,6 +33,21 @@ namespace ark {
         ToneMappingOperator operatorType = ToneMappingOperator::Reinhard;
     };
 
+    struct CascadeShadowSettings {
+        // CSM 运行时设置；0.67.2 只建立数据契约，实际多 cascade 渲染由后续阶段接入。
+        bool enabled = false;
+        // 第一版只允许 1 / 2 / 4 级，避免 UI 和 shader contract 先膨胀成任意数量。
+        u32 cascadeCount = MaxShadowCascadeCount;
+        // 0 表示线性切分，1 表示对数切分，中间值混合两者以兼顾近处精度和远处覆盖。
+        float splitLambda = 0.65f;
+        // CSM 阴影覆盖距离独立于相机 far plane，防止远平面过大导致 cascade texel density 被稀释。
+        float maxDistance = 80.0f;
+        // 每一级 cascade 使用正方形 shadow map；后续 texture array/atlas 均沿用该边长。
+        u32 cascadeExtent = 2048;
+        // 后续复用 texel snapping 稳定 cascade 投影，降低相机移动时的阴影抖动。
+        bool stabilize = true;
+    };
+
     struct ShadowSettings {
         bool enabled = false;
         float strength = 0.7f;
@@ -45,6 +61,7 @@ namespace ark {
         bool stabilizeProjection = true;
         ShadowFilterMode filterMode = ShadowFilterMode::Hard;
         float filterRadiusTexels = 1.0f;
+        CascadeShadowSettings cascades;
     };
 
     struct VisibilitySettings {
@@ -196,10 +213,33 @@ namespace ark {
                 sanitized.filterRadiusTexels = 1.0f;
             }
             sanitized.filterRadiusTexels = std::clamp(sanitized.filterRadiusTexels, 0.0f, 8.0f);
+            // CSM 参数来自 preset/UI，进入 renderer 前统一收敛到当前后端和 shader 能承受的范围。
+            sanitized.cascades.cascadeCount = sanitizeCascadeCount(sanitized.cascades.cascadeCount);
+            sanitized.cascades.splitLambda = sanitizeFiniteRange(sanitized.cascades.splitLambda, 0.0f, 1.0f, 0.65f);
+            sanitized.cascades.maxDistance =
+                sanitizeFiniteRange(sanitized.cascades.maxDistance, sanitized.nearPlane + 0.01f, 10000.0f, 80.0f);
+            sanitized.cascades.cascadeExtent = std::clamp(sanitized.cascades.cascadeExtent, 128u, 4096u);
             if (sanitized.strength <= 0.0f) {
                 sanitized.enabled = false;
             }
             return sanitized;
+        }
+
+        static u32 sanitizeCascadeCount(u32 cascadeCount) {
+            if (cascadeCount <= 1u) {
+                return 1u;
+            }
+            if (cascadeCount <= 2u) {
+                return 2u;
+            }
+            return MaxShadowCascadeCount;
+        }
+
+        static float sanitizeFiniteRange(float value, float minValue, float maxValue, float fallback) {
+            if (!std::isfinite(value)) {
+                value = fallback;
+            }
+            return std::clamp(value, minValue, maxValue);
         }
 
         glm::mat4 m_View{1.0f};

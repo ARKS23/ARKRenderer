@@ -37,7 +37,13 @@ namespace {
             resolved.scene.environmentName != "DefaultSandboxEnvironment" ||
             !near(resolved.scene.environmentIntensity, 0.55f) ||
             !resolved.scene.overrideLighting ||
-            !near(resolved.scene.lighting.mainLight.direction.y, -0.45f)) {
+            !near(resolved.scene.lighting.mainLight.direction.y, -0.45f) ||
+            resolved.view.shadows.cascades.enabled ||
+            resolved.view.shadows.cascades.cascadeCount != ark::MaxShadowCascadeCount ||
+            !near(resolved.view.shadows.cascades.splitLambda, 0.65f) ||
+            !near(resolved.view.shadows.cascades.maxDistance, 80.0f) ||
+            resolved.view.shadows.cascades.cascadeExtent != 2048 ||
+            !resolved.view.shadows.cascades.stabilize) {
             std::cerr << "Default scene preset is invalid\n";
             return false;
         }

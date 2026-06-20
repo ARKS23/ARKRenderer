@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-已完成 0.67.0 文档与范围确认，以及 0.67.1 Sandbox Shadow Validation Scene。
+已完成 0.67.0 文档与范围确认、0.67.1 Sandbox Shadow Validation Scene，以及 0.67.2 CSM Settings / Data Contract。
 
 Phase 0.61 ~ 0.66 已经完成 scene bounds、ShadowPass scene-fit、PCF shadow filtering、sandbox debug UI、运行时参数桥接、Frustum 数据结构、DrawItem world bounds 和 forward visibility diagnostics。当前渲染器已经可以在默认 Sponza + DamagedHelmet 场景中观察 Shadow、Bloom、ACES ToneMapping、IBL 和 camera frustum culling 统计。
 
@@ -163,12 +163,10 @@ split = mix(linear, log, splitLambda)
 
 ### ShadowPass
 
-本阶段有两种实现路径：
+本阶段有两种实现路径（采用第二种）：
 
 1. **最小风险路径**：为每个 cascade 创建独立 shadow texture / view，循环渲染 ShadowPass。
 2. **更接近最终路径**：创建 shadow texture array，每个 cascade 一个 array layer。
-
-推荐第一版采用 texture array，因为 shader 采样和 UI 调试更接近最终方案，但如果当前 RHI 对 texture array view 支持不足，可以先用多 texture 保持进度。
 
 ShadowPass 仍然消费 full queue，不使用 camera-cull 后的 forward queue。
 
@@ -245,6 +243,18 @@ Sandbox Shadow 面板建议增加：
 - 新增 cascade frame data / cascade descriptor。
 - 保持默认关闭或以单 cascade fallback 兼容现有阴影路径。
 - 将设置接入 `RenderView` / `RendererPreset` / sandbox runtime settings。
+
+实现结果：
+- 在 `ShadowSettings` 中新增 `CascadeShadowSettings cascades`，当前默认关闭 CSM，多 cascade 渲染路径仍保持未接入。
+- 新增 `ShadowConstants.h` 与 `MaxShadowCascadeCount = 4`，第一版 contract 固定最多 4 级 cascade，后续 ShadowPass texture array / atlas 继续沿用该上限。
+- `CascadeShadowSettings` 包含 `enabled / cascadeCount / splitLambda / maxDistance / cascadeExtent / stabilize`，覆盖后续 split/matrix builder 和 UI 所需的最小参数。
+- `RenderView::setShadowSettings()` 会 sanitize cascade settings：`cascadeCount` 归一到 `1 / 2 / 4`，`splitLambda` 限制到 `[0, 1]`，`maxDistance` 保持大于 shadow near plane，`cascadeExtent` 限制到 `[128, 4096]`。
+- 新增 `ShadowCascade` 与 `CascadeShadowFrameData`，用于描述每级 cascade 的 near/far distance、light view-projection 和 world bounds。
+- `FrameContext` 新增 `cascadeShadows` 字段，作为 ShadowPass 到 ForwardPass 的 CSM 帧数据传递位置。
+- `ShadowPass` 在清空 shadow binding 时同步清空 `cascadeShadows`，避免未来读到旧帧 cascade 数据。
+- 运行时桥接继续复用 `RenderViewProfileDesc -> SandboxRuntimeSettings -> RenderView` 的现有路径，没有让 UI 直接修改 renderer 内部对象。
+- Targeted build 通过：`ark_framework_headers_smoke`、`ark_renderer_preset_smoke`、`ark_sandbox_ui_settings_smoke`、`ark_shadow_pass_smoke`、`ark_forward_pass_pipeline_smoke`。
+- Targeted CTest 通过：`ark_framework_headers_smoke`、`ark_renderer_preset_smoke`、`ark_sandbox_ui_settings_smoke`、`ark_shadow_pass_smoke`、`ark_forward_pass_pipeline_smoke`。
 
 ### 0.67.3 Cascade Split / Matrix Builder
 
