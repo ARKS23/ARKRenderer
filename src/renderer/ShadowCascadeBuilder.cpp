@@ -80,8 +80,7 @@ namespace ark {
 
             // 把稳定参考点映射到当前投影范围内的 texel 坐标，再四舍五入到最近 texel。
             const float referenceTexelCoord = (referenceCoord - rangeMin) / texelSize;
-            const float snappedReferenceOffset =
-                std::floor(referenceTexelCoord + 0.5f) * texelSize;
+            const float snappedReferenceOffset = std::floor(referenceTexelCoord + 0.5f) * texelSize;
             // 反推出新的 rangeMin，并把 min/max 同步平移；这样参考点落在 texel 中心/边界的固定网格上。
             const float snappedRangeMin = referenceCoord - snappedReferenceOffset;
             const float offset = snappedRangeMin - rangeMin;
@@ -102,8 +101,7 @@ namespace ark {
             // Vulkan 投影沿用 glm::orthoRH_ZO 后翻转 Y 的约定，因此 Y 方向 snapping 要和 ShadowPass 单图路径一致。
             // 翻转后最终 shadow texel Y 与 -(bottom + y) 成正比，所以这里使用和 X 不同的符号关系。
             const float referenceTexelCoord = -(rangeMin + referenceCoord) / texelSize;
-            const float snappedReferenceOffset =
-                std::floor(referenceTexelCoord + 0.5f) * texelSize;
+            const float snappedReferenceOffset = std::floor(referenceTexelCoord + 0.5f) * texelSize;
             const float snappedRangeMin = -referenceCoord - snappedReferenceOffset;
             const float offset = snappedRangeMin - rangeMin;
             rangeMin += offset;
@@ -221,7 +219,7 @@ namespace ark {
             // 避免非常薄的 slice 生成接近 0 的投影范围，导致矩阵数值不稳定。
             expandRangeToMinHalfExtent(left, right, MinCascadeHalfExtent);
             expandRangeToMinHalfExtent(bottom, top, MinCascadeHalfExtent);
-            // 将投影中心吸附到 shadow texel grid，降低相机小幅移动时的阴影游泳/闪烁。
+            // texel snapping: 将投影中心吸附到 shadow texel grid，降低相机小幅移动时的阴影游泳/闪烁。
             stabilizeLightProjectionRange(left,
                                           right,
                                           bottom,

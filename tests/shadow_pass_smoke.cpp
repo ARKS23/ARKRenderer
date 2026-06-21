@@ -324,6 +324,7 @@ namespace {
         bool beginRendering(const ark::rhi::RenderingDesc& desc) override {
             ++beginRenderingCalls;
             lastRenderingDesc = desc;
+            depthAttachmentViews.push_back(desc.depthStencilAttachment.view);
             return true;
         }
 
@@ -429,6 +430,7 @@ namespace {
         ark::rhi::ScissorRect lastScissor{};
         ark::rhi::DrawIndexedDesc lastDrawIndexed{};
         CapturedShadowUniform lastShadowUniform{};
+        std::vector<ark::rhi::TextureView*> depthAttachmentViews;
         std::vector<ark::rhi::ResourceState> barrierAfterStates;
         int beginRenderingCalls = 0;
         int endRenderingCalls = 0;
@@ -558,11 +560,6 @@ namespace {
         shadows.lightDistance = 32.0f;
         shadows.filterMode = ark::ShadowFilterMode::Pcf5x5;
         shadows.filterRadiusTexels = 2.0f;
-        shadows.cascades.enabled = true;
-        shadows.cascades.cascadeCount = 4;
-        shadows.cascades.splitLambda = 0.5f;
-        shadows.cascades.maxDistance = 64.0f;
-        shadows.cascades.cascadeExtent = 1024;
         view.setShadowSettings(shadows);
 
         pass.setup(device);
@@ -618,10 +615,18 @@ namespace {
         const ark::rhi::TextureDesc& shadowTextureDesc = device.textureDescs.back();
         if (shadowTextureDesc.extent.width != 512 ||
             shadowTextureDesc.extent.height != 512 ||
+            shadowTextureDesc.arrayLayers != 1 ||
             shadowTextureDesc.format != ark::rhi::Format::D32Float ||
             !ark::rhi::hasTextureUsage(shadowTextureDesc.usage, ark::rhi::TextureUsage::DepthStencil) ||
             !ark::rhi::hasTextureUsage(shadowTextureDesc.usage, ark::rhi::TextureUsage::ShaderResource)) {
             std::cerr << "ShadowPass shadow map texture is invalid\n";
+            return false;
+        }
+
+        if (device.textureViewDescs.empty() ||
+            device.textureViewDescs.back().type != ark::rhi::TextureViewType::Texture2D ||
+            device.textureViewDescs.back().arrayLayerCount != 1) {
+            std::cerr << "ShadowPass single shadow map view is invalid\n";
             return false;
         }
 
@@ -630,12 +635,7 @@ namespace {
             !near(frameContext.shadowBias, 0.003f) ||
             frameContext.shadowFilterMode != static_cast<float>(ark::ShadowFilterMode::Pcf5x5) ||
             !near(frameContext.shadowFilterRadiusTexels, 2.0f) ||
-            !frameContext.cascadeShadows.isEnabled() ||
-            frameContext.cascadeShadows.cascadeCount != 4 ||
-            frameContext.cascadeShadows.cascadeExtent != 1024 ||
-            !near(frameContext.cascadeShadows.cascades[0].nearDistance, view.cameraNearPlane()) ||
-            frameContext.cascadeShadows.cascades[0].farDistance <=
-                frameContext.cascadeShadows.cascades[0].nearDistance) {
+            frameContext.cascadeShadows.isEnabled()) {
             std::cerr << "ShadowPass did not publish frame shadow resources\n";
             return false;
         }
@@ -660,6 +660,8 @@ namespace {
             context.endRenderingCalls != 1 ||
             context.lastRenderingDesc.colorAttachment.view != nullptr ||
             context.lastRenderingDesc.depthStencilAttachment.view != frameContext.shadowMapView ||
+            context.depthAttachmentViews.size() != 1 ||
+            context.depthAttachmentViews.front() != frameContext.shadowMapView ||
             context.lastRenderingDesc.extent.width != 512 ||
             context.lastRenderingDesc.depthStencilAttachment.clearDepth != 1.0f ||
             context.lastViewport.width != 512.0f ||
@@ -699,6 +701,165 @@ namespace {
             near(context.lastShadowUniform.lightViewProjection[2][2], 1.0f) &&
             near(context.lastShadowUniform.lightViewProjection[3][3], 1.0f)) {
             std::cerr << "ShadowPass did not write a light view-projection matrix\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateShadowPassCascadeRenderPath() {
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        ark::TextureCache textureCache{};
+        ark::MeshResource mesh{};
+        ark::MaterialResource material{};
+        ark::RenderScene scene{};
+        ark::RenderQueue queue{};
+        ark::RenderView view{};
+        ark::ShadowPass pass{};
+
+        if (!mesh.create(device, makeTriangle()) ||
+            !createMaterial(device, textureCache, material)) {
+            std::cerr << "Failed to create ShadowPass CSM smoke draw resources\n";
+            return false;
+        }
+
+        scene.addObject(mesh, material, glm::mat4{1.0f}, "ShadowPassCsmDraw");
+        queue.build(scene);
+
+        view.setDefaultPerspective(ark::rhi::Extent2D{1280, 720});
+        ark::ShadowSettings shadows{};
+        shadows.enabled = true;
+        shadows.strength = 0.8f;
+        shadows.mapExtent = 512;
+        shadows.cascades.enabled = true;
+        shadows.cascades.cascadeCount = 4;
+        shadows.cascades.splitLambda = 0.5f;
+        shadows.cascades.maxDistance = 64.0f;
+        shadows.cascades.cascadeExtent = 1024;
+        view.setShadowSettings(shadows);
+
+        pass.setup(device);
+
+        context.frame.frameSlot = 0;
+        context.frame.frameIndex = 0;
+
+        ark::FrameContext frameContext{};
+        frameContext.scene = &scene;
+        frameContext.view = &view;
+        frameContext.queue = &queue;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.frameResource = &context.frame;
+
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "ShadowPass CSM path failed to prepare or execute\n";
+            return false;
+        }
+
+        if (device.textureDescs.empty()) {
+            std::cerr << "ShadowPass CSM path did not create a shadow texture\n";
+            return false;
+        }
+
+        const ark::rhi::TextureDesc& shadowTextureDesc = device.textureDescs.back();
+        if (shadowTextureDesc.extent.width != 1024 ||
+            shadowTextureDesc.extent.height != 1024 ||
+            shadowTextureDesc.arrayLayers != 4 ||
+            shadowTextureDesc.format != ark::rhi::Format::D32Float) {
+            std::cerr << "ShadowPass CSM texture array desc is invalid\n";
+            return false;
+        }
+
+        if (!frameContext.shadowMapView ||
+            frameContext.shadowMapView->getDesc().type != ark::rhi::TextureViewType::Texture2DArray ||
+            frameContext.shadowMapView->getDesc().arrayLayerCount != 4 ||
+            frameContext.shadowMapView->getDesc().baseArrayLayer != 0) {
+            std::cerr << "ShadowPass CSM sampled shadow view should cover the whole texture array\n";
+            return false;
+        }
+
+        if (device.textureViewDescs.size() < 5) {
+            std::cerr << "ShadowPass CSM path did not create sampled and per-layer views\n";
+            return false;
+        }
+
+        const ark::usize shadowViewBase = device.textureViewDescs.size() - 5;
+        const ark::rhi::TextureViewDesc& sampledViewDesc = device.textureViewDescs[shadowViewBase];
+        if (sampledViewDesc.type != ark::rhi::TextureViewType::Texture2DArray ||
+            sampledViewDesc.arrayLayerCount != 4 ||
+            sampledViewDesc.baseArrayLayer != 0) {
+            std::cerr << "ShadowPass CSM sampled view desc is invalid\n";
+            return false;
+        }
+
+        for (ark::u32 cascadeIndex = 0; cascadeIndex < 4; ++cascadeIndex) {
+            const ark::rhi::TextureViewDesc& layerViewDesc =
+                device.textureViewDescs[shadowViewBase + 1 + cascadeIndex];
+            if (layerViewDesc.type != ark::rhi::TextureViewType::Texture2D ||
+                layerViewDesc.baseArrayLayer != cascadeIndex ||
+                layerViewDesc.arrayLayerCount != 1) {
+                std::cerr << "ShadowPass CSM per-layer view desc is invalid\n";
+                return false;
+            }
+        }
+
+        if (!frameContext.cascadeShadows.isEnabled() ||
+            frameContext.cascadeShadows.cascadeCount != 4 ||
+            frameContext.cascadeShadows.cascadeExtent != 1024 ||
+            !near(frameContext.cascadeShadows.cascades[0].nearDistance, view.cameraNearPlane()) ||
+            frameContext.cascadeShadows.cascades[0].farDistance <=
+                frameContext.cascadeShadows.cascades[0].nearDistance) {
+            std::cerr << "ShadowPass CSM path did not publish cascade frame data\n";
+            return false;
+        }
+
+        if (context.beginRenderingCalls != 4 ||
+            context.endRenderingCalls != 4 ||
+            context.depthAttachmentViews.size() != 4 ||
+            context.lastRenderingDesc.colorAttachment.view != nullptr ||
+            context.lastRenderingDesc.extent.width != 1024 ||
+            context.lastViewport.width != 1024.0f ||
+            context.lastScissor.width != 1024) {
+            std::cerr << "ShadowPass CSM path did not render every cascade layer\n";
+            return false;
+        }
+
+        for (ark::u32 cascadeIndex = 0; cascadeIndex < 4; ++cascadeIndex) {
+            const ark::rhi::TextureView* depthView = context.depthAttachmentViews[cascadeIndex];
+            if (!depthView ||
+                depthView == frameContext.shadowMapView ||
+                depthView->getDesc().type != ark::rhi::TextureViewType::Texture2D ||
+                depthView->getDesc().baseArrayLayer != cascadeIndex ||
+                depthView->getDesc().arrayLayerCount != 1) {
+                std::cerr << "ShadowPass CSM path used the wrong render target layer\n";
+                return false;
+            }
+        }
+
+        if (context.pipelineBinds != 4 ||
+            context.descriptorBinds != 4 ||
+            context.shadowUniformUpdates != 4 ||
+            context.vertexBufferBinds != 4 ||
+            context.indexBufferBinds != 4 ||
+            context.indexedDraws != 4 ||
+            context.lastDrawIndexed.indexCount != 3) {
+            std::cerr << "ShadowPass CSM path did not issue one shadow draw per cascade\n";
+            return false;
+        }
+
+        if (context.barrierAfterStates.size() != 2 ||
+            context.barrierAfterStates[0] != ark::rhi::ResourceState::DepthStencilWrite ||
+            context.barrierAfterStates[1] != ark::rhi::ResourceState::ShaderResource) {
+            std::cerr << "ShadowPass CSM path should transition the array texture once per pass\n";
+            return false;
+        }
+
+        if (near(context.lastShadowUniform.lightViewProjection[0][0], 1.0f) &&
+            near(context.lastShadowUniform.lightViewProjection[1][1], 1.0f) &&
+            near(context.lastShadowUniform.lightViewProjection[2][2], 1.0f) &&
+            near(context.lastShadowUniform.lightViewProjection[3][3], 1.0f)) {
+            std::cerr << "ShadowPass CSM path did not write cascade light view-projection matrices\n";
             return false;
         }
 
@@ -874,7 +1035,8 @@ namespace {
 
 int main() {
     return validateShadowPassDisabledPath() && validateShadowPassDepthRender() &&
-                   validateShadowPassSceneBoundsFitting() && validateShadowMapRuntimeResize()
+                   validateShadowPassCascadeRenderPath() && validateShadowPassSceneBoundsFitting() &&
+                   validateShadowMapRuntimeResize()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

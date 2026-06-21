@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-已完成 0.67.0 文档与范围确认、0.67.1 Sandbox Shadow Validation Scene、0.67.2 CSM Settings / Data Contract，以及 0.67.3 Cascade Split / Matrix Builder。
+已完成 0.67.0 文档与范围确认、0.67.1 Sandbox Shadow Validation Scene、0.67.2 CSM Settings / Data Contract、0.67.3 Cascade Split / Matrix Builder，以及 0.67.4 ShadowPass CSM Render Path。
 
 Phase 0.61 ~ 0.66 已经完成 scene bounds、ShadowPass scene-fit、PCF shadow filtering、sandbox debug UI、运行时参数桥接、Frustum 数据结构、DrawItem world bounds 和 forward visibility diagnostics。当前渲染器已经可以在默认 Sponza + DamagedHelmet 场景中观察 Shadow、Bloom、ACES ToneMapping、IBL 和 camera frustum culling 统计。
 
@@ -284,6 +284,19 @@ Sandbox Shadow 面板建议增加：
 - 明确 shadow map 资源布局：texture array 或多 texture。
 - 保持 PCF 参数、bias、strength 与现有 ShadowSettings 兼容。
 - 保持 full queue 消费，不被 camera frustum culling 影响。
+
+实现结果：
+- RHI 新增 `TextureViewType::Texture2DArray`，Vulkan backend 映射到 `VK_IMAGE_VIEW_TYPE_2D_ARRAY`；`Texture2D` 单层 view 仍要求 `arrayLayerCount = 1`，避免旧路径语义变宽。
+- `ShadowPass` 根据 `ShadowSettings::cascades.enabled` 选择 shadow target：非 CSM 继续创建单层 `Texture2D` shadow map；CSM 创建一张 `D32Float` texture array，层数等于 sanitized cascade count，边长使用 `cascades.cascadeExtent`。
+- CSM 资源拆分为两类 view：`m_ShadowMapView` 是整张 texture array 的采样 view，逐 cascade 渲染时使用 `m_ShadowCascadeViews[index]` 这样的单层 `Texture2D` view。
+- `ShadowPass::execute()` 在 CSM 开启时只对 array texture 做一次 `DepthStencilWrite -> ShaderResource` 生命周期转换，中间按 cascade 逐层 begin/end rendering 并写入对应 `lightViewProjection`。
+- 单 shadow map 路径继续走旧的 draw contract，默认 sandbox 不会因为本阶段提前启用 CSM shader 采样而改变。
+- `ark_shadow_pass_smoke` 拆分覆盖单图路径和 CSM render path：验证 CSM texture array desc、sampled view、per-layer render target view、每级 cascade draw 次数和 barrier 次数。
+- Targeted build 通过：`ark_shadow_cascade_builder_smoke`、`ark_shadow_pass_smoke`、`ark_framework_headers_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_renderer_preset_smoke`。
+- Targeted CTest 通过：`ark_shadow_cascade_builder_smoke`、`ark_shadow_pass_smoke`、`ark_framework_headers_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_renderer_preset_smoke`。
+- Full Debug build 通过。
+- Full CTest 结果为 32/33：`ark_frame_validation_smoke` 的 `default_composite_scene` golden diff 仍超阈值（meanAbsError=0.0628158），与 0.67.3 的已知视觉基线问题一致，本阶段不更新 PNG baseline。
+- Sandbox hidden-window smoke 通过，默认非 CSM 路径可正常启动。
 
 ### 0.67.5 ForwardPass / Shader CSM Sampling
 

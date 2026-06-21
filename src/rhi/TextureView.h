@@ -7,6 +7,7 @@ namespace ark::rhi {
 
     enum class TextureViewType {
         Texture2D,
+        Texture2DArray,
         Cube,
     };
 

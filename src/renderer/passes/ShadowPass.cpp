@@ -231,8 +231,8 @@ namespace ark {
             return makeFixedLightViewProjection(lighting, settings);
         }
 
-        rhi::Extent2D makeShadowExtent(const ShadowSettings& settings) {
-            return rhi::Extent2D{settings.mapExtent, settings.mapExtent};
+        bool wantsCascadeShadowTarget(const ShadowSettings& settings) {
+            return settings.cascades.enabled && settings.cascades.cascadeCount > 0;
         }
 
         void clearFrameShadowBindings(FrameContext& frameContext) {
@@ -274,6 +274,23 @@ namespace ark {
         createPipelineResources();
     }
 
+    ShadowPass::ShadowTargetDesc ShadowPass::makeShadowTargetDesc(const ShadowSettings& settings) {
+        ShadowTargetDesc targetDesc{};
+        if (wantsCascadeShadowTarget(settings)) {
+            // CSM 每一级 cascade 独占一个 array layer，边长使用 cascadeExtent 而不是单图 mapExtent。
+            targetDesc.extent = rhi::Extent2D{settings.cascades.cascadeExtent,
+                                              settings.cascades.cascadeExtent};
+            targetDesc.layerCount = std::min(settings.cascades.cascadeCount, MaxShadowCascadeCount);
+            targetDesc.useTextureArray = true;
+            return targetDesc;
+        }
+
+        targetDesc.extent = rhi::Extent2D{settings.mapExtent, settings.mapExtent};
+        targetDesc.layerCount = 1;
+        targetDesc.useTextureArray = false;
+        return targetDesc;
+    }
+
     bool ShadowPass::prepare(FrameContext& frameContext) {
         if (!isShadowEnabled(frameContext)) {
             clearFrameShadowBindings(frameContext);
@@ -285,8 +302,8 @@ namespace ark {
             return false;
         }
 
-        const rhi::Extent2D shadowExtent = makeShadowExtent(frameContext.view->shadowSettings());
-        if (!ensureShadowTarget(frameContext, shadowExtent)) {
+        const ShadowTargetDesc targetDesc = makeShadowTargetDesc(frameContext.view->shadowSettings());
+        if (!ensureShadowTarget(frameContext, targetDesc)) {
             return false;
         }
 
@@ -337,38 +354,33 @@ namespace ark {
         }};
         frameContext.context->pipelineBarrier(toDepthWrite);
 
-        if (!beginShadowRendering(frameContext)) {
-            return false;
-        }
-
-        setViewportAndScissor(frameContext);
-        frameContext.context->setPipeline(*m_Pipeline);
-        frameContext.context->bindDescriptorSet(0, *m_DescriptorSets[frameSlot]);
-
-        for (const DrawItem& item : frameContext.queue->drawItems()) {
-            if (item.material &&
-                item.material->renderState().alphaMode == asset::AlphaMode::Blend) {
-                continue;
-            }
-
-            if (!item.isDrawable() || !updateShadowUniform(frameContext, frameSlot)) {
-                frameContext.context->endRendering();
+        if (frameContext.cascadeShadows.isEnabled()) {
+            // prepare 阶段按 settings 建资源，publish 阶段按相机/光源生成 cascade 数据；
+            // 这里再做一次匹配检查，防止 UI 热更新时资源层数和帧数据错位。
+            if (!m_ShadowUsesTextureArray ||
+                frameContext.cascadeShadows.cascadeCount > m_ShadowLayerCount) {
+                ARK_ERROR("ShadowPass CSM frame data does not match the prepared shadow texture array");
                 return false;
             }
 
-            ShadowUniform uniform{};
-            uniform.lightViewProjection = frameContext.lightViewProjection;
-            uniform.model = item.modelMatrix;
-            if (!frameContext.context->updateBuffer(*m_ShadowBuffers[frameSlot], &uniform, sizeof(uniform))) {
-                frameContext.context->endRendering();
+            // 整张 depth array 只做一次状态转换；每个 cascade 通过单层 view 依次清空并写入。
+            for (u32 cascadeIndex = 0; cascadeIndex < frameContext.cascadeShadows.cascadeCount; ++cascadeIndex) {
+                rhi::TextureView* cascadeView = shadowRenderTargetView(cascadeIndex);
+                if (!cascadeView ||
+                    !renderShadowLayer(frameContext,
+                                       frameSlot,
+                                       *cascadeView,
+                                       frameContext.cascadeShadows.cascades[cascadeIndex].lightViewProjection)) {
+                    return false;
+                }
+            }
+        } else {
+            rhi::TextureView* shadowView = shadowRenderTargetView(0);
+            if (!shadowView ||
+                !renderShadowLayer(frameContext, frameSlot, *shadowView, frameContext.lightViewProjection)) {
                 return false;
             }
-
-            item.mesh->bind(*frameContext.context);
-            frameContext.context->drawIndexed(item.mesh->makeDrawIndexedDesc());
         }
-
-        frameContext.context->endRendering();
 
         const std::array<rhi::ResourceBarrier, 1> toShaderResource{{
             rhi::ResourceBarrier{
@@ -491,7 +503,7 @@ namespace ark {
         return m_Pipeline != nullptr;
     }
 
-    bool ShadowPass::ensureShadowTarget(FrameContext& frameContext, rhi::Extent2D extent) {
+    bool ShadowPass::ensureShadowTarget(FrameContext& frameContext, const ShadowTargetDesc& targetDesc) {
         if (!m_Device) {
             ARK_ERROR("ShadowPass requires RenderDevice for shadow target");
             return false;
@@ -502,8 +514,18 @@ namespace ark {
             return false;
         }
 
+        if (!rhi::isValidExtent(targetDesc.extent) ||
+            targetDesc.layerCount == 0 ||
+            targetDesc.layerCount > MaxShadowCascadeCount) {
+            ARK_ERROR("ShadowPass shadow target desc is invalid");
+            return false;
+        }
+
         if (m_ShadowMap && m_ShadowMapView && m_ShadowSampler &&
-            m_ShadowExtent.width == extent.width && m_ShadowExtent.height == extent.height) {
+            m_ShadowExtent.width == targetDesc.extent.width &&
+            m_ShadowExtent.height == targetDesc.extent.height &&
+            m_ShadowLayerCount == targetDesc.layerCount &&
+            m_ShadowUsesTextureArray == targetDesc.useTextureArray) {
             return true;
         }
 
@@ -511,11 +533,14 @@ namespace ark {
             return false;
         }
 
-        m_ShadowExtent = extent;
+        m_ShadowExtent = targetDesc.extent;
+        m_ShadowLayerCount = targetDesc.layerCount;
+        m_ShadowUsesTextureArray = targetDesc.useTextureArray;
 
         rhi::TextureDesc textureDesc{};
-        textureDesc.extent = extent;
+        textureDesc.extent = targetDesc.extent;
         textureDesc.format = rhi::Format::D32Float;
+        textureDesc.arrayLayers = targetDesc.layerCount;
         textureDesc.usage = rhi::TextureUsage::DepthStencil | rhi::TextureUsage::ShaderResource;
         m_ShadowMap = m_Device->createTexture(textureDesc);
         if (!m_ShadowMap) {
@@ -524,9 +549,29 @@ namespace ark {
 
         rhi::TextureViewDesc viewDesc{};
         viewDesc.format = textureDesc.format;
+        viewDesc.arrayLayerCount = targetDesc.layerCount;
+        // m_ShadowMapView 是 ForwardPass 后续采样入口：单图时是 Texture2D，CSM 时覆盖整张 array。
+        viewDesc.type = targetDesc.useTextureArray ? rhi::TextureViewType::Texture2DArray
+                                                   : rhi::TextureViewType::Texture2D;
         m_ShadowMapView = m_Device->createTextureView(*m_ShadowMap, viewDesc);
         if (!m_ShadowMapView) {
             return false;
+        }
+
+        if (targetDesc.useTextureArray) {
+            for (u32 layerIndex = 0; layerIndex < targetDesc.layerCount; ++layerIndex) {
+                rhi::TextureViewDesc layerViewDesc{};
+                layerViewDesc.format = textureDesc.format;
+                layerViewDesc.baseArrayLayer = layerIndex;
+                layerViewDesc.arrayLayerCount = 1;
+                layerViewDesc.type = rhi::TextureViewType::Texture2D;
+                // CSM 采样使用整张 texture array view；渲染时绑定单层 2D view，
+                // 让 dynamic rendering 每次只清理和写入一个 cascade layer。
+                m_ShadowCascadeViews[layerIndex] = m_Device->createTextureView(*m_ShadowMap, layerViewDesc);
+                if (!m_ShadowCascadeViews[layerIndex]) {
+                    return false;
+                }
+            }
         }
 
         rhi::SamplerDesc samplerDesc{};
@@ -547,9 +592,15 @@ namespace ark {
             return false;
         }
 
-        // Shadow map 尺寸可由 UI 实时调整；旧 shadow target 可能仍被上一帧 GPU 命令读取。
+        // Shadow map 尺寸和 CSM layer 数都可能由 UI 实时调整；旧资源要延迟释放，
+        // 避免上一帧 GPU 命令仍在读取时被 CPU 立即销毁。
         if (m_ShadowMapView && !frameContext.context->deferReleaseTextureView(m_ShadowMapView)) {
             return false;
+        }
+        for (Scope<rhi::TextureView>& cascadeView : m_ShadowCascadeViews) {
+            if (cascadeView && !frameContext.context->deferReleaseTextureView(cascadeView)) {
+                return false;
+            }
         }
         if (m_ShadowSampler && !frameContext.context->deferReleaseSampler(m_ShadowSampler)) {
             return false;
@@ -559,6 +610,8 @@ namespace ark {
         }
 
         m_ShadowExtent = {};
+        m_ShadowLayerCount = 0;
+        m_ShadowUsesTextureArray = false;
         return true;
     }
 
@@ -570,10 +623,22 @@ namespace ark {
         return true;
     }
 
-    bool ShadowPass::beginShadowRendering(FrameContext& frameContext) {
+    rhi::TextureView* ShadowPass::shadowRenderTargetView(u32 layerIndex) const {
+        if (m_ShadowUsesTextureArray) {
+            if (layerIndex >= m_ShadowCascadeViews.size()) {
+                return nullptr;
+            }
+            // 渲染 attachment 必须是单层 view；采样用的 m_ShadowMapView 覆盖整张 array，不能直接拿来清一层。
+            return m_ShadowCascadeViews[layerIndex].get();
+        }
+
+        return layerIndex == 0 ? m_ShadowMapView.get() : nullptr;
+    }
+
+    bool ShadowPass::beginShadowRendering(FrameContext& frameContext, rhi::TextureView& depthView) {
         rhi::RenderingDesc renderingDesc{};
         renderingDesc.extent = m_ShadowExtent;
-        renderingDesc.depthStencilAttachment.view = m_ShadowMapView.get();
+        renderingDesc.depthStencilAttachment.view = &depthView;
         renderingDesc.depthStencilAttachment.loadOp = rhi::LoadOp::Clear;
         renderingDesc.depthStencilAttachment.storeOp = rhi::StoreOp::Store;
         renderingDesc.depthStencilAttachment.clearDepth = 1.0f;
@@ -590,5 +655,45 @@ namespace ark {
         scissor.width = m_ShadowExtent.width;
         scissor.height = m_ShadowExtent.height;
         frameContext.context->setScissorRect(scissor);
+    }
+
+    bool ShadowPass::renderShadowLayer(FrameContext& frameContext,
+                                       u32 frameSlot,
+                                       rhi::TextureView& depthView,
+                                       const glm::mat4& lightViewProjection) {
+        if (!beginShadowRendering(frameContext, depthView)) {
+            return false;
+        }
+
+        setViewportAndScissor(frameContext);
+        frameContext.context->setPipeline(*m_Pipeline);
+        frameContext.context->bindDescriptorSet(0, *m_DescriptorSets[frameSlot]);
+
+        // 单图阴影和 CSM 每层都执行同一份深度绘制逻辑，区别只在 light VP 和 depth attachment。
+        for (const DrawItem& item : frameContext.queue->drawItems()) {
+            if (item.material &&
+                item.material->renderState().alphaMode == asset::AlphaMode::Blend) {
+                continue;
+            }
+
+            if (!item.isDrawable() || !updateShadowUniform(frameContext, frameSlot)) {
+                frameContext.context->endRendering();
+                return false;
+            }
+
+            ShadowUniform uniform{};
+            uniform.lightViewProjection = lightViewProjection;
+            uniform.model = item.modelMatrix;
+            if (!frameContext.context->updateBuffer(*m_ShadowBuffers[frameSlot], &uniform, sizeof(uniform))) {
+                frameContext.context->endRendering();
+                return false;
+            }
+
+            item.mesh->bind(*frameContext.context);
+            frameContext.context->drawIndexed(item.mesh->makeDrawIndexedDesc());
+        }
+
+        frameContext.context->endRendering();
+        return true;
     }
 } // namespace ark

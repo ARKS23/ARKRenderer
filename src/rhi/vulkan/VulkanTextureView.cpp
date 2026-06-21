@@ -23,6 +23,8 @@ namespace ark::rhi::vulkan {
             switch (type) {
             case TextureViewType::Texture2D:
                 return VK_IMAGE_VIEW_TYPE_2D;
+            case TextureViewType::Texture2DArray:
+                return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
             case TextureViewType::Cube:
                 return VK_IMAGE_VIEW_TYPE_CUBE;
             }
@@ -53,6 +55,12 @@ namespace ark::rhi::vulkan {
 
             if (desc.type == TextureViewType::Texture2D && desc.arrayLayerCount != 1) {
                 throw std::runtime_error("VulkanTextureView 2D views require exactly one array layer");
+            }
+
+            // Texture2DArray 是同一张 2D texture 的多 layer view，不等同于 cubemap。
+            if (desc.type == TextureViewType::Texture2DArray &&
+                textureDesc.type != TextureType::Texture2D) {
+                throw std::runtime_error("VulkanTextureView 2D array views require a 2D texture");
             }
 
             if (desc.type == TextureViewType::Cube) {

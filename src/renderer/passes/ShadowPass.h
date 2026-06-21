@@ -2,6 +2,7 @@
 
 #include "core/Memory.h"
 #include "renderer/RenderPass.h"
+#include "renderer/ShadowConstants.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
@@ -18,6 +19,8 @@
 #include <array>
 
 namespace ark {
+    struct ShadowSettings;
+
     class ShadowPass : public RenderPass {
     public:
         ~ShadowPass() override;
@@ -29,14 +32,23 @@ namespace ark {
     private:
         static constexpr u32 FramesInFlight = 2;
 
+        struct ShadowTargetDesc {
+            rhi::Extent2D extent{};
+            u32 layerCount = 1;
+            bool useTextureArray = false;
+        };
+
         bool createDescriptorResources();
         bool createShaderResources();
         bool createPipelineResources();
-        bool ensureShadowTarget(FrameContext& frameContext, rhi::Extent2D extent);
+        static ShadowTargetDesc makeShadowTargetDesc(const ShadowSettings& settings);
+        bool ensureShadowTarget(FrameContext& frameContext, const ShadowTargetDesc& targetDesc);
         bool releaseShadowTargetDeferred(FrameContext& frameContext);
         bool updateShadowUniform(FrameContext& frameContext, u32 frameSlot);
-        bool beginShadowRendering(FrameContext& frameContext);
+        rhi::TextureView* shadowRenderTargetView(u32 layerIndex) const;
+        bool beginShadowRendering(FrameContext& frameContext, rhi::TextureView& depthView);
         void setViewportAndScissor(FrameContext& frameContext);
+        bool renderShadowLayer(FrameContext& frameContext, u32 frameSlot, rhi::TextureView& depthView, const glm::mat4& lightViewProjection);
 
         rhi::RenderDevice* m_Device = nullptr;
         std::array<Scope<rhi::Buffer>, FramesInFlight> m_ShadowBuffers;
@@ -48,7 +60,10 @@ namespace ark {
         Scope<rhi::Shader> m_FragmentShader;
         Scope<rhi::Texture> m_ShadowMap;
         Scope<rhi::TextureView> m_ShadowMapView;
+        std::array<Scope<rhi::TextureView>, MaxShadowCascadeCount> m_ShadowCascadeViews;
         Scope<rhi::Sampler> m_ShadowSampler;
         rhi::Extent2D m_ShadowExtent{};
+        u32 m_ShadowLayerCount = 0;
+        bool m_ShadowUsesTextureArray = false;
     };
 } // namespace ark

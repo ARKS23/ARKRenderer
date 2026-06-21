@@ -34,7 +34,7 @@ namespace ark {
     };
 
     struct CascadeShadowSettings {
-        // CSM 运行时设置；0.67.2 只建立数据契约，实际多 cascade 渲染由后续阶段接入。
+        // CSM 运行时设置；ShadowPass 负责写入多级 shadow map，ForwardPass 后续负责按深度选择采样。
         bool enabled = false;
         // 第一版只允许 1 / 2 / 4 级，避免 UI 和 shader contract 先膨胀成任意数量。
         u32 cascadeCount = MaxShadowCascadeCount;
@@ -42,9 +42,9 @@ namespace ark {
         float splitLambda = 0.65f;
         // CSM 阴影覆盖距离独立于相机 far plane，防止远平面过大导致 cascade texel density 被稀释。
         float maxDistance = 80.0f;
-        // 每一级 cascade 使用正方形 shadow map；后续 texture array/atlas 均沿用该边长。
+        // 每一级 cascade 使用正方形 shadow map；texture array/atlas 均沿用该边长。
         u32 cascadeExtent = 2048;
-        // 后续复用 texel snapping 稳定 cascade 投影，降低相机移动时的阴影抖动。
+        // 复用 texel snapping 稳定 cascade 投影，降低相机移动时的阴影抖动。
         bool stabilize = true;
     };
 

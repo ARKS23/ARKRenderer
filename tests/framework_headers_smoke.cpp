@@ -186,6 +186,10 @@ int main() {
     cubeTextureViewDesc.format = cubeTextureDesc.format;
     cubeTextureViewDesc.arrayLayerCount = 6;
     cubeTextureViewDesc.type = ark::rhi::TextureViewType::Cube;
+    ark::rhi::TextureViewDesc shadowArrayViewDesc{};
+    shadowArrayViewDesc.format = ark::rhi::Format::D32Float;
+    shadowArrayViewDesc.arrayLayerCount = ark::MaxShadowCascadeCount;
+    shadowArrayViewDesc.type = ark::rhi::TextureViewType::Texture2DArray;
 
     ark::rhi::ResourceBarrier depthBarrier{};
     depthBarrier.before = ark::rhi::ResourceState::Undefined;
@@ -736,6 +740,7 @@ int main() {
     (void)environmentBrdfLutGenerationDesc;
     (void)smokeFaceView;
     (void)smokeFaceMipView;
+    (void)shadowArrayViewDesc;
     (void)smokeMipExtent;
     (void)positiveXFace;
     (void)positiveXDebugColor;
