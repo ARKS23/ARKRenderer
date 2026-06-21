@@ -2,7 +2,7 @@
 
 #include "core/Memory.h"
 #include "renderer/RenderPass.h"
-#include "renderer/effects/shadow/ShadowConstants.h"
+#include "renderer/ShadowConstants.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

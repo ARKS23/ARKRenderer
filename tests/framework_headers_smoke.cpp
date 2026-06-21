@@ -40,7 +40,7 @@
 #include "renderer/Renderer.h"
 #include "renderer/RendererPreset.h"
 #include "renderer/RendererQuality.h"
-#include "renderer/effects/tone_mapping/PostProcessingSettings.h"
+#include "renderer/PostProcessingSettings.h"
 #include "renderer/effects/sky/SandboxEnvironment.h"
 #include "renderer/SceneResource.h"
 #include "renderer/effects/shadow/ShadowCascadeBuilder.h"

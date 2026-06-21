@@ -12,6 +12,7 @@ namespace ark {
         u32 maxMipCount = 6;
     };
 
+    // Public settings contract: 描述一帧后处理参数，不暴露 Bloom/ToneMapping pass 的实现细节。
     struct PostProcessingSettings {
         BloomSettings bloom;
     };

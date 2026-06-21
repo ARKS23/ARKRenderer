@@ -2,8 +2,8 @@
 
 #include "asset/MeshData.h"
 #include "core/Types.h"
-#include "renderer/effects/tone_mapping/PostProcessingSettings.h"
-#include "renderer/effects/shadow/ShadowConstants.h"
+#include "renderer/PostProcessingSettings.h"
+#include "renderer/ShadowConstants.h"
 #include "rhi/RHICommon.h"
 
 #include <algorithm>
@@ -105,6 +105,7 @@ namespace ark {
 
             m_CameraPosition = glm::vec3{0.0f, 0.0f, -4.0f};
             m_View = glm::lookAt(m_CameraPosition, glm::vec3{0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
+            // 项目使用右手世界坐标和 RH_ZO 投影语义；Vulkan NDC 的 Y 翻转在这里统一处理。
             m_Projection = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 0.1f, 100.0f);
             m_Projection[1][1] *= -1.0f;
             setClipRange(0.1f, 100.0f);
@@ -133,6 +134,7 @@ namespace ark {
             }
 
             const glm::mat4 worldMatrix = toMat4(worldTransform);
+            // glTF camera 进入 renderer 后同样保持 RH_ZO 投影，再做 Vulkan Y 翻转。
             glm::mat4 projection = glm::perspectiveRH_ZO(perspective.yfov, aspect, perspective.znear, farPlane);
             projection[1][1] *= -1.0f;
             setMatrices(glm::affineInverse(worldMatrix), projection, glm::vec3{worldMatrix[3]});

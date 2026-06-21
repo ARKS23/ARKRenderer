@@ -25,11 +25,14 @@ namespace ark {
         High,
     };
 
+    // Sandbox/sample preset：用于快速得到可验证的默认场景和画面质量。
+    // 真实引擎可以不用 preset，直接提交自己的 RenderScene / RenderView / RendererQualityDesc。
     struct RendererPresetDesc {
         RendererScenePreset scene = RendererScenePreset::Default;
         RendererQualityPreset quality = RendererQualityPreset::Default;
     };
 
+    // 一组可直接写入 RenderView 的默认画面参数，方便 sandbox 展示阴影、IBL、Bloom、ToneMapping。
     struct RenderViewProfileDesc {
         ToneMappingSettings toneMapping{1.0f, 2.2f, ToneMappingOperator::ACES};
         PostProcessingSettings postProcessing{

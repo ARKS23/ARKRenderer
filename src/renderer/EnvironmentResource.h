@@ -26,6 +26,8 @@ namespace ark {
         std::string debugName;
     };
 
+    // Resource contract: HDR/equirect environment 的 renderer-owned GPU resource。
+    // IBL bake 和 sky pass 可以依赖它，但上层不需要直接接触具体 bake generator。
     class EnvironmentResource final {
     public:
         EnvironmentResource() = default;

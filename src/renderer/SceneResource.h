@@ -48,6 +48,8 @@ namespace ark {
         std::string modelName = "AdditionalModel";
     };
 
+    // Sample/sandbox 资源加载描述：把 glTF/HDR 快速转成 renderer resource。
+    // 长期引擎接入时可以绕过它，由 engine asset pipeline 直接创建 renderer resource。
     struct SceneResourceLoadDesc {
         Path modelPath;
         glm::mat4 modelTransform{1.0f};
@@ -77,6 +79,9 @@ namespace ark {
         usize loadedModelCount = 0;
     };
 
+    // Public-ish helper: SceneResource 是 demo/sandbox 的资源聚合器，不是完整 Engine Scene。
+    // 它拥有默认模型、附加模型、环境贴图和一个可提交给 Renderer 的 RenderScene。
+    // 若接入真实引擎，推荐保留底层 Resource 类型，把加载、缓存和热更新交给引擎资产系统。
     class SceneResource final {
     public:
         SceneResource() = default;

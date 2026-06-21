@@ -20,6 +20,13 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 - Vulkan 渲染路径中会对投影矩阵执行 `projection[1][1] *= -1.0f` 以修正屏幕 Y 方向。
 - `DirectionalLight::direction` 表示光线传播方向，即从光源射向场景；shader 中会取反得到“着色点指向光源”的方向。
 
+## Renderer 接入边界
+
+- 应用或未来引擎接入时，优先依赖 `Renderer`、`RenderScene`、`RenderView` 这三个 public facade。
+- `ModelResource`、`MeshResource`、`MaterialResource`、`TextureResource`、`EnvironmentResource` 是 renderer resource contract，可作为引擎资产进入 renderer 的边界对象。
+- `SceneResource`、`RendererPreset` 更偏 sandbox/sample 快速验证；真实引擎可以绕过它们，直接由资产系统创建 renderer resource。
+- `FrameRenderer`、`FrameContext`、`RenderQueue`、`passes/*`、`effects/*` 默认属于 renderer internal，不建议应用层或引擎层直接依赖。
+
 ## 构建
 
 环境要求：

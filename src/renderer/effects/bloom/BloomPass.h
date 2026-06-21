@@ -2,7 +2,7 @@
 
 #include "core/Memory.h"
 #include "renderer/RenderPass.h"
-#include "renderer/effects/tone_mapping/PostProcessingSettings.h"
+#include "renderer/PostProcessingSettings.h"
 #include "rhi/RHICommon.h"
 
 #include <array>

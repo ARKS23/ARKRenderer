@@ -25,6 +25,8 @@ namespace ark {
     inline constexpr float MinEnvironmentBakeIrradianceSampleDelta = 0.005f;
     inline constexpr float MaxEnvironmentBakeIrradianceSampleDelta = 1.0f;
 
+    // Public-ish quality contract: 描述环境贴图 bake 的资源尺寸和采样质量。
+    // 这些值可以来自 preset/UI/engine settings，进入 renderer 前统一经过 sanitize。
     struct EnvironmentBakeQualityDesc {
         rhi::Extent2D environmentCubeFaceExtent = DefaultEnvironmentBakeCubeFaceExtent;
         rhi::Extent2D irradianceCubeFaceExtent = DefaultEnvironmentBakeIrradianceFaceExtent;
@@ -41,6 +43,7 @@ namespace ark {
         bool enableBrdfLut = true;
     };
 
+    // RendererQualityDesc 只保存可公开调节的质量参数，不暴露具体 pass 或 generator 实现。
     struct RendererQualityDesc {
         EnvironmentBakeQualityDesc environmentBake;
     };

@@ -1,4 +1,4 @@
-#include "renderer/effects/tone_mapping/PostProcessingSettings.h"
+#include "renderer/PostProcessingSettings.h"
 
 #include <algorithm>
 #include <cmath>

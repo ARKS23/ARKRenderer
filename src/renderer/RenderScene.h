@@ -37,6 +37,7 @@ namespace ark {
     };
 
     struct SceneModel {
+        // RenderScene 只借用 renderer resource 指针；资源生命周期必须覆盖本帧渲染。
         ModelResource* model = nullptr;
         glm::mat4 transform{1.0f};
         std::string debugName;
@@ -47,6 +48,7 @@ namespace ark {
     };
 
     struct SceneObject {
+        // 单个 mesh/material draw object，适合未来从引擎 scene extraction 阶段生成。
         MeshResource* mesh = nullptr;
         MaterialResource* material = nullptr;
         glm::mat4 transform{1.0f};
@@ -57,6 +59,9 @@ namespace ark {
         }
     };
 
+    // Public facade: RenderScene 是 renderer-facing scene submission 容器。
+    // 它不表达完整引擎世界，不负责 ECS、层级 Transform、动画、物理或 gameplay 状态；
+    // 未来引擎接入时，推荐由 adapter/extraction layer 把 engine scene 转换成 RenderScene。
     class RenderScene {
     public:
         virtual ~RenderScene() = default;
