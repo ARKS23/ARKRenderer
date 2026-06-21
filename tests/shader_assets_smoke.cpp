@@ -81,13 +81,21 @@ namespace {
             !containsText(shaderSource, "Texture2D<float> g_ShadowMap") ||
             !containsText(shaderSource, "[[vk::binding(23, 0)]]") ||
             !containsText(shaderSource, "SamplerState g_ShadowSampler") ||
+            !containsText(shaderSource, "[[vk::binding(24, 0)]]") ||
+            !containsText(shaderSource, "Texture2DArray<float> g_CascadeShadowMap") ||
             !containsText(shaderSource, "lightViewProjection") ||
+            !containsText(shaderSource, "cascadeLightViewProjections") ||
+            !containsText(shaderSource, "cascadeSplits") ||
+            !containsText(shaderSource, "MaxShadowCascadeCount") ||
             !containsText(shaderSource, "sampleShadowVisibility") ||
+            !containsText(shaderSource, "sampleCascadeShadowVisibility") ||
             !containsText(shaderSource, "ShadowFilterPcf3x3") ||
             !containsText(shaderSource, "ShadowFilterPcf5x5") ||
             !containsText(shaderSource, "sampleShadowCompare") ||
             !containsText(shaderSource, "sampleShadowPcf") ||
+            !containsText(shaderSource, "sampleCascadeShadowPcf") ||
             !containsText(shaderSource, "GetDimensions") ||
+            !containsText(shaderSource, "g_Camera.view") ||
             !containsText(shaderSource, "g_Lighting.shadow.z") ||
             !containsText(shaderSource, "g_Lighting.shadow.w") ||
             !containsText(shaderSource, "normalize(normal)") ||

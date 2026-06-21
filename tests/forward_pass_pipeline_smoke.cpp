@@ -45,9 +45,12 @@ namespace {
         glm::vec4 environmentSpecular;
         glm::mat4 lightViewProjection;
         glm::vec4 shadow;
+        glm::vec4 cascadeShadow;
+        std::array<glm::mat4, ark::MaxShadowCascadeCount> cascadeLightViewProjections;
+        glm::vec4 cascadeSplits;
     };
 
-    static_assert(sizeof(CapturedLightingUniform) == 176);
+    static_assert(sizeof(CapturedLightingUniform) == 464);
 
     struct alignas(16) CapturedMaterialUniform {
         glm::vec4 baseColorFactor;
@@ -140,6 +143,7 @@ namespace {
         bool brdfLutSamplerBound = false;
         bool shadowImageBound = false;
         bool shadowSamplerBound = false;
+        bool cascadeShadowImageBound = false;
         ark::rhi::TextureDesc environmentTextureDesc{};
         ark::rhi::SamplerDesc environmentSamplerDesc{};
         ark::rhi::TextureDesc irradianceTextureDesc{};
@@ -149,6 +153,9 @@ namespace {
         ark::rhi::TextureDesc brdfLutTextureDesc{};
         ark::rhi::SamplerDesc brdfLutSamplerDesc{};
         ark::rhi::TextureDesc shadowTextureDesc{};
+        ark::rhi::TextureViewDesc shadowViewDesc{};
+        ark::rhi::TextureDesc cascadeShadowTextureDesc{};
+        ark::rhi::TextureViewDesc cascadeShadowViewDesc{};
         ark::rhi::SamplerDesc shadowSamplerDesc{};
     };
 
@@ -289,6 +296,9 @@ namespace {
             if (binding == 22) {
                 shadowImageView = image.view;
             }
+            if (binding == 24) {
+                cascadeShadowImageView = image.view;
+            }
         }
 
         void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor& sampler) override {
@@ -322,6 +332,7 @@ namespace {
         ark::rhi::TextureView* brdfLutImageView = nullptr;
         ark::rhi::Sampler* brdfLutSampler = nullptr;
         ark::rhi::TextureView* shadowImageView = nullptr;
+        ark::rhi::TextureView* cascadeShadowImageView = nullptr;
         ark::rhi::Sampler* shadowSampler = nullptr;
     };
 
@@ -623,7 +634,8 @@ namespace {
                             ark::rhi::Format depthFormat = ark::rhi::Format::Unknown,
                             float environmentIntensity = 0.0f,
                             bool useIrradianceCube = false,
-                            bool useSpecularResources = false) {
+                            bool useSpecularResources = false,
+                            bool useCascadeShadow = false) {
         FakeRenderDevice device{};
         FakeDeviceContext context{};
         FakeSwapChain swapChain{};
@@ -634,6 +646,9 @@ namespace {
         ark::EnvironmentCubeResource irradianceResource{};
         ark::EnvironmentCubeResource specularResource{};
         ark::EnvironmentBrdfLutResource brdfLutResource{};
+        ark::Scope<ark::rhi::Texture> cascadeShadowTexture;
+        ark::Scope<ark::rhi::TextureView> cascadeShadowView;
+        ark::Scope<ark::rhi::Sampler> cascadeShadowSampler;
 
         if (!mesh.create(device, makeTriangle()) ||
             !createMaterial(device, textureCache, material, alphaMode, doubleSided)) {
@@ -683,6 +698,37 @@ namespace {
             }
         }
 
+        if (useCascadeShadow) {
+            ark::rhi::TextureDesc cascadeShadowTextureDesc{};
+            cascadeShadowTextureDesc.extent = ark::rhi::Extent2D{1024, 1024};
+            cascadeShadowTextureDesc.format = ark::rhi::Format::D32Float;
+            cascadeShadowTextureDesc.arrayLayers = ark::MaxShadowCascadeCount;
+            cascadeShadowTextureDesc.usage =
+                ark::rhi::TextureUsage::DepthStencil | ark::rhi::TextureUsage::ShaderResource;
+            cascadeShadowTexture = device.createTexture(cascadeShadowTextureDesc);
+
+            ark::rhi::TextureViewDesc cascadeShadowViewDesc{};
+            cascadeShadowViewDesc.format = ark::rhi::Format::D32Float;
+            cascadeShadowViewDesc.type = ark::rhi::TextureViewType::Texture2DArray;
+            cascadeShadowViewDesc.arrayLayerCount = ark::MaxShadowCascadeCount;
+            if (cascadeShadowTexture) {
+                cascadeShadowView = device.createTextureView(*cascadeShadowTexture, cascadeShadowViewDesc);
+            }
+
+            ark::rhi::SamplerDesc cascadeShadowSamplerDesc{};
+            cascadeShadowSamplerDesc.minFilter = ark::rhi::FilterMode::Linear;
+            cascadeShadowSamplerDesc.magFilter = ark::rhi::FilterMode::Linear;
+            cascadeShadowSamplerDesc.addressU = ark::rhi::AddressMode::ClampToEdge;
+            cascadeShadowSamplerDesc.addressV = ark::rhi::AddressMode::ClampToEdge;
+            cascadeShadowSamplerDesc.addressW = ark::rhi::AddressMode::ClampToEdge;
+            cascadeShadowSampler = device.createSampler(cascadeShadowSamplerDesc);
+
+            if (!cascadeShadowTexture || !cascadeShadowView || !cascadeShadowSampler) {
+                std::cerr << "Failed to create ForwardPass cascade shadow resources\n";
+                return false;
+            }
+        }
+
         ark::RenderScene scene{};
         if (lighting) {
             scene.setLighting(*lighting);
@@ -722,6 +768,24 @@ namespace {
         frameContext.irradianceCube = useIrradianceCube ? &irradianceResource : nullptr;
         frameContext.prefilteredSpecularCube = useSpecularResources ? &specularResource : nullptr;
         frameContext.brdfLut = useSpecularResources ? &brdfLutResource : nullptr;
+        if (useCascadeShadow) {
+            frameContext.shadowMapView = cascadeShadowView.get();
+            frameContext.shadowSampler = cascadeShadowSampler.get();
+            frameContext.shadowStrength = 0.75f;
+            frameContext.shadowBias = 0.0025f;
+            frameContext.shadowFilterMode = 2.0f;
+            frameContext.shadowFilterRadiusTexels = 1.5f;
+            frameContext.cascadeShadows.enabled = true;
+            frameContext.cascadeShadows.cascadeCount = ark::MaxShadowCascadeCount;
+            frameContext.cascadeShadows.cascadeExtent = 1024;
+            for (ark::u32 cascadeIndex = 0; cascadeIndex < ark::MaxShadowCascadeCount; ++cascadeIndex) {
+                ark::ShadowCascade& cascade = frameContext.cascadeShadows.cascades[cascadeIndex];
+                cascade.nearDistance = cascadeIndex == 0 ? 0.1f : static_cast<float>(cascadeIndex * 10);
+                cascade.farDistance = static_cast<float>((cascadeIndex + 1) * 10);
+                cascade.lightViewProjection = glm::mat4{1.0f};
+                cascade.lightViewProjection[0][0] = 1.0f + static_cast<float>(cascadeIndex);
+            }
+        }
 
         if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
             std::cerr << "ForwardPass pipeline smoke failed to execute\n";
@@ -755,6 +819,7 @@ namespace {
             ark::rhi::TextureView* brdfLutImageView = device.descriptorSets.front()->brdfLutImageView;
             ark::rhi::Sampler* brdfLutSampler = device.descriptorSets.front()->brdfLutSampler;
             ark::rhi::TextureView* shadowImageView = device.descriptorSets.front()->shadowImageView;
+            ark::rhi::TextureView* cascadeShadowImageView = device.descriptorSets.front()->cascadeShadowImageView;
             ark::rhi::Sampler* shadowSampler = device.descriptorSets.front()->shadowSampler;
             capture.environmentImageBound = environmentImageView != nullptr;
             capture.environmentSamplerBound = environmentSampler != nullptr;
@@ -765,6 +830,7 @@ namespace {
             capture.brdfLutImageBound = brdfLutImageView != nullptr;
             capture.brdfLutSamplerBound = brdfLutSampler != nullptr;
             capture.shadowImageBound = shadowImageView != nullptr;
+            capture.cascadeShadowImageBound = cascadeShadowImageView != nullptr;
             capture.shadowSamplerBound = shadowSampler != nullptr;
             if (environmentImageView && environmentImageView->getTexture()) {
                 capture.environmentTextureDesc = environmentImageView->getTexture()->getDesc();
@@ -792,6 +858,11 @@ namespace {
             }
             if (shadowImageView && shadowImageView->getTexture()) {
                 capture.shadowTextureDesc = shadowImageView->getTexture()->getDesc();
+                capture.shadowViewDesc = shadowImageView->getDesc();
+            }
+            if (cascadeShadowImageView && cascadeShadowImageView->getTexture()) {
+                capture.cascadeShadowTextureDesc = cascadeShadowImageView->getTexture()->getDesc();
+                capture.cascadeShadowViewDesc = cascadeShadowImageView->getDesc();
             }
             if (shadowSampler) {
                 capture.shadowSamplerDesc = shadowSampler->getDesc();
@@ -1151,7 +1222,11 @@ namespace {
             !near(uniform.environment.w, 0.0f) ||
             !near(uniform.environmentSpecular.x, 0.0f) ||
             !near(uniform.shadow.z, 0.0f) ||
-            !near(uniform.shadow.w, 0.0f)) {
+            !near(uniform.shadow.w, 0.0f) ||
+            !near(uniform.cascadeShadow.x, 0.0f) ||
+            !near(uniform.cascadeShadow.y, 0.0f) ||
+            !near(uniform.cascadeShadow.z, 0.0f) ||
+            !near(uniform.cascadeSplits.x, 0.0f)) {
             std::cerr << "ForwardPass lighting uniform did not use scene lighting and view camera position\n";
             return false;
         }
@@ -1204,6 +1279,10 @@ namespace {
             !containsBinding(capture.descriptorBindings,
                              23,
                              ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(capture.descriptorBindings,
+                             24,
+                             ark::rhi::DescriptorType::SampledImage,
                              ark::rhi::ShaderStageFlags::Fragment)) {
             std::cerr << "ForwardPass descriptor layout does not expose environment IBL bindings\n";
             return false;
@@ -1214,6 +1293,7 @@ namespace {
             !capture.specularImageBound || !capture.specularSamplerBound ||
             !capture.brdfLutImageBound || !capture.brdfLutSamplerBound ||
             !capture.shadowImageBound || !capture.shadowSamplerBound ||
+            !capture.cascadeShadowImageBound ||
             capture.textureUploadCount == 0) {
             std::cerr << "ForwardPass did not bind or upload fallback environment descriptors\n";
             return false;
@@ -1261,11 +1341,23 @@ namespace {
             capture.shadowTextureDesc.extent.height != 1 ||
             capture.shadowTextureDesc.arrayLayers != 1 ||
             capture.shadowTextureDesc.mipLevels != 1 ||
+            capture.shadowViewDesc.type != ark::rhi::TextureViewType::Texture2D ||
             !ark::rhi::hasTextureUsage(capture.shadowTextureDesc.usage,
                                        ark::rhi::TextureUsage::DepthStencil) ||
             !ark::rhi::hasTextureUsage(capture.shadowTextureDesc.usage,
                                        ark::rhi::TextureUsage::ShaderResource)) {
             std::cerr << "ForwardPass fallback shadow map is invalid\n";
+            return false;
+        }
+
+        if (capture.cascadeShadowTextureDesc.type != ark::rhi::TextureType::Texture2D ||
+            capture.cascadeShadowTextureDesc.format != ark::rhi::Format::D32Float ||
+            capture.cascadeShadowTextureDesc.extent.width != 1 ||
+            capture.cascadeShadowTextureDesc.extent.height != 1 ||
+            capture.cascadeShadowTextureDesc.arrayLayers != 1 ||
+            capture.cascadeShadowViewDesc.type != ark::rhi::TextureViewType::Texture2DArray ||
+            capture.cascadeShadowViewDesc.arrayLayerCount != 1) {
+            std::cerr << "ForwardPass fallback cascade shadow map view is invalid\n";
             return false;
         }
 
@@ -1277,9 +1369,75 @@ namespace {
             !near(capture.lightingUniform.shadow.x, 0.0f) ||
             !near(capture.lightingUniform.shadow.y, 0.0015f) ||
             !near(capture.lightingUniform.shadow.z, 0.0f) ||
-            !near(capture.lightingUniform.shadow.w, 0.0f)) {
+            !near(capture.lightingUniform.shadow.w, 0.0f) ||
+            !near(capture.lightingUniform.cascadeShadow.x, 0.0f) ||
+            !near(capture.lightingUniform.cascadeShadow.y, 0.0f) ||
+            !near(capture.lightingUniform.cascadeShadow.z, 0.0f)) {
             std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
             return false;
+        }
+
+        return true;
+    }
+
+    bool validateForwardPassCascadeShadowUniformAndDescriptors() {
+        ForwardPassCapture capture{};
+        if (!captureForwardPass(ark::asset::AlphaMode::Opaque,
+                                false,
+                                capture,
+                                nullptr,
+                                nullptr,
+                                ark::rhi::Format::Unknown,
+                                ark::rhi::Format::Unknown,
+                                0.0f,
+                                false,
+                                false,
+                                true)) {
+            return false;
+        }
+
+        if (!capture.shadowImageBound || !capture.cascadeShadowImageBound || !capture.shadowSamplerBound) {
+            std::cerr << "ForwardPass did not bind single and cascade shadow descriptors\n";
+            return false;
+        }
+
+        if (capture.shadowTextureDesc.extent.width != 1 ||
+            capture.shadowTextureDesc.extent.height != 1 ||
+            capture.shadowViewDesc.type != ark::rhi::TextureViewType::Texture2D) {
+            std::cerr << "ForwardPass CSM path should keep the single shadow binding on fallback 2D view\n";
+            return false;
+        }
+
+        if (capture.cascadeShadowTextureDesc.format != ark::rhi::Format::D32Float ||
+            capture.cascadeShadowTextureDesc.extent.width != 1024 ||
+            capture.cascadeShadowTextureDesc.extent.height != 1024 ||
+            capture.cascadeShadowTextureDesc.arrayLayers != ark::MaxShadowCascadeCount ||
+            capture.cascadeShadowViewDesc.type != ark::rhi::TextureViewType::Texture2DArray ||
+            capture.cascadeShadowViewDesc.arrayLayerCount != ark::MaxShadowCascadeCount) {
+            std::cerr << "ForwardPass CSM path did not bind the cascade shadow array view\n";
+            return false;
+        }
+
+        const CapturedLightingUniform& uniform = capture.lightingUniform;
+        if (!near(uniform.shadow.x, 0.75f) ||
+            !near(uniform.shadow.y, 0.0025f) ||
+            !near(uniform.shadow.z, 2.0f) ||
+            !near(uniform.shadow.w, 1.5f) ||
+            !near(uniform.cascadeShadow.x, 1.0f) ||
+            !near(uniform.cascadeShadow.y, static_cast<float>(ark::MaxShadowCascadeCount)) ||
+            !near(uniform.cascadeShadow.z, 1024.0f)) {
+            std::cerr << "ForwardPass CSM path did not write shadow/cascade settings\n";
+            return false;
+        }
+
+        for (ark::u32 cascadeIndex = 0; cascadeIndex < ark::MaxShadowCascadeCount; ++cascadeIndex) {
+            const float expectedFarDistance = static_cast<float>((cascadeIndex + 1) * 10);
+            if (!near(uniform.cascadeSplits[cascadeIndex], expectedFarDistance) ||
+                !near(uniform.cascadeLightViewProjections[cascadeIndex][0][0],
+                      1.0f + static_cast<float>(cascadeIndex))) {
+                std::cerr << "ForwardPass CSM path did not upload cascade split/matrix data\n";
+                return false;
+            }
         }
 
         return true;
@@ -1448,6 +1606,7 @@ int main() {
     return validateSceneLightingAndRenderView() &&
                    validateForwardPassLightingUniform() &&
                    validateForwardPassEnvironmentDescriptors() &&
+                   validateForwardPassCascadeShadowUniformAndDescriptors() &&
                    validateForwardPassSceneEnvironmentUniform() &&
                    validateForwardPassSceneSpecularResources() &&
                    validateForwardPassSpecularIblMaterialGridUniforms() &&

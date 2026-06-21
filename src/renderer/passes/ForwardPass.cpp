@@ -11,6 +11,7 @@
 #include "rhi/DeviceContext.h"
 #include "rhi/ResourceBarrier.h"
 #include "rhi/SwapChain.h"
+#include "rhi/TextureView.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
@@ -74,9 +75,12 @@ namespace ark {
             glm::vec4 environmentSpecular;
             glm::mat4 lightViewProjection;
             glm::vec4 shadow;
+            glm::vec4 cascadeShadow;
+            std::array<glm::mat4, MaxShadowCascadeCount> cascadeLightViewProjections;
+            glm::vec4 cascadeSplits;
         };
 
-        static_assert(sizeof(LightingUniform) == 176);
+        static_assert(sizeof(LightingUniform) == 464);
 
         void addFragmentTextureBindingPair(rhi::DescriptorSetLayoutDesc& desc, u32 imageBinding, u32 samplerBinding) {
             desc.bindings.push_back(rhi::DescriptorBindingDesc{
@@ -155,6 +159,8 @@ namespace ark {
             return static_cast<float>(specularCube->mipLevels() - 1);
         }
 
+        bool hasCascadeShadowMapView(const FrameContext& frameContext);
+
         LightingUniform makeLightingUniform(const FrameContext& frameContext) {
             const SceneLighting defaultLighting{};
             const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
@@ -170,6 +176,26 @@ namespace ark {
                                        frameContext.shadowBias,
                                        frameContext.shadowFilterMode,
                                        frameContext.shadowFilterRadiusTexels};
+            uniform.cascadeShadow = glm::vec4{0.0f};
+            uniform.cascadeLightViewProjections.fill(glm::mat4{1.0f});
+            uniform.cascadeSplits = glm::vec4{0.0f};
+
+            if (hasCascadeShadowMapView(frameContext)) {
+                const CascadeShadowFrameData& cascades = frameContext.cascadeShadows;
+                const u32 cascadeCount = cascades.cascadeCount > MaxShadowCascadeCount
+                                             ? MaxShadowCascadeCount
+                                             : cascades.cascadeCount;
+                uniform.cascadeShadow = glm::vec4{1.0f,
+                                                  static_cast<float>(cascadeCount),
+                                                  static_cast<float>(cascades.cascadeExtent),
+                                                  0.0f};
+
+                for (u32 cascadeIndex = 0; cascadeIndex < cascadeCount; ++cascadeIndex) {
+                    uniform.cascadeLightViewProjections[cascadeIndex] =
+                        cascades.cascades[cascadeIndex].lightViewProjection;
+                    uniform.cascadeSplits[cascadeIndex] = cascades.cascades[cascadeIndex].farDistance;
+                }
+            }
 
             if (frameContext.view) {
                 uniform.cameraPosition = glm::vec4{frameContext.view->cameraPosition(), 1.0f};
@@ -327,6 +353,12 @@ namespace ark {
         const RenderQueue* resolveForwardQueue(const FrameContext& frameContext) {
             return frameContext.forwardQueue ? frameContext.forwardQueue : frameContext.queue;
         }
+
+        bool hasCascadeShadowMapView(const FrameContext& frameContext) {
+            return frameContext.cascadeShadows.isEnabled() &&
+                   frameContext.shadowMapView &&
+                   frameContext.shadowMapView->getDesc().type == rhi::TextureViewType::Texture2DArray;
+        }
     } // namespace
 
     ForwardPass::~ForwardPass() = default;
@@ -432,7 +464,7 @@ namespace ark {
             .binding = 0,
             .type = rhi::DescriptorType::UniformBuffer,
             .count = 1,
-            .stages = rhi::ShaderStageFlags::Vertex,
+            .stages = rhi::ShaderStageFlags::Vertex | rhi::ShaderStageFlags::Fragment,
         });
         descriptorSetLayoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
             .binding = 1,
@@ -473,6 +505,12 @@ namespace ark {
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 18, 19);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 20, 21);
         addFragmentTextureBindingPair(descriptorSetLayoutDesc, 22, 23);
+        descriptorSetLayoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 24,
+            .type = rhi::DescriptorType::SampledImage,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(descriptorSetLayoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -633,7 +671,8 @@ namespace ark {
             return false;
         }
 
-        if (m_FallbackShadowMap && m_FallbackShadowMapView && m_FallbackShadowSampler) {
+        if (m_FallbackShadowMap && m_FallbackShadowMapView &&
+            m_FallbackCascadeShadowMapView && m_FallbackShadowSampler) {
             return true;
         }
 
@@ -650,6 +689,15 @@ namespace ark {
         viewDesc.format = rhi::Format::D32Float;
         m_FallbackShadowMapView = m_Device->createTextureView(*m_FallbackShadowMap, viewDesc);
         if (!m_FallbackShadowMapView) {
+            return false;
+        }
+
+        rhi::TextureViewDesc cascadeViewDesc{};
+        cascadeViewDesc.format = rhi::Format::D32Float;
+        cascadeViewDesc.type = rhi::TextureViewType::Texture2DArray;
+        cascadeViewDesc.arrayLayerCount = 1;
+        m_FallbackCascadeShadowMapView = m_Device->createTextureView(*m_FallbackShadowMap, cascadeViewDesc);
+        if (!m_FallbackCascadeShadowMapView) {
             return false;
         }
 
@@ -957,8 +1005,9 @@ namespace ark {
         descriptors.descriptorSet->updateSampler(21, brdfLutSamplerDescriptor);
 
         rhi::TextureView* shadowMapView = resolveShadowMapView(frameContext);
+        rhi::TextureView* cascadeShadowMapView = resolveCascadeShadowMapView(frameContext);
         rhi::Sampler* shadowSampler = resolveShadowSampler(frameContext);
-        if (!shadowMapView || !shadowSampler) {
+        if (!shadowMapView || !cascadeShadowMapView || !shadowSampler) {
             ARK_ERROR("ForwardPass requires a shadow map fallback descriptor");
             return false;
         }
@@ -970,6 +1019,10 @@ namespace ark {
         rhi::SamplerDescriptor shadowSamplerDescriptor{};
         shadowSamplerDescriptor.sampler = shadowSampler;
         descriptors.descriptorSet->updateSampler(23, shadowSamplerDescriptor);
+
+        rhi::SampledImageDescriptor cascadeShadowImageDescriptor{};
+        cascadeShadowImageDescriptor.view = cascadeShadowMapView;
+        descriptors.descriptorSet->updateSampledImage(24, cascadeShadowImageDescriptor);
         return true;
     }
 
@@ -1008,7 +1061,19 @@ namespace ark {
     }
 
     rhi::TextureView* ForwardPass::resolveShadowMapView(FrameContext& frameContext) {
-        return frameContext.shadowMapView ? frameContext.shadowMapView : m_FallbackShadowMapView.get();
+        if (!hasCascadeShadowMapView(frameContext) && frameContext.shadowMapView) {
+            return frameContext.shadowMapView;
+        }
+
+        return m_FallbackShadowMapView.get();
+    }
+
+    rhi::TextureView* ForwardPass::resolveCascadeShadowMapView(FrameContext& frameContext) {
+        if (hasCascadeShadowMapView(frameContext)) {
+            return frameContext.shadowMapView;
+        }
+
+        return m_FallbackCascadeShadowMapView.get();
     }
 
     rhi::Sampler* ForwardPass::resolveShadowSampler(FrameContext& frameContext) {

@@ -305,6 +305,17 @@ Sandbox Shadow 面板建议增加：
 - 采样对应 cascade shadow map。
 - 保留 non-CSM fallback，避免已有 shadow tests 回归。
 
+实现结果：
+- `ForwardPass::LightingUniform` 新增 `cascadeShadow`、`cascadeLightViewProjections[MaxShadowCascadeCount]` 和 `cascadeSplits`，由 `FrameContext::cascadeShadows` 写入当前帧 cascade count、shadow extent、每级 light VP 矩阵和 view-space far distance。
+- descriptor contract 保持旧单图 shadow binding 22/23 不变，并新增 binding 24：`Texture2DArray<float> g_CascadeShadowMap`。非 CSM 路径会绑定 fallback array view，CSM 路径会绑定 ShadowPass 产出的 texture array sampled view。
+- binding 0 的 camera uniform 现在同时对 vertex / fragment 可见，fragment shader 用 `g_Camera.view` 计算 view-space positive depth 选择 cascade。
+- `mesh.frag.hlsl` 保留原有单 shadow map 采样路径，并新增 CSM 路径：按 split distance 选择 cascade，使用对应 cascade light VP 投影到 shadow space，再复用现有 hard / PCF3x3 / PCF5x5 过滤策略采样 array layer。
+- `ark_forward_pass_pipeline_smoke` 新增 CSM descriptor / uniform contract 覆盖：确认 binding 24 绑定 `Texture2DArray`，单图 shadow binding 在 CSM 下仍绑定 fallback 2D view，cascade split / matrix 数据进入 lighting uniform。
+- `ark_shader_assets_smoke` 已覆盖 CSM binding、cascade matrix/split、camera view depth 和 cascade PCF 采样关键 shader 合约。
+- Targeted CTest 通过：`ark_forward_pass_pipeline_smoke`、`ark_shader_assets_smoke`、`ark_shadow_pass_smoke`。
+- Full Debug build 通过。
+- Full CTest 结果为 32/33：`ark_frame_validation_smoke` 的 `default_composite_scene` golden diff 仍超阈值（meanAbsError=0.0628158），与 0.67.3/0.67.4 已记录的默认组合场景视觉基线未同步问题一致，本阶段不更新 PNG baseline。
+
 ### 0.67.6 Sandbox UI / Diagnostics
 
 - Shadow 面板增加 CSM 开关和 cascade 参数。

@@ -7,6 +7,14 @@ struct PSInput {
     [[vk::location(4)]] float2 uv1 : TEXCOORD1;
 };
 
+struct CameraUniform {
+    float4x4 view;
+    float4x4 projection;
+};
+
+[[vk::binding(0, 0)]]
+ConstantBuffer<CameraUniform> g_Camera;
+
 [[vk::binding(1, 0)]]
 Texture2D<float4> g_BaseColorTexture;
 
@@ -67,6 +75,9 @@ Texture2D<float> g_ShadowMap;
 [[vk::binding(23, 0)]]
 SamplerState g_ShadowSampler;
 
+[[vk::binding(24, 0)]]
+Texture2DArray<float> g_CascadeShadowMap;
+
 struct MaterialUniform {
     float4 baseColorFactor;
     float4 emissiveFactor;
@@ -102,6 +113,7 @@ static const float AlphaModeBlend = 2.0f;
 static const float ShadowFilterPcf3x3 = 1.0f;
 static const float ShadowFilterPcf5x5 = 2.0f;
 static const float PI = 3.14159265359f;
+static const uint MaxShadowCascadeCount = 4;
 
 struct LightingUniform {
     float4 lightDirection;
@@ -113,6 +125,11 @@ struct LightingUniform {
     float4x4 lightViewProjection;
     // x: strength, y: bias, z: filter mode, w: filter radius in texels.
     float4 shadow;
+    // x: enabled, y: cascade count, z: cascade texture extent, w: reserved.
+    float4 cascadeShadow;
+    float4x4 cascadeLightViewProjections[4];
+    // View-space positive far distance for each cascade.
+    float4 cascadeSplits;
 };
 
 [[vk::binding(13, 0)]]
@@ -335,12 +352,77 @@ float sampleShadowPcf(float2 shadowUv, float receiverDepth, float bias, int kern
     return visibility / max(sampleCount, 1.0f);
 }
 
-float sampleShadowVisibility(float3 worldPosition, float nDotL) {
-    if (g_Lighting.shadow.x <= 0.0f || nDotL <= 0.0f) {
-        return 1.0f;
+float2 sampleCascadeShadowTexelSize() {
+    uint shadowWidth = 0;
+    uint shadowHeight = 0;
+    uint shadowLayers = 0;
+    g_CascadeShadowMap.GetDimensions(shadowWidth, shadowHeight, shadowLayers);
+    return float2(
+        shadowWidth > 0 ? rcp((float)shadowWidth) : 0.0f,
+        shadowHeight > 0 ? rcp((float)shadowHeight) : 0.0f
+    );
+}
+
+float sampleCascadeShadowCompare(float2 shadowUv, uint cascadeIndex, float receiverDepth, float bias) {
+    const float sampledDepth = g_CascadeShadowMap.Sample(g_ShadowSampler, float3(shadowUv, (float)cascadeIndex)).r;
+    return (receiverDepth - bias) <= sampledDepth ? 1.0f : 0.0f;
+}
+
+float sampleCascadeShadowPcf(float2 shadowUv,
+                             uint cascadeIndex,
+                             float receiverDepth,
+                             float bias,
+                             int kernelRadius,
+                             float radiusTexels) {
+    const float2 texelSize = sampleCascadeShadowTexelSize();
+    const float radiusScale = max(radiusTexels, 0.0f);
+    if (kernelRadius <= 0 || radiusScale <= 0.0f || texelSize.x <= 0.0f || texelSize.y <= 0.0f) {
+        return sampleCascadeShadowCompare(shadowUv, cascadeIndex, receiverDepth, bias);
     }
 
-    const float4 shadowClip = mul(g_Lighting.lightViewProjection, float4(worldPosition, 1.0f));
+    float visibility = 0.0f;
+    float sampleCount = 0.0f;
+    [loop]
+    for (int y = -kernelRadius; y <= kernelRadius; ++y) {
+        [loop]
+        for (int x = -kernelRadius; x <= kernelRadius; ++x) {
+            const float2 sampleOffset = float2((float)x, (float)y) * texelSize * radiusScale;
+            const float2 sampleUv = shadowUv + sampleOffset;
+            visibility += isShadowUvInside(sampleUv)
+                ? sampleCascadeShadowCompare(sampleUv, cascadeIndex, receiverDepth, bias)
+                : 1.0f;
+            sampleCount += 1.0f;
+        }
+    }
+
+    return visibility / max(sampleCount, 1.0f);
+}
+
+uint cascadeCount() {
+    return (uint)clamp(g_Lighting.cascadeShadow.y, 0.0f, (float)MaxShadowCascadeCount);
+}
+
+bool isCascadeShadowEnabled() {
+    return g_Lighting.cascadeShadow.x > 0.5f && cascadeCount() > 0;
+}
+
+uint selectShadowCascade(float viewDepth, out bool insideCoverage) {
+    insideCoverage = false;
+    const uint count = cascadeCount();
+
+    // CSM 的 split 记录的是相机 view space 中的正深度 far distance。
+    [unroll]
+    for (uint cascadeIndex = 0; cascadeIndex < MaxShadowCascadeCount; ++cascadeIndex) {
+        if (cascadeIndex < count && viewDepth <= g_Lighting.cascadeSplits[cascadeIndex]) {
+            insideCoverage = true;
+            return cascadeIndex;
+        }
+    }
+
+    return count > 0 ? count - 1 : 0;
+}
+
+float evaluateShadowVisibility(float4 shadowClip, float nDotL, uint cascadeIndex, bool useCascadeMap) {
     if (shadowClip.w <= 0.0f) {
         return 1.0f;
     }
@@ -354,14 +436,52 @@ float sampleShadowVisibility(float3 worldPosition, float nDotL) {
     }
 
     const float bias = max(g_Lighting.shadow.y * (1.0f - nDotL), g_Lighting.shadow.y * 0.25f);
-    float lit = sampleShadowCompare(shadowUv, shadowNdc.z, bias);
+    float lit = useCascadeMap
+        ? sampleCascadeShadowCompare(shadowUv, cascadeIndex, shadowNdc.z, bias)
+        : sampleShadowCompare(shadowUv, shadowNdc.z, bias);
+
     if (g_Lighting.shadow.z >= ShadowFilterPcf5x5 - 0.5f) {
-        lit = sampleShadowPcf(shadowUv, shadowNdc.z, bias, 2, g_Lighting.shadow.w);
+        lit = useCascadeMap
+            ? sampleCascadeShadowPcf(shadowUv, cascadeIndex, shadowNdc.z, bias, 2, g_Lighting.shadow.w)
+            : sampleShadowPcf(shadowUv, shadowNdc.z, bias, 2, g_Lighting.shadow.w);
     } else if (g_Lighting.shadow.z >= ShadowFilterPcf3x3 - 0.5f) {
-        lit = sampleShadowPcf(shadowUv, shadowNdc.z, bias, 1, g_Lighting.shadow.w);
+        lit = useCascadeMap
+            ? sampleCascadeShadowPcf(shadowUv, cascadeIndex, shadowNdc.z, bias, 1, g_Lighting.shadow.w)
+            : sampleShadowPcf(shadowUv, shadowNdc.z, bias, 1, g_Lighting.shadow.w);
     }
 
     return lerp(1.0f, lit, saturate(g_Lighting.shadow.x));
+}
+
+float sampleCascadeShadowVisibility(float3 worldPosition, float nDotL) {
+    const float4 viewPosition = mul(g_Camera.view, float4(worldPosition, 1.0f));
+    const float viewDepth = -viewPosition.z;
+    if (viewDepth <= 0.0f) {
+        return 1.0f;
+    }
+
+    bool insideCoverage = false;
+    const uint cascadeIndex = selectShadowCascade(viewDepth, insideCoverage);
+    if (!insideCoverage) {
+        return 1.0f;
+    }
+
+    const float4 shadowClip =
+        mul(g_Lighting.cascadeLightViewProjections[cascadeIndex], float4(worldPosition, 1.0f));
+    return evaluateShadowVisibility(shadowClip, nDotL, cascadeIndex, true);
+}
+
+float sampleShadowVisibility(float3 worldPosition, float nDotL) {
+    if (g_Lighting.shadow.x <= 0.0f || nDotL <= 0.0f) {
+        return 1.0f;
+    }
+
+    if (isCascadeShadowEnabled()) {
+        return sampleCascadeShadowVisibility(worldPosition, nDotL);
+    }
+
+    const float4 shadowClip = mul(g_Lighting.lightViewProjection, float4(worldPosition, 1.0f));
+    return evaluateShadowVisibility(shadowClip, nDotL, 0, false);
 }
 
 float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {

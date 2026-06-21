@@ -66,6 +66,7 @@ namespace ark {
         EnvironmentCubeResource* resolvePrefilteredSpecularResource(FrameContext& frameContext);
         EnvironmentBrdfLutResource* resolveBrdfLutResource(FrameContext& frameContext);
         rhi::TextureView* resolveShadowMapView(FrameContext& frameContext);
+        rhi::TextureView* resolveCascadeShadowMapView(FrameContext& frameContext);
         rhi::Sampler* resolveShadowSampler(FrameContext& frameContext);
         bool drawMeshItem(FrameContext& frameContext,
                           u32 frameSlot,
@@ -115,6 +116,7 @@ namespace ark {
         EnvironmentBrdfLutResource m_FallbackBrdfLut;
         Scope<rhi::Texture> m_FallbackShadowMap;
         Scope<rhi::TextureView> m_FallbackShadowMapView;
+        Scope<rhi::TextureView> m_FallbackCascadeShadowMapView;
         Scope<rhi::Sampler> m_FallbackShadowSampler;
     };
 } // namespace ark
