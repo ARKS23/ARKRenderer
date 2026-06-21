@@ -130,6 +130,18 @@ namespace ark {
         m_Input.shiftDown =
             glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
             glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+        m_Input.moveForward = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+        m_Input.moveBackward = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+        m_Input.moveLeft = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
+        m_Input.moveRight = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+        m_Input.moveUp =
+            glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+        m_Input.moveDown =
+            glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        m_Input.fastMove = m_Input.shiftDown;
 
         const bool resetDown = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
         m_Input.resetPressed = resetDown && !m_PreviousResetDown;

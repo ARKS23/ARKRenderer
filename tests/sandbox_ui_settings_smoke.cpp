@@ -31,6 +31,10 @@ int main() {
     desc.view.visibility.enableFrustumCulling = true;
 
     ark::SandboxRuntimeSettings runtimeSettings = ark::makeSandboxRuntimeSettings(desc);
+    runtimeSettings.cameraMode = ark::SandboxCameraMode::FirstPerson;
+    runtimeSettings.cameraMoveSpeed = 12.0f;
+    runtimeSettings.cameraFastMoveMultiplier = 6.0f;
+    runtimeSettings.cameraMouseSensitivity = 0.01f;
     if (!runtimeSettings.uiVisible ||
         runtimeSettings.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
         runtimeSettings.view.postProcessing.bloom.intensity != 0.12f ||
@@ -39,7 +43,11 @@ int main() {
         runtimeSettings.view.shadows.cascades.cascadeCount != 4 ||
         runtimeSettings.view.shadows.cascades.splitLambda != 0.72f ||
         runtimeSettings.view.shadows.cascades.maxDistance != 96.0f ||
-        !runtimeSettings.view.visibility.enableFrustumCulling) {
+        !runtimeSettings.view.visibility.enableFrustumCulling ||
+        runtimeSettings.cameraMode != ark::SandboxCameraMode::FirstPerson ||
+        runtimeSettings.cameraMoveSpeed != 12.0f ||
+        runtimeSettings.cameraFastMoveMultiplier != 6.0f ||
+        runtimeSettings.cameraMouseSensitivity != 0.01f) {
         return EXIT_FAILURE;
     }
 
@@ -88,6 +96,13 @@ int main() {
     input.rightMouseDown = true;
     input.middleMouseDown = true;
     input.shiftDown = true;
+    input.moveForward = true;
+    input.moveBackward = true;
+    input.moveLeft = true;
+    input.moveRight = true;
+    input.moveUp = true;
+    input.moveDown = true;
+    input.fastMove = true;
     input.resetPressed = true;
     input.debugUiTogglePressed = true;
 
@@ -99,6 +114,13 @@ int main() {
         mouseCaptured.leftMouseDown ||
         mouseCaptured.rightMouseDown ||
         mouseCaptured.middleMouseDown ||
+        !mouseCaptured.moveForward ||
+        !mouseCaptured.moveBackward ||
+        !mouseCaptured.moveLeft ||
+        !mouseCaptured.moveRight ||
+        !mouseCaptured.moveUp ||
+        !mouseCaptured.moveDown ||
+        !mouseCaptured.fastMove ||
         !mouseCaptured.shiftDown ||
         !mouseCaptured.resetPressed ||
         !mouseCaptured.debugUiTogglePressed) {
@@ -110,6 +132,13 @@ int main() {
     if (keyboardCaptured.cursorDelta != input.cursorDelta ||
         keyboardCaptured.scrollDelta != input.scrollDelta ||
         !keyboardCaptured.leftMouseDown ||
+        keyboardCaptured.moveForward ||
+        keyboardCaptured.moveBackward ||
+        keyboardCaptured.moveLeft ||
+        keyboardCaptured.moveRight ||
+        keyboardCaptured.moveUp ||
+        keyboardCaptured.moveDown ||
+        keyboardCaptured.fastMove ||
         keyboardCaptured.resetPressed ||
         keyboardCaptured.debugUiTogglePressed) {
         return EXIT_FAILURE;

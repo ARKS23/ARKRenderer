@@ -166,6 +166,109 @@ namespace {
 
         return true;
     }
+
+    bool validateFirstPersonMovement() {
+        ark::SandboxCameraControllerDesc desc{};
+        desc.mode = ark::SandboxCameraMode::FirstPerson;
+        desc.position = glm::vec3{1.0f, 2.0f, -3.0f};
+        desc.yaw = 0.0f;
+        desc.pitch = 0.0f;
+        desc.moveSpeed = 2.0f;
+        desc.fastMoveMultiplier = 3.0f;
+
+        ark::SandboxCameraController controller{desc};
+        if (controller.mode() != ark::SandboxCameraMode::FirstPerson ||
+            !nearVec3(controller.position(), desc.position)) {
+            std::cerr << "Sandbox first-person camera default state is invalid\n";
+            return false;
+        }
+
+        ark::InputSnapshot forwardInput{};
+        forwardInput.moveForward = true;
+        controller.update(forwardInput, 0.25f);
+        if (!nearVec3(controller.position(), glm::vec3{1.0f, 2.0f, -2.5f})) {
+            std::cerr << "Sandbox first-person forward movement failed\n";
+            return false;
+        }
+
+        ark::InputSnapshot strafeInput{};
+        strafeInput.moveRight = true;
+        strafeInput.fastMove = true;
+        controller.update(strafeInput, 0.25f);
+        if (!nearVec3(controller.position(), glm::vec3{2.5f, 2.0f, -2.5f})) {
+            std::cerr << "Sandbox first-person fast strafe movement failed\n";
+            return false;
+        }
+
+        ark::RenderView view{};
+        controller.writeTo(view);
+        if (!nearVec3(view.cameraPosition(), controller.position())) {
+            std::cerr << "Sandbox first-person RenderView camera position mismatch\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateFirstPersonLookClampAndReset() {
+        ark::SandboxCameraControllerDesc desc{};
+        desc.mode = ark::SandboxCameraMode::FirstPerson;
+        desc.position = glm::vec3{0.0f, 1.0f, -5.0f};
+        desc.mouseSensitivity = 0.01f;
+
+        ark::SandboxCameraController controller{desc};
+        ark::InputSnapshot lookInput{};
+        lookInput.rightMouseDown = true;
+        lookInput.cursorDelta = glm::vec2{10.0f, -10000.0f};
+        controller.update(lookInput, 1.0f / 60.0f);
+        if (!near(controller.yaw(), -0.1f) ||
+            controller.pitch() > glm::radians(89.0f) + 0.0001f) {
+            std::cerr << "Sandbox first-person look or pitch clamp failed\n";
+            return false;
+        }
+
+        ark::InputSnapshot resetInput{};
+        resetInput.moveForward = true;
+        resetInput.resetPressed = true;
+        controller.update(resetInput, 1.0f);
+        if (controller.mode() != ark::SandboxCameraMode::FirstPerson ||
+            !nearVec3(controller.position(), desc.position) ||
+            !near(controller.yaw(), 0.0f) ||
+            !near(controller.pitch(), 0.0f)) {
+            std::cerr << "Sandbox first-person reset failed\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateModeSwitching() {
+        ark::SandboxCameraController controller{};
+        ark::RenderView orbitView{};
+        controller.writeTo(orbitView);
+
+        controller.setMode(ark::SandboxCameraMode::FirstPerson);
+        if (controller.mode() != ark::SandboxCameraMode::FirstPerson ||
+            !nearVec3(controller.position(), orbitView.cameraPosition())) {
+            std::cerr << "Sandbox camera mode switch did not preserve orbit camera position\n";
+            return false;
+        }
+
+        ark::InputSnapshot moveInput{};
+        moveInput.moveForward = true;
+        controller.update(moveInput, 1.0f);
+        const glm::vec3 firstPersonPosition = controller.position();
+
+        controller.setMode(ark::SandboxCameraMode::Orbit);
+        if (controller.mode() != ark::SandboxCameraMode::Orbit ||
+            nearVec3(controller.target(), glm::vec3{0.0f}) ||
+            !nearVec3(firstPersonPosition, controller.position())) {
+            std::cerr << "Sandbox camera mode switch back to orbit failed\n";
+            return false;
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
@@ -173,7 +276,10 @@ int main() {
                    validateOrbitZoomAndPan() &&
                    validateClampsAndReset() &&
                    validateResizeDoesNotResetCamera() &&
-                   validateLargeSceneCamera()
+                   validateLargeSceneCamera() &&
+                   validateFirstPersonMovement() &&
+                   validateFirstPersonLookClampAndReset() &&
+                   validateModeSwitching()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

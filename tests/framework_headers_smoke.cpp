@@ -596,9 +596,13 @@ int main() {
     inputSnapshot.cursorDelta = glm::vec2{0.5f, -0.25f};
     inputSnapshot.scrollDelta = glm::vec2{0.0f, 1.0f};
     inputSnapshot.rightMouseDown = true;
+    inputSnapshot.moveForward = true;
+    inputSnapshot.fastMove = true;
     inputSnapshot.debugUiTogglePressed = true;
     ark::SandboxCameraController sandboxCameraController{};
     sandboxCameraController.setViewportExtent(swapChainDesc.extent);
+    sandboxCameraController.setMode(ark::SandboxCameraMode::FirstPerson);
+    sandboxCameraController.setMoveSpeed(8.0f);
     sandboxCameraController.update(inputSnapshot);
     sandboxCameraController.writeTo(renderView);
     ark::SandboxRuntimeSettings runtimeSettings =

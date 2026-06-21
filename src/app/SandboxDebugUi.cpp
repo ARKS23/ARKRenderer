@@ -89,6 +89,17 @@ namespace ark {
             cascadeCount = cascadeCountFromComboIndex(current);
             return true;
         }
+
+        bool comboCameraMode(SandboxCameraMode& mode) {
+            const char* items[] = {"Orbit", "First Person"};
+            int current = mode == SandboxCameraMode::FirstPerson ? 1 : 0;
+            if (!ImGui::Combo("Mode##Camera", &current, items, IM_ARRAYSIZE(items))) {
+                return false;
+            }
+
+            mode = current == 1 ? SandboxCameraMode::FirstPerson : SandboxCameraMode::Orbit;
+            return true;
+        }
     } // namespace
 
     class SandboxDebugUi::Impl final {
@@ -134,6 +145,7 @@ namespace ark {
                 return;
             }
 
+            drawCameraPanel();
             drawToneMappingPanel();
             drawBloomPanel();
             drawShadowPanel();
@@ -217,6 +229,25 @@ namespace ark {
             desc.installGlfwCallbacks = true;
 
             return m_Backend.initialize(*device, desc);
+        }
+
+        void drawCameraPanel() {
+            if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+                return;
+            }
+
+            comboCameraMode(m_Settings.cameraMode);
+            ImGui::SliderFloat("Move Speed", &m_Settings.cameraMoveSpeed, 0.1f, 64.0f, "%.2f");
+            ImGui::SliderFloat("Fast Multiplier",
+                               &m_Settings.cameraFastMoveMultiplier,
+                               1.0f,
+                               16.0f,
+                               "%.1f");
+            ImGui::SliderFloat("Mouse Sensitivity",
+                               &m_Settings.cameraMouseSensitivity,
+                               0.0005f,
+                               0.02f,
+                               "%.4f");
         }
 
         void drawToneMappingPanel() {

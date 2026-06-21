@@ -11,6 +11,13 @@ namespace ark {
         bool rightMouseDown = false;
         bool middleMouseDown = false;
         bool shiftDown = false;
+        bool moveForward = false;
+        bool moveBackward = false;
+        bool moveLeft = false;
+        bool moveRight = false;
+        bool moveUp = false;
+        bool moveDown = false;
+        bool fastMove = false;
         bool resetPressed = false;
         bool debugUiTogglePressed = false;
     };

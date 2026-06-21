@@ -11,6 +11,8 @@
 #include "renderer/RenderView.h"
 #include "renderer/Renderer.h"
 
+#include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <utility>
 
@@ -22,6 +24,13 @@ namespace ark {
             desc.distance = camera.distance;
             desc.yaw = camera.yawRadians;
             desc.pitch = camera.pitchRadians;
+            const float cosPitch = std::cos(desc.pitch);
+            const glm::vec3 forward{
+                cosPitch * std::sin(desc.yaw),
+                std::sin(desc.pitch),
+                cosPitch * std::cos(desc.yaw),
+            };
+            desc.position = desc.target - forward * desc.distance;
             desc.verticalFovRadians = camera.verticalFovRadians;
             desc.nearPlane = camera.nearPlane;
             desc.farPlane = camera.farPlane;
@@ -73,7 +82,13 @@ namespace ark {
         rhi::Extent2D currentExtent = rendererDesc.extent;
         cameraController.setViewportExtent(currentExtent);
         cameraController.writeTo(view);
+        auto previousFrameTime = std::chrono::steady_clock::now();
         while (!m_Window->shouldClose()) {
+            const auto frameTime = std::chrono::steady_clock::now();
+            const float deltaSeconds =
+                std::chrono::duration<float>(frameTime - previousFrameTime).count();
+            previousFrameTime = frameTime;
+
             m_Window->pollEvents();
 
             // 窗口大小变化resize处理
@@ -98,7 +113,11 @@ namespace ark {
                                                        debugUi->wantsCaptureKeyboard());
             }
 
-            cameraController.update(input);
+            cameraController.setMode(runtimeSettings.cameraMode);
+            cameraController.setMoveSpeed(runtimeSettings.cameraMoveSpeed);
+            cameraController.setFastMoveMultiplier(runtimeSettings.cameraFastMoveMultiplier);
+            cameraController.setMouseSensitivity(runtimeSettings.cameraMouseSensitivity);
+            cameraController.update(input, deltaSeconds);
             cameraController.writeTo(view);
             applySandboxRuntimeSettings(view, runtimeSettings);
             m_Renderer->render(scene, view, debugUi.get());

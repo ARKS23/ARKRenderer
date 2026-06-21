@@ -5,6 +5,10 @@ namespace ark {
         SandboxRuntimeSettings settings{};
         settings.view = desc.view;
         settings.camera = desc.camera;
+        settings.cameraMode = SandboxCameraMode::Orbit;
+        settings.cameraMoveSpeed = 4.0f;
+        settings.cameraFastMoveMultiplier = 4.0f;
+        settings.cameraMouseSensitivity = 0.005f;
         settings.uiVisible = desc.debugUiEnabled;
         return settings;
     }
@@ -29,6 +33,13 @@ namespace ark {
         }
 
         if (captureKeyboard) {
+            filtered.moveForward = false;
+            filtered.moveBackward = false;
+            filtered.moveLeft = false;
+            filtered.moveRight = false;
+            filtered.moveUp = false;
+            filtered.moveDown = false;
+            filtered.fastMove = false;
             filtered.resetPressed = false;
             filtered.debugUiTogglePressed = false;
         }

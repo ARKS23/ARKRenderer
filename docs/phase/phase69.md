@@ -386,7 +386,8 @@ Engine Scene / ECS / Asset System
 
 完成 public API boundary 后，建议继续：
 
-1. Phase 0.70：Shadow Debug Visualization，包括 cascade color、shadow map preview、light frustum debug。
-2. Phase 0.71：SSAO effect foundation，落到 `renderer/effects/ssao/`。
-3. Phase 0.72：GPU instanced rendering foundation，减少重复 mesh 的 draw call 压力。
-4. Phase 0.73：Material / Texture debug views，方便复杂 glTF 场景排查。
+1. Phase 0.70：Sandbox First-Person Camera，让 Sponza 等大型场景可以自由漫游，方便观察局部阴影和后处理效果。
+2. Phase 0.71：Shadow Debug Visualization，包括 cascade color、shadow diagnostics、shadow map preview assessment。
+3. Phase 0.72：SSAO effect foundation，落到 `renderer/effects/ssao/`。
+4. Phase 0.73：GPU instanced rendering foundation，减少重复 mesh 的 draw call 压力。
+5. Phase 0.74：Material / Texture debug views，方便复杂 glTF 场景排查。
