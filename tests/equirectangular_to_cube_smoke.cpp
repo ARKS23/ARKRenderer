@@ -1,6 +1,6 @@
 #include "asset/TextureLoader.h"
 #include "core/Memory.h"
-#include "renderer/EnvironmentCubeConverter.h"
+#include "renderer/effects/ibl/EnvironmentCubeConverter.h"
 #include "renderer/EnvironmentCubeResource.h"
 #include "renderer/EnvironmentResource.h"
 #include "rhi/Buffer.h"

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "renderer/Bounds.h"
-#include "renderer/ShadowConstants.h"
+#include "renderer/effects/shadow/ShadowConstants.h"
 
 #include <array>
 #include <glm/mat4x4.hpp>

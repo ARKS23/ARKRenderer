@@ -1,6 +1,6 @@
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
-#include "renderer/ShadowCascadeBuilder.h"
+#include "renderer/effects/shadow/ShadowCascadeBuilder.h"
 
 #include <cmath>
 #include <cstdlib>

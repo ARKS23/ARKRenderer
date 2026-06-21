@@ -1,6 +1,6 @@
 #pragma once
 
-#include "renderer/ShadowCascade.h"
+#include "renderer/effects/shadow/ShadowCascade.h"
 
 #include <array>
 

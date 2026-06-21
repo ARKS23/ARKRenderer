@@ -1,7 +1,7 @@
 #include "core/Memory.h"
 #include "renderer/FrameContext.h"
 #include "renderer/RenderView.h"
-#include "renderer/passes/BloomPass.h"
+#include "renderer/effects/bloom/BloomPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

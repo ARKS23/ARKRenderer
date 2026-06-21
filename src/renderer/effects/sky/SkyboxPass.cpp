@@ -1,53 +1,63 @@
-#include "renderer/passes/ToneMappingPass.h"
+#include "renderer/effects/sky/SkyboxPass.h"
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
+#include "renderer/EnvironmentCubeResource.h"
 #include "renderer/FrameContext.h"
+#include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
 #include "rhi/DeviceContext.h"
+#include "rhi/FrameResource.h"
 #include "rhi/PipelineLayout.h"
 #include "rhi/PipelineState.h"
 #include "rhi/RenderDevice.h"
 #include "rhi/Sampler.h"
 #include "rhi/Shader.h"
-#include "rhi/SwapChain.h"
 #include "rhi/TextureView.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 #include <cstddef>
 
 namespace ark {
     namespace {
-        constexpr float DefaultOutputGamma = 2.2f;
-
-        struct alignas(16) ToneMappingUniform {
-            float exposure = 1.0f;
-            float inverseOutputGamma = 1.0f / DefaultOutputGamma;
-            float operatorType = 0.0f;
-            float padding1 = 0.0f;
+        struct alignas(16) SkyboxUniform {
+            glm::mat4 inverseProjection{1.0f};
+            glm::mat4 inverseViewRotation{1.0f};
+            glm::vec4 settings{1.0f, 0.0f, 0.0f, 0.0f};
         };
 
-        static_assert(sizeof(ToneMappingUniform) == 16);
+        static_assert(sizeof(SkyboxUniform) == 144);
 
-        ToneMappingUniform makeToneMappingUniform(const FrameContext& frameContext) {
-            const ToneMappingSettings defaultSettings{};
-            const ToneMappingSettings& settings =
-                frameContext.view ? frameContext.view->toneMappingSettings() : defaultSettings;
+        SkyboxUniform makeSkyboxUniform(const FrameContext& frameContext) {
+            SkyboxUniform uniform{};
+            if (frameContext.view) {
+                const glm::mat4 projection = frameContext.view->projectionMatrix();
+                glm::mat4 viewRotation = frameContext.view->viewMatrix();
+                viewRotation[3] = glm::vec4{0.0f, 0.0f, 0.0f, 1.0f};
+                uniform.inverseProjection = glm::inverse(projection);
+                uniform.inverseViewRotation = glm::inverse(viewRotation);
+            }
 
-            ToneMappingUniform uniform{};
-            uniform.exposure = settings.exposure < 0.0f ? 0.0f : settings.exposure;
-            uniform.inverseOutputGamma =
-                settings.outputGamma > 0.0f ? 1.0f / settings.outputGamma : 1.0f / DefaultOutputGamma;
-            uniform.operatorType = static_cast<float>(settings.operatorType);
+            if (frameContext.scene && frameContext.scene->environment().isEnabled()) {
+                uniform.settings.x = frameContext.scene->environment().intensity;
+            }
+
+            if (uniform.settings.x < 0.0f) {
+                uniform.settings.x = 0.0f;
+            }
+
             return uniform;
         }
     } // namespace
 
-    ToneMappingPass::~ToneMappingPass() = default;
+    SkyboxPass::~SkyboxPass() = default;
 
-    void ToneMappingPass::setup(rhi::RenderDevice& device) {
+    void SkyboxPass::setup(rhi::RenderDevice& device) {
         m_Device = &device;
 
         createDescriptorResources();
@@ -55,16 +65,25 @@ namespace ark {
         createPipelineResources();
     }
 
-    bool ToneMappingPass::execute(FrameContext& frameContext) {
-        if (!frameContext.context || !frameContext.sceneColorView) {
-            ARK_ERROR("ToneMappingPass requires DeviceContext and scene color view");
+    bool SkyboxPass::execute(FrameContext& frameContext) {
+        if (!frameContext.context) {
+            ARK_ERROR("SkyboxPass requires DeviceContext");
             return false;
+        }
+
+        EnvironmentCubeResource* environmentCube = frameContext.environmentCube;
+        if (!environmentCube) {
+            return true;
+        }
+
+        if (!environmentCube->isValid() || !environmentCube->textureView() || !environmentCube->sampler()) {
+            return true;
         }
 
         const u32 frameSlot =
             frameContext.frameResource ? frameContext.frameResource->frameSlot % FramesInFlight : 0;
-        if (!m_DescriptorSets[frameSlot] || !m_UniformBuffers[frameSlot] || !m_Sampler) {
-            ARK_ERROR("ToneMappingPass requires descriptor resources");
+        if (!m_DescriptorSets[frameSlot] || !m_UniformBuffers[frameSlot]) {
+            ARK_ERROR("SkyboxPass requires descriptor resources");
             return false;
         }
 
@@ -73,18 +92,21 @@ namespace ark {
             return false;
         }
 
-        if (m_BoundSceneColorViews[frameSlot] != frameContext.sceneColorView) {
-            rhi::SampledImageDescriptor sceneColorDescriptor{};
-            sceneColorDescriptor.view = frameContext.sceneColorView;
-            m_DescriptorSets[frameSlot]->updateSampledImage(0, sceneColorDescriptor);
+        if (m_BoundCubeViews[frameSlot] != environmentCube->textureView() ||
+            m_BoundSamplers[frameSlot] != environmentCube->sampler()) {
+            rhi::SampledImageDescriptor cubeDescriptor{};
+            cubeDescriptor.view = environmentCube->textureView();
+            m_DescriptorSets[frameSlot]->updateSampledImage(1, cubeDescriptor);
 
             rhi::SamplerDescriptor samplerDescriptor{};
-            samplerDescriptor.sampler = m_Sampler.get();
-            m_DescriptorSets[frameSlot]->updateSampler(1, samplerDescriptor);
-            m_BoundSceneColorViews[frameSlot] = frameContext.sceneColorView;
+            samplerDescriptor.sampler = environmentCube->sampler();
+            m_DescriptorSets[frameSlot]->updateSampler(2, samplerDescriptor);
+
+            m_BoundCubeViews[frameSlot] = environmentCube->textureView();
+            m_BoundSamplers[frameSlot] = environmentCube->sampler();
         }
 
-        const ToneMappingUniform uniform = makeToneMappingUniform(frameContext);
+        const SkyboxUniform uniform = makeSkyboxUniform(frameContext);
         if (!frameContext.context->updateBuffer(*m_UniformBuffers[frameSlot], &uniform, sizeof(uniform))) {
             return false;
         }
@@ -98,29 +120,29 @@ namespace ark {
         return true;
     }
 
-    bool ToneMappingPass::createDescriptorResources() {
+    bool SkyboxPass::createDescriptorResources() {
         if (!m_Device) {
-            ARK_ERROR("ToneMappingPass requires device for descriptor resources");
+            ARK_ERROR("SkyboxPass requires device for descriptor resources");
             return false;
         }
 
         rhi::DescriptorSetLayoutDesc layoutDesc{};
-        layoutDesc.debugName = "ToneMappingDescriptorSetLayout";
+        layoutDesc.debugName = "SkyboxDescriptorSetLayout";
         layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
             .binding = 0,
-            .type = rhi::DescriptorType::SampledImage,
+            .type = rhi::DescriptorType::UniformBuffer,
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
         layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
             .binding = 1,
-            .type = rhi::DescriptorType::Sampler,
+            .type = rhi::DescriptorType::SampledImage,
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
         layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
             .binding = 2,
-            .type = rhi::DescriptorType::UniformBuffer,
+            .type = rhi::DescriptorType::Sampler,
             .count = 1,
             .stages = rhi::ShaderStageFlags::Fragment,
         });
@@ -132,8 +154,8 @@ namespace ark {
 
         for (std::size_t frameSlot = 0; frameSlot < m_DescriptorSets.size(); ++frameSlot) {
             rhi::BufferDesc uniformBufferDesc{};
-            uniformBufferDesc.debugName = "ToneMappingUniformBuffer";
-            uniformBufferDesc.size = sizeof(ToneMappingUniform);
+            uniformBufferDesc.debugName = "SkyboxUniformBuffer";
+            uniformBufferDesc.size = sizeof(SkyboxUniform);
             uniformBufferDesc.usage = rhi::BufferUsage::Uniform;
             uniformBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
             m_UniformBuffers[frameSlot] = m_Device->createBuffer(uniformBufferDesc);
@@ -145,40 +167,31 @@ namespace ark {
 
             rhi::BufferDescriptor uniformDescriptor{};
             uniformDescriptor.buffer = m_UniformBuffers[frameSlot].get();
-            uniformDescriptor.range = sizeof(ToneMappingUniform);
-            m_DescriptorSets[frameSlot]->updateUniformBuffer(2, uniformDescriptor);
+            uniformDescriptor.range = sizeof(SkyboxUniform);
+            m_DescriptorSets[frameSlot]->updateUniformBuffer(0, uniformDescriptor);
         }
 
-        rhi::SamplerDesc samplerDesc{};
-        samplerDesc.debugName = "ToneMappingSceneColorSampler";
-        samplerDesc.minFilter = rhi::FilterMode::Linear;
-        samplerDesc.magFilter = rhi::FilterMode::Linear;
-        samplerDesc.mipFilter = rhi::FilterMode::Linear;
-        samplerDesc.addressU = rhi::AddressMode::ClampToEdge;
-        samplerDesc.addressV = rhi::AddressMode::ClampToEdge;
-        samplerDesc.addressW = rhi::AddressMode::ClampToEdge;
-        m_Sampler = m_Device->createSampler(samplerDesc);
-        return m_Sampler != nullptr;
+        return true;
     }
 
-    bool ToneMappingPass::createShaderResources() {
+    bool SkyboxPass::createShaderResources() {
         if (!m_Device) {
-            ARK_ERROR("ToneMappingPass requires device for shader resources");
+            ARK_ERROR("SkyboxPass requires device for shader resources");
             return false;
         }
 
         rhi::ShaderDesc vertexShaderDesc{};
-        vertexShaderDesc.debugName = "ToneMappingVertexShader";
+        vertexShaderDesc.debugName = "SkyboxVertexShader";
         vertexShaderDesc.stage = rhi::ShaderStage::Vertex;
-        vertexShaderDesc.bytecode = asset::loadCompiledShader("tonemap.vert.spv");
+        vertexShaderDesc.bytecode = asset::loadCompiledShader("skybox.vert.spv");
         if (!vertexShaderDesc.bytecode.empty()) {
             m_VertexShader = m_Device->createShader(vertexShaderDesc);
         }
 
         rhi::ShaderDesc fragmentShaderDesc{};
-        fragmentShaderDesc.debugName = "ToneMappingFragmentShader";
+        fragmentShaderDesc.debugName = "SkyboxFragmentShader";
         fragmentShaderDesc.stage = rhi::ShaderStage::Fragment;
-        fragmentShaderDesc.bytecode = asset::loadCompiledShader("tonemap.frag.spv");
+        fragmentShaderDesc.bytecode = asset::loadCompiledShader("skybox.frag.spv");
         if (!fragmentShaderDesc.bytecode.empty()) {
             m_FragmentShader = m_Device->createShader(fragmentShaderDesc);
         }
@@ -186,45 +199,43 @@ namespace ark {
         return m_VertexShader && m_FragmentShader;
     }
 
-    bool ToneMappingPass::createPipelineResources() {
+    bool SkyboxPass::createPipelineResources() {
         if (!m_Device || !m_DescriptorSetLayout) {
-            ARK_ERROR("ToneMappingPass requires device and descriptor set layout");
+            ARK_ERROR("SkyboxPass requires device and descriptor set layout");
             return false;
         }
 
         rhi::PipelineLayoutDesc layoutDesc{};
-        layoutDesc.debugName = "ToneMappingPipelineLayout";
+        layoutDesc.debugName = "SkyboxPipelineLayout";
         layoutDesc.descriptorSetLayouts.push_back(m_DescriptorSetLayout.get());
         m_PipelineLayout = m_Device->createPipelineLayout(layoutDesc);
         return m_PipelineLayout != nullptr;
     }
 
-    rhi::PipelineState* ToneMappingPass::getOrCreatePipeline(FrameContext& frameContext) {
+    rhi::PipelineState* SkyboxPass::getOrCreatePipeline(FrameContext& frameContext) {
         if (!m_Device) {
-            ARK_ERROR("ToneMappingPass requires RenderDevice");
+            ARK_ERROR("SkyboxPass requires RenderDevice");
             return nullptr;
         }
 
-        const rhi::Format colorFormat = frameContext.colorFormat != rhi::Format::Unknown
-                                            ? frameContext.colorFormat
-                                            : frameContext.swapChain ? frameContext.swapChain->getDesc().colorFormat
-                                                                     : rhi::Format::Unknown;
+        const rhi::Format colorFormat = frameContext.colorFormat;
         if (colorFormat == rhi::Format::Unknown) {
-            ARK_ERROR("ToneMappingPass requires a valid color attachment format");
+            ARK_ERROR("SkyboxPass requires a valid color attachment format");
             return nullptr;
         }
 
-        if (m_Pipeline && m_PipelineColorFormat == colorFormat) {
+        const rhi::Format depthFormat = frameContext.depthFormat;
+        if (m_Pipeline && m_PipelineColorFormat == colorFormat && m_PipelineDepthFormat == depthFormat) {
             return m_Pipeline.get();
         }
 
         if (!m_VertexShader || !m_FragmentShader || !m_PipelineLayout) {
-            ARK_ERROR("ToneMappingPass requires shader modules and pipeline layout");
+            ARK_ERROR("SkyboxPass requires shader modules and pipeline layout");
             return nullptr;
         }
 
         rhi::GraphicsPipelineDesc pipelineDesc{};
-        pipelineDesc.debugName = "ToneMappingPipeline";
+        pipelineDesc.debugName = "SkyboxPipeline";
         pipelineDesc.vertexShader = m_VertexShader.get();
         pipelineDesc.fragmentShader = m_FragmentShader.get();
         pipelineDesc.layout = m_PipelineLayout.get();
@@ -233,9 +244,11 @@ namespace ark {
         pipelineDesc.depthStencilState.enableDepthTest = false;
         pipelineDesc.depthStencilState.enableDepthWrite = false;
         pipelineDesc.colorFormat = colorFormat;
+        pipelineDesc.depthFormat = depthFormat;
 
         m_Pipeline = m_Device->createGraphicsPipeline(pipelineDesc);
         m_PipelineColorFormat = colorFormat;
+        m_PipelineDepthFormat = depthFormat;
         return m_Pipeline.get();
     }
 } // namespace ark

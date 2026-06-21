@@ -1,9 +1,8 @@
-#include "renderer/EnvironmentCubeConverter.h"
+#include "renderer/effects/ibl/EnvironmentIrradianceGenerator.h"
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
 #include "renderer/EnvironmentCubeResource.h"
-#include "renderer/EnvironmentResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
@@ -21,19 +20,19 @@
 
 namespace ark {
     namespace {
-        struct alignas(16) EquirectToCubeUniform {
+        struct alignas(16) IrradianceUniform {
             u32 faceIndex = 0;
-            float outputResolution = 0.0f;
+            float sampleDelta = 0.025f;
             float padding0 = 0.0f;
             float padding1 = 0.0f;
         };
 
-        static_assert(sizeof(EquirectToCubeUniform) == 16);
+        static_assert(sizeof(IrradianceUniform) == 16);
 
-        EquirectToCubeUniform makeConversionUniform(u32 faceIndex, rhi::Extent2D faceExtent) {
-            EquirectToCubeUniform uniform{};
+        IrradianceUniform makeIrradianceUniform(u32 faceIndex, float sampleDelta) {
+            IrradianceUniform uniform{};
             uniform.faceIndex = faceIndex;
-            uniform.outputResolution = static_cast<float>(faceExtent.width);
+            uniform.sampleDelta = sampleDelta > 0.0f ? sampleDelta : 0.025f;
             return uniform;
         }
 
@@ -50,9 +49,9 @@ namespace ark {
         }
     } // namespace
 
-    EnvironmentCubeConverter::~EnvironmentCubeConverter() = default;
+    EnvironmentIrradianceGenerator::~EnvironmentIrradianceGenerator() = default;
 
-    void EnvironmentCubeConverter::setup(rhi::RenderDevice& device) {
+    void EnvironmentIrradianceGenerator::setup(rhi::RenderDevice& device) {
         m_Device = &device;
 
         createDescriptorResources();
@@ -60,7 +59,7 @@ namespace ark {
         createPipelineResources();
     }
 
-    void EnvironmentCubeConverter::resetImmediate() {
+    void EnvironmentIrradianceGenerator::resetImmediate() {
         m_Pipeline.reset();
         m_PipelineColorFormat = rhi::Format::Unknown;
         m_PipelineLayout.reset();
@@ -76,16 +75,22 @@ namespace ark {
         m_Device = nullptr;
     }
 
-    bool EnvironmentCubeConverter::convert(rhi::DeviceContext& context, const EnvironmentCubeConversionDesc& desc) {
-        const std::string debugName = desc.debugName.empty() ? "EnvironmentCubeConversion" : desc.debugName;
+    bool EnvironmentIrradianceGenerator::generate(rhi::DeviceContext& context,
+                                                  const EnvironmentIrradianceGenerationDesc& desc) {
+        const std::string debugName = desc.debugName.empty() ? "EnvironmentIrradianceGeneration" : desc.debugName;
 
         if (!desc.source || !desc.target) {
-            ARK_ERROR("{} requires source EnvironmentResource and target EnvironmentCubeResource", debugName);
+            ARK_ERROR("{} requires source and target EnvironmentCubeResource", debugName);
             return false;
         }
 
-        if (!desc.source->isReady() || !desc.source->textureView() || !desc.source->sampler()) {
-            ARK_ERROR("{} requires uploaded source environment", debugName);
+        if (desc.source == desc.target) {
+            ARK_ERROR("{} source and target cubemaps must be different resources", debugName);
+            return false;
+        }
+
+        if (!desc.source->isValid() || !desc.source->textureView() || !desc.source->sampler()) {
+            ARK_ERROR("{} requires a valid source cubemap", debugName);
             return false;
         }
 
@@ -134,7 +139,7 @@ namespace ark {
             sourceSamplerDescriptor.sampler = desc.source->sampler();
             m_DescriptorSets[faceIndex]->updateSampler(2, sourceSamplerDescriptor);
 
-            const EquirectToCubeUniform uniform = makeConversionUniform(faceIndex, faceExtent);
+            const IrradianceUniform uniform = makeIrradianceUniform(faceIndex, desc.sampleDelta);
             if (!context.updateBuffer(*m_UniformBuffers[faceIndex], &uniform, sizeof(uniform))) {
                 return false;
             }
@@ -173,14 +178,14 @@ namespace ark {
         return true;
     }
 
-    bool EnvironmentCubeConverter::createDescriptorResources() {
+    bool EnvironmentIrradianceGenerator::createDescriptorResources() {
         if (!m_Device) {
-            ARK_ERROR("EnvironmentCubeConverter requires device for descriptor resources");
+            ARK_ERROR("EnvironmentIrradianceGenerator requires device for descriptor resources");
             return false;
         }
 
         rhi::DescriptorSetLayoutDesc layoutDesc{};
-        layoutDesc.debugName = "EquirectToCubeDescriptorSetLayout";
+        layoutDesc.debugName = "IrradianceDescriptorSetLayout";
         layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
             .binding = 0,
             .type = rhi::DescriptorType::UniformBuffer,
@@ -207,8 +212,8 @@ namespace ark {
 
         for (std::size_t faceIndex = 0; faceIndex < m_DescriptorSets.size(); ++faceIndex) {
             rhi::BufferDesc uniformBufferDesc{};
-            uniformBufferDesc.debugName = "EquirectToCubeUniformBuffer";
-            uniformBufferDesc.size = sizeof(EquirectToCubeUniform);
+            uniformBufferDesc.debugName = "IrradianceUniformBuffer";
+            uniformBufferDesc.size = sizeof(IrradianceUniform);
             uniformBufferDesc.usage = rhi::BufferUsage::Uniform;
             uniformBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
             m_UniformBuffers[faceIndex] = m_Device->createBuffer(uniformBufferDesc);
@@ -220,31 +225,31 @@ namespace ark {
 
             rhi::BufferDescriptor uniformDescriptor{};
             uniformDescriptor.buffer = m_UniformBuffers[faceIndex].get();
-            uniformDescriptor.range = sizeof(EquirectToCubeUniform);
+            uniformDescriptor.range = sizeof(IrradianceUniform);
             m_DescriptorSets[faceIndex]->updateUniformBuffer(0, uniformDescriptor);
         }
 
         return true;
     }
 
-    bool EnvironmentCubeConverter::createShaderResources() {
+    bool EnvironmentIrradianceGenerator::createShaderResources() {
         if (!m_Device) {
-            ARK_ERROR("EnvironmentCubeConverter requires device for shader resources");
+            ARK_ERROR("EnvironmentIrradianceGenerator requires device for shader resources");
             return false;
         }
 
         rhi::ShaderDesc vertexShaderDesc{};
-        vertexShaderDesc.debugName = "EquirectToCubeVertexShader";
+        vertexShaderDesc.debugName = "IrradianceConvolveVertexShader";
         vertexShaderDesc.stage = rhi::ShaderStage::Vertex;
-        vertexShaderDesc.bytecode = asset::loadCompiledShader("equirect_to_cube.vert.spv");
+        vertexShaderDesc.bytecode = asset::loadCompiledShader("irradiance_convolve.vert.spv");
         if (!vertexShaderDesc.bytecode.empty()) {
             m_VertexShader = m_Device->createShader(vertexShaderDesc);
         }
 
         rhi::ShaderDesc fragmentShaderDesc{};
-        fragmentShaderDesc.debugName = "EquirectToCubeFragmentShader";
+        fragmentShaderDesc.debugName = "IrradianceConvolveFragmentShader";
         fragmentShaderDesc.stage = rhi::ShaderStage::Fragment;
-        fragmentShaderDesc.bytecode = asset::loadCompiledShader("equirect_to_cube.frag.spv");
+        fragmentShaderDesc.bytecode = asset::loadCompiledShader("irradiance_convolve.frag.spv");
         if (!fragmentShaderDesc.bytecode.empty()) {
             m_FragmentShader = m_Device->createShader(fragmentShaderDesc);
         }
@@ -252,27 +257,27 @@ namespace ark {
         return m_VertexShader && m_FragmentShader;
     }
 
-    bool EnvironmentCubeConverter::createPipelineResources() {
+    bool EnvironmentIrradianceGenerator::createPipelineResources() {
         if (!m_Device || !m_DescriptorSetLayout) {
-            ARK_ERROR("EnvironmentCubeConverter requires device and descriptor set layout");
+            ARK_ERROR("EnvironmentIrradianceGenerator requires device and descriptor set layout");
             return false;
         }
 
         rhi::PipelineLayoutDesc layoutDesc{};
-        layoutDesc.debugName = "EquirectToCubePipelineLayout";
+        layoutDesc.debugName = "IrradiancePipelineLayout";
         layoutDesc.descriptorSetLayouts.push_back(m_DescriptorSetLayout.get());
         m_PipelineLayout = m_Device->createPipelineLayout(layoutDesc);
         return m_PipelineLayout != nullptr;
     }
 
-    rhi::PipelineState* EnvironmentCubeConverter::getOrCreatePipeline(rhi::Format colorFormat) {
+    rhi::PipelineState* EnvironmentIrradianceGenerator::getOrCreatePipeline(rhi::Format colorFormat) {
         if (!m_Device) {
-            ARK_ERROR("EnvironmentCubeConverter requires RenderDevice");
+            ARK_ERROR("EnvironmentIrradianceGenerator requires RenderDevice");
             return nullptr;
         }
 
         if (colorFormat == rhi::Format::Unknown) {
-            ARK_ERROR("EnvironmentCubeConverter requires a valid color attachment format");
+            ARK_ERROR("EnvironmentIrradianceGenerator requires a valid color attachment format");
             return nullptr;
         }
 
@@ -281,12 +286,12 @@ namespace ark {
         }
 
         if (!m_VertexShader || !m_FragmentShader || !m_PipelineLayout) {
-            ARK_ERROR("EnvironmentCubeConverter requires shader modules and pipeline layout");
+            ARK_ERROR("EnvironmentIrradianceGenerator requires shader modules and pipeline layout");
             return nullptr;
         }
 
         rhi::GraphicsPipelineDesc pipelineDesc{};
-        pipelineDesc.debugName = "EquirectToCubePipeline";
+        pipelineDesc.debugName = "IrradiancePipeline";
         pipelineDesc.vertexShader = m_VertexShader.get();
         pipelineDesc.fragmentShader = m_FragmentShader.get();
         pipelineDesc.layout = m_PipelineLayout.get();

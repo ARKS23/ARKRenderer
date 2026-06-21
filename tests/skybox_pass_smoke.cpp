@@ -3,7 +3,7 @@
 #include "renderer/FrameContext.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
-#include "renderer/passes/SkyboxPass.h"
+#include "renderer/effects/sky/SkyboxPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

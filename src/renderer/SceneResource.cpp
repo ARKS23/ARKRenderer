@@ -3,7 +3,7 @@
 #include "asset/GltfLoader.h"
 #include "asset/TextureLoader.h"
 #include "core/Log.h"
-#include "renderer/SandboxEnvironment.h"
+#include "renderer/effects/sky/SandboxEnvironment.h"
 #include "rhi/RenderDevice.h"
 
 #include <glm/mat4x4.hpp>

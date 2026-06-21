@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/Types.h"
-#include "renderer/ShadowCascade.h"
+#include "renderer/effects/shadow/ShadowCascade.h"
 #include "rhi/RHICommon.h"
 
 #include <glm/mat4x4.hpp>

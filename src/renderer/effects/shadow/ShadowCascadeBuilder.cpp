@@ -1,4 +1,4 @@
-#include "renderer/ShadowCascadeBuilder.h"
+#include "renderer/effects/shadow/ShadowCascadeBuilder.h"
 
 #include "renderer/Bounds.h"
 #include "renderer/RenderScene.h"

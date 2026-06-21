@@ -1,6 +1,6 @@
 #include "core/Memory.h"
 #include "renderer/EnvironmentCubeResource.h"
-#include "renderer/EnvironmentSpecularPrefilterGenerator.h"
+#include "renderer/effects/ibl/EnvironmentSpecularPrefilterGenerator.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

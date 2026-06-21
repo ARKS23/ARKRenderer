@@ -1,4 +1,4 @@
-#include "renderer/passes/BloomPass.h"
+#include "renderer/effects/bloom/BloomPass.h"
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"

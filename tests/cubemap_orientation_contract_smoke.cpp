@@ -1,6 +1,6 @@
-#include "renderer/CubemapOrientation.h"
+#include "renderer/effects/ibl/CubemapOrientation.h"
 #include "renderer/EnvironmentCubeResource.h"
-#include "renderer/SandboxEnvironment.h"
+#include "renderer/effects/sky/SandboxEnvironment.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

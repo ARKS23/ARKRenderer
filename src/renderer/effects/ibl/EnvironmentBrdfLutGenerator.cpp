@@ -1,4 +1,4 @@
-#include "renderer/EnvironmentBrdfLutGenerator.h"
+#include "renderer/effects/ibl/EnvironmentBrdfLutGenerator.h"
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"

@@ -2,8 +2,8 @@
 
 #include "asset/MeshData.h"
 #include "core/Types.h"
-#include "renderer/PostProcessingSettings.h"
-#include "renderer/ShadowConstants.h"
+#include "renderer/effects/tone_mapping/PostProcessingSettings.h"
+#include "renderer/effects/shadow/ShadowConstants.h"
 #include "rhi/RHICommon.h"
 
 #include <algorithm>

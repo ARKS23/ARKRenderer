@@ -1,4 +1,4 @@
-#include "renderer/EnvironmentSpecularPrefilterGenerator.h"
+#include "renderer/effects/ibl/EnvironmentSpecularPrefilterGenerator.h"
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"

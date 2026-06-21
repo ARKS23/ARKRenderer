@@ -1,7 +1,7 @@
 #include "core/Memory.h"
 #include "renderer/FrameContext.h"
 #include "renderer/RenderView.h"
-#include "renderer/passes/ToneMappingPass.h"
+#include "renderer/effects/tone_mapping/ToneMappingPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

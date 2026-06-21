@@ -7,7 +7,7 @@
 #include "renderer/RenderView.h"
 #include "renderer/TextureCache.h"
 #include "renderer/material/MaterialResource.h"
-#include "renderer/passes/ShadowPass.h"
+#include "renderer/effects/shadow/ShadowPass.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
 #include "rhi/DeviceContext.h"

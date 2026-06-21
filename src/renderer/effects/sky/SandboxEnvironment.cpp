@@ -1,6 +1,6 @@
-#include "renderer/SandboxEnvironment.h"
+#include "renderer/effects/sky/SandboxEnvironment.h"
 
-#include "renderer/CubemapOrientation.h"
+#include "renderer/effects/ibl/CubemapOrientation.h"
 
 #include <cmath>
 #include <cstring>
