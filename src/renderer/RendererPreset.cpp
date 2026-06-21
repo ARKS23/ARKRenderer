@@ -320,5 +320,6 @@ namespace ark {
         view.setMatrices(glm::lookAt(cameraPosition, camera.target, glm::vec3{0.0f, 1.0f, 0.0f}),
                          projection,
                          cameraPosition);
+        view.setClipRange(camera.nearPlane, camera.farPlane);
     }
 } // namespace ark

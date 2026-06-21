@@ -43,6 +43,7 @@
 #include "renderer/PostProcessingSettings.h"
 #include "renderer/SandboxEnvironment.h"
 #include "renderer/SceneResource.h"
+#include "renderer/ShadowCascadeBuilder.h"
 #include "renderer/TextureCache.h"
 #include "renderer/TextureResource.h"
 #include "renderer/material/Material.h"
@@ -605,6 +606,7 @@ int main() {
     toneMappingSettings.outputGamma = 2.2f;
     toneMappingSettings.operatorType = ark::ToneMappingOperator::ACES;
     renderView.setToneMappingSettings(toneMappingSettings);
+    renderView.setClipRange(0.05f, 90.0f);
     ark::ShadowSettings shadowSettings{};
     shadowSettings.enabled = true;
     shadowSettings.strength = 0.75f;
@@ -637,9 +639,18 @@ int main() {
         renderView.shadowSettings().cascades.maxDistance != 120.0f ||
         renderView.shadowSettings().cascades.cascadeExtent != 1024 ||
         !renderView.visibilitySettings().enableFrustumCulling ||
+        renderView.cameraNearPlane() != 0.05f ||
+        renderView.cameraFarPlane() != 90.0f ||
         ark::parseShadowFilterMode("pcf-3x3") != ark::ShadowFilterMode::Pcf3x3 ||
         ark::parseShadowFilterMode("pcf5") != ark::ShadowFilterMode::Pcf5x5 ||
         ark::parseToneMappingOperator("filmic") != ark::ToneMappingOperator::ACES) {
+        return EXIT_FAILURE;
+    }
+    const ark::CascadeSplitDistances splitDistances =
+        ark::computeCascadeSplitDistances(0.1f, 10.0f, 2, 0.5f);
+    if (!splitDistances.isValid() ||
+        splitDistances.cascadeCount != 2 ||
+        splitDistances.distances[2] != 10.0f) {
         return EXIT_FAILURE;
     }
     ark::CascadeShadowFrameData cascadeFrameData{};

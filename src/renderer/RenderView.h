@@ -75,8 +75,18 @@ namespace ark {
         std::string_view name,
         ShadowFilterMode fallback = ShadowFilterMode::Hard);
 
+    // RenderView 描述“这一帧从哪个视角、用哪些画面参数渲染场景”。
+    // 它只保存 view/projection、相机裁剪范围、后处理、阴影和可见性设置；
+    // 不负责输入交互、场景对象管理、RHI 资源创建或 draw call 执行。
     class RenderView {
     public:
+        void setClipRange(float nearPlane, float farPlane) {
+            if (isFinitePositive(nearPlane) && isFinitePositive(farPlane) && farPlane > nearPlane) {
+                m_CameraNearPlane = nearPlane;
+                m_CameraFarPlane = farPlane;
+            }
+        }
+
         void setMatrices(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& cameraPosition) {
             m_View = view;
             m_Projection = projection;
@@ -97,6 +107,7 @@ namespace ark {
             m_View = glm::lookAt(m_CameraPosition, glm::vec3{0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
             m_Projection = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 0.1f, 100.0f);
             m_Projection[1][1] *= -1.0f;
+            setClipRange(0.1f, 100.0f);
         }
 
         bool setPerspectiveCamera(const asset::CameraData& camera,
@@ -125,6 +136,7 @@ namespace ark {
             glm::mat4 projection = glm::perspectiveRH_ZO(perspective.yfov, aspect, perspective.znear, farPlane);
             projection[1][1] *= -1.0f;
             setMatrices(glm::affineInverse(worldMatrix), projection, glm::vec3{worldMatrix[3]});
+            setClipRange(perspective.znear, farPlane);
             return true;
         }
 
@@ -138,6 +150,14 @@ namespace ark {
 
         const glm::vec3& cameraPosition() const {
             return m_CameraPosition;
+        }
+
+        float cameraNearPlane() const {
+            return m_CameraNearPlane;
+        }
+
+        float cameraFarPlane() const {
+            return m_CameraFarPlane;
         }
 
         const ToneMappingSettings& toneMappingSettings() const {
@@ -245,6 +265,8 @@ namespace ark {
         glm::mat4 m_View{1.0f};
         glm::mat4 m_Projection{1.0f};
         glm::vec3 m_CameraPosition{0.0f};
+        float m_CameraNearPlane = 0.1f;
+        float m_CameraFarPlane = 100.0f;
         ToneMappingSettings m_ToneMappingSettings;
         PostProcessingSettings m_PostProcessingSettings;
         ShadowSettings m_ShadowSettings;

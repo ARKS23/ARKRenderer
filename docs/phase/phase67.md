@@ -2,7 +2,7 @@
 
 ## 实施状态
 
-已完成 0.67.0 文档与范围确认、0.67.1 Sandbox Shadow Validation Scene，以及 0.67.2 CSM Settings / Data Contract。
+已完成 0.67.0 文档与范围确认、0.67.1 Sandbox Shadow Validation Scene、0.67.2 CSM Settings / Data Contract，以及 0.67.3 Cascade Split / Matrix Builder。
 
 Phase 0.61 ~ 0.66 已经完成 scene bounds、ShadowPass scene-fit、PCF shadow filtering、sandbox debug UI、运行时参数桥接、Frustum 数据结构、DrawItem world bounds 和 forward visibility diagnostics。当前渲染器已经可以在默认 Sponza + DamagedHelmet 场景中观察 Shadow、Bloom、ACES ToneMapping、IBL 和 camera frustum culling 统计。
 
@@ -263,6 +263,20 @@ Sandbox Shadow 面板建议增加：
 - 实现 per-cascade light-space ortho fit。
 - 复用 texel snapping 稳定每级 shadow projection。
 - 补充单元测试覆盖 split 单调性、lambda 行为、矩阵有限性和 bounds 合理性。
+
+实现结果：
+- 新增 `ShadowCascadeBuilder`，集中负责 CSM split 计算和 per-cascade light-space matrix 构建，避免把 CSM 数学继续塞进 `ShadowPass`。
+- 新增 `computeCascadeSplitDistances()`，使用 practical split scheme，并覆盖 `splitLambda = 0 / 0.5 / 1` 的行为。
+- `RenderView` 新增 camera clip range 保存与查询接口；默认透视、glTF camera、orbit preset 都会写入 near/far，CSM split 使用 `cameraNear -> min(cameraFar, shadow.cascades.maxDistance)`。
+- builder 会根据当前 view/projection 生成每个 camera frustum slice 的 world bounds，并用主方向光方向构造 light view。
+- 每级 cascade 使用 light-space AABB 保守拟合 orthographic projection，并沿用 Vulkan Y 翻转约定和 texel snapping 逻辑稳定投影。
+- `ShadowPass::prepare()` 在发布单 shadow binding 的同时生成 `FrameContext::cascadeShadows`；当前仍不改变真实单 shadow map 渲染路径。
+- 新增 `ark_shadow_cascade_builder_smoke`，验证 split 单调性、lambda 行为、矩阵 finite、cascade bounds 可投影到 clip 体内。
+- 更新 `ark_shadow_pass_smoke`，验证 CSM 开启后 `ShadowPass` 能发布 cascade frame data，关闭 shadow 时会清空旧数据。
+- Targeted build 通过：`ark_shadow_cascade_builder_smoke`、`ark_shadow_pass_smoke`、`ark_framework_headers_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_renderer_preset_smoke`。
+- Targeted CTest 通过：`ark_shadow_cascade_builder_smoke`、`ark_shadow_pass_smoke`、`ark_framework_headers_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_renderer_preset_smoke`。
+- Full Debug build 通过。
+- Full CTest 结果为 32/33：`ark_frame_validation_smoke` 的 `default_composite_scene` golden diff 超阈值（meanAbsError=0.0628158），本阶段不顺手更新默认组合场景 PNG baseline，留到视觉基线同步任务单独处理。
 
 ### 0.67.4 ShadowPass CSM Render Path
 

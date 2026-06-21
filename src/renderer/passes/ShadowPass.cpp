@@ -9,6 +9,7 @@
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
+#include "renderer/ShadowCascadeBuilder.h"
 #include "renderer/material/MaterialResource.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/FrameResource.h"
@@ -248,6 +249,8 @@ namespace ark {
         void publishFrameShadowBindings(FrameContext& frameContext,
                                         rhi::TextureView* shadowMapView,
                                         rhi::Sampler* shadowSampler) {
+            const SceneLighting defaultLighting{};
+            const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
             const ShadowSettings& settings = frameContext.view->shadowSettings();
             frameContext.shadowMapView = shadowMapView;
             frameContext.shadowSampler = shadowSampler;
@@ -256,6 +259,8 @@ namespace ark {
             frameContext.shadowBias = settings.bias;
             frameContext.shadowFilterMode = static_cast<float>(settings.filterMode);
             frameContext.shadowFilterRadiusTexels = settings.filterRadiusTexels;
+            frameContext.cascadeShadows =
+                buildCascadeShadowFrameData(*frameContext.view, lighting, settings);
         }
     } // namespace
 

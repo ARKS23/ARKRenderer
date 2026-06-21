@@ -505,6 +505,8 @@ namespace {
         frameContext.shadowBias = 0.2f;
         frameContext.shadowFilterMode = static_cast<float>(ark::ShadowFilterMode::Pcf5x5);
         frameContext.shadowFilterRadiusTexels = 4.0f;
+        frameContext.cascadeShadows.enabled = true;
+        frameContext.cascadeShadows.cascadeCount = 4;
 
         if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
             std::cerr << "ShadowPass disabled path failed\n";
@@ -516,6 +518,7 @@ namespace {
             !near(frameContext.shadowBias, ark::ShadowSettings{}.bias) ||
             frameContext.shadowFilterMode != static_cast<float>(ark::ShadowFilterMode::Hard) ||
             frameContext.shadowFilterRadiusTexels != 0.0f ||
+            frameContext.cascadeShadows.isEnabled() ||
             context.beginRenderingCalls != 0 ||
             context.indexedDraws != 0) {
             std::cerr << "ShadowPass disabled path should clear frame shadow bindings without rendering\n";
@@ -555,6 +558,11 @@ namespace {
         shadows.lightDistance = 32.0f;
         shadows.filterMode = ark::ShadowFilterMode::Pcf5x5;
         shadows.filterRadiusTexels = 2.0f;
+        shadows.cascades.enabled = true;
+        shadows.cascades.cascadeCount = 4;
+        shadows.cascades.splitLambda = 0.5f;
+        shadows.cascades.maxDistance = 64.0f;
+        shadows.cascades.cascadeExtent = 1024;
         view.setShadowSettings(shadows);
 
         pass.setup(device);
@@ -621,7 +629,13 @@ namespace {
             !near(frameContext.shadowStrength, 0.55f) ||
             !near(frameContext.shadowBias, 0.003f) ||
             frameContext.shadowFilterMode != static_cast<float>(ark::ShadowFilterMode::Pcf5x5) ||
-            !near(frameContext.shadowFilterRadiusTexels, 2.0f)) {
+            !near(frameContext.shadowFilterRadiusTexels, 2.0f) ||
+            !frameContext.cascadeShadows.isEnabled() ||
+            frameContext.cascadeShadows.cascadeCount != 4 ||
+            frameContext.cascadeShadows.cascadeExtent != 1024 ||
+            !near(frameContext.cascadeShadows.cascades[0].nearDistance, view.cameraNearPlane()) ||
+            frameContext.cascadeShadows.cascades[0].farDistance <=
+                frameContext.cascadeShadows.cascades[0].nearDistance) {
             std::cerr << "ShadowPass did not publish frame shadow resources\n";
             return false;
         }
