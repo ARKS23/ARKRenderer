@@ -50,6 +50,7 @@ int main() {
     runtimeSettings.view.shadows.cascades.splitLambda = 9.0f;
     runtimeSettings.view.shadows.cascades.maxDistance = -1.0f;
     runtimeSettings.view.shadows.cascades.cascadeExtent = 99999;
+    runtimeSettings.view.shadows.cascades.stabilize = false;
 
     ark::RenderView view{};
     ark::applySandboxRuntimeSettings(view, runtimeSettings);
@@ -60,7 +61,22 @@ int main() {
         view.shadowSettings().cascades.splitLambda != 1.0f ||
         view.shadowSettings().cascades.maxDistance <= view.shadowSettings().nearPlane ||
         view.shadowSettings().cascades.cascadeExtent != 4096 ||
+        view.shadowSettings().cascades.stabilize ||
         !view.visibilitySettings().enableFrustumCulling) {
+        return EXIT_FAILURE;
+    }
+
+    runtimeSettings.view.shadows.cascades.cascadeCount = 1;
+    runtimeSettings.view.shadows.cascades.splitLambda = 0.35f;
+    runtimeSettings.view.shadows.cascades.maxDistance = 48.0f;
+    runtimeSettings.view.shadows.cascades.cascadeExtent = 128;
+    runtimeSettings.view.shadows.cascades.stabilize = true;
+    ark::applySandboxRuntimeSettings(view, runtimeSettings);
+    if (view.shadowSettings().cascades.cascadeCount != 1 ||
+        view.shadowSettings().cascades.splitLambda != 0.35f ||
+        view.shadowSettings().cascades.maxDistance != 48.0f ||
+        view.shadowSettings().cascades.cascadeExtent != 128 ||
+        !view.shadowSettings().cascades.stabilize) {
         return EXIT_FAILURE;
     }
 

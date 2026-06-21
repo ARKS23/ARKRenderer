@@ -323,6 +323,13 @@ Sandbox Shadow 面板建议增加：
 - 可选增加 cascade debug color mode。
 - 默认场景中确认 Sponza、DamagedHelmet 和球体均可用于观察阴影。
 
+实现结果：
+- `SandboxDebugUi` 的 Shadow 面板新增 Cascaded Shadow Maps 控制块，可实时调节 CSM enabled、cascade count（1 / 2 / 4）、split lambda、shadow distance、cascade extent 和 stabilize。
+- UI 继续只修改 `SandboxRuntimeSettings`，再由 `applySandboxRuntimeSettings()` 统一写回 `RenderView`，不让 UI 直接依赖 `ShadowPass` 或 `ForwardPass` 内部对象。
+- Debug UI 在 overlay render 阶段缓存 `FrameContext::cascadeShadows`，并在 Shadow / Diagnostics 面板显示上一帧实际生成的 cascade count、cascade extent 和每级 near/far split distances。
+- cascade color debug mode 暂不纳入本阶段，保留到 Phase 0.68 Shadow Debug Visualization，避免在 CSM 最小闭环中继续扩展 shader debug state。
+- `ark_sandbox_ui_settings_smoke` 继续覆盖 CSM runtime settings 写回与 sanitize，包括 cascade count 归一化、split lambda clamp、max distance fallback、cascade extent clamp 和 stabilize 布尔值保持。
+
 ### 0.67.7 Tests
 
 建议覆盖：
@@ -337,6 +344,12 @@ Sandbox Shadow 面板建议增加：
 - 默认 shadow validation scene loaded model count 符合预期。
 - 旧 non-CSM shadow path 不回归。
 
+验证结果：
+- Full Debug build 通过：`cmake --build build/msvc-vcpkg --config Debug`。
+- Targeted CTest 通过：`ark_renderer_preset_smoke`、`ark_sandbox_ui_settings_smoke`、`ark_shadow_cascade_builder_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_shader_assets_smoke`、`ark_shadow_pass_smoke`。
+- Full CTest 结果为 32/33：除 `ark_frame_validation_smoke/default_composite_scene` 外均通过。
+- `default_composite_scene` 仍是 0.67.3 以来记录的默认组合场景 golden diff（meanAbsError=0.0628158），本阶段不更新 PNG baseline。
+
 ### 0.67.8 验证与收尾
 
 - 更新 `docs/phase/phase67.md` 实施状态。
@@ -350,6 +363,11 @@ Sandbox Shadow 面板建议增加：
   - CSM 开关、split lambda、shadow distance 调整后画面有可观察变化。
   - Bloom、ACES ToneMapping、IBL、Frustum Culling 仍正常。
 - 提交并推送。
+
+收尾结果：
+- `SandboxDebugUi` 已接入 CSM 参数控制和上一帧 cascade diagnostics。
+- `ark_sandbox` hidden-window smoke 通过，默认组合场景可启动并稳定运行 4 秒。
+- `git diff --check` 未发现空白错误，仅有仓库既有 LF/CRLF 提示。
 
 ## 风险与约束
 

@@ -14,6 +14,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 
 namespace ark {
     namespace {
@@ -60,6 +61,32 @@ namespace ark {
             }
 
             filterMode = static_cast<ShadowFilterMode>(std::clamp(current, 0, 2));
+            return true;
+        }
+
+        int cascadeCountToComboIndex(u32 cascadeCount) {
+            if (cascadeCount <= 1u) {
+                return 0;
+            }
+            if (cascadeCount <= 2u) {
+                return 1;
+            }
+            return 2;
+        }
+
+        u32 cascadeCountFromComboIndex(int index) {
+            constexpr std::array<u32, 3> CascadeCounts{1u, 2u, MaxShadowCascadeCount};
+            return CascadeCounts[static_cast<usize>(std::clamp(index, 0, 2))];
+        }
+
+        bool comboCascadeCount(u32& cascadeCount) {
+            const char* items[] = {"1", "2", "4"};
+            int current = cascadeCountToComboIndex(cascadeCount);
+            if (!ImGui::Combo("Cascade Count", &current, items, IM_ARRAYSIZE(items))) {
+                return false;
+            }
+
+            cascadeCount = cascadeCountFromComboIndex(current);
             return true;
         }
     } // namespace
@@ -238,6 +265,30 @@ namespace ark {
             comboShadowFilter(shadows.filterMode);
             ImGui::SliderFloat("Filter Radius", &shadows.filterRadiusTexels, 0.0f, 8.0f, "%.2f");
             ImGui::SliderFloat("Manual Bounds", &shadows.orthographicHalfExtent, 1.0f, 128.0f, "%.1f");
+
+            drawCascadeShadowPanel(shadows);
+        }
+
+        void drawCascadeShadowPanel(ShadowSettings& shadows) {
+            CascadeShadowSettings& cascades = shadows.cascades;
+
+            ImGui::Separator();
+            ImGui::TextUnformatted("Cascaded Shadow Maps");
+            ImGui::Checkbox("Enabled##CSM", &cascades.enabled);
+            comboCascadeCount(cascades.cascadeCount);
+            ImGui::SliderFloat("Split Lambda", &cascades.splitLambda, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Shadow Distance", &cascades.maxDistance, 1.0f, 512.0f, "%.1f");
+            int cascadeExtent = static_cast<int>(cascades.cascadeExtent);
+            if (ImGui::SliderInt("Cascade Extent", &cascadeExtent, 128, 4096)) {
+                cascades.cascadeExtent = static_cast<u32>(cascadeExtent);
+            }
+            ImGui::Checkbox("Stabilize##CSM", &cascades.stabilize);
+
+            if (cascades.enabled && !shadows.enabled) {
+                ImGui::TextDisabled("CSM waits for Shadow Enabled");
+            }
+
+            drawCascadeDiagnostics();
         }
 
         void drawVisibilityPanel() {
@@ -269,8 +320,33 @@ namespace ark {
             ImGui::Text("Shadow: %s / %s",
                         shadows.enabled ? "On" : "Off",
                         shadowFilterLabel(shadows.filterMode));
+            ImGui::Text("Shadow Map Extent: %u", shadows.mapExtent);
+            ImGui::Text("CSM: %s, requested=%u, distance=%.1f, extent=%u",
+                        shadows.cascades.enabled ? "On" : "Off",
+                        shadows.cascades.cascadeCount,
+                        shadows.cascades.maxDistance,
+                        shadows.cascades.cascadeExtent);
+            drawCascadeDiagnostics();
             ImGui::Text("Culling: %s",
                         m_Settings.view.visibility.enableFrustumCulling ? "On" : "Off");
+        }
+
+        void drawCascadeDiagnostics() {
+            if (!m_LastCascadeShadows.isEnabled()) {
+                ImGui::TextDisabled("CSM Frame: inactive");
+                return;
+            }
+
+            ImGui::Text("CSM Frame: cascades=%u, extent=%u",
+                        m_LastCascadeShadows.cascadeCount,
+                        m_LastCascadeShadows.cascadeExtent);
+            for (u32 index = 0; index < m_LastCascadeShadows.cascadeCount; ++index) {
+                const ShadowCascade& cascade = m_LastCascadeShadows.cascades[index];
+                ImGui::Text("  C%u: %.2f -> %.2f",
+                            index,
+                            cascade.nearDistance,
+                            cascade.farDistance);
+            }
         }
 
         void captureVisibilityDiagnostics(const FrameContext& frameContext) {
@@ -280,6 +356,8 @@ namespace ark {
 
             m_LastForwardStats = forwardQueue ? forwardQueue->stats() : RenderQueueStats{};
             m_LastShadowStats = shadowQueue ? shadowQueue->stats() : RenderQueueStats{};
+            // UI 面板在 render 前构建，因此这里缓存的是“上一帧 ShadowPass 实际生成”的 CSM 数据。
+            m_LastCascadeShadows = frameContext.cascadeShadows;
         }
 
         Window& m_Window;
@@ -287,6 +365,7 @@ namespace ark {
         rhi::vulkan::VulkanImGuiBackend m_Backend;
         RenderQueueStats m_LastForwardStats{};
         RenderQueueStats m_LastShadowStats{};
+        CascadeShadowFrameData m_LastCascadeShadows{};
         bool m_FrameBegun = false;
         bool m_DrawDataReady = false;
     };
