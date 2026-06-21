@@ -195,8 +195,17 @@ namespace {
         strafeInput.moveRight = true;
         strafeInput.fastMove = true;
         controller.update(strafeInput, 0.25f);
-        if (!nearVec3(controller.position(), glm::vec3{2.5f, 2.0f, -2.5f})) {
+        if (!nearVec3(controller.position(), glm::vec3{-0.5f, 2.0f, -2.5f})) {
             std::cerr << "Sandbox first-person fast strafe movement failed\n";
+            return false;
+        }
+
+        ark::InputSnapshot leftInput{};
+        leftInput.moveLeft = true;
+        leftInput.fastMove = true;
+        controller.update(leftInput, 0.25f);
+        if (!nearVec3(controller.position(), glm::vec3{1.0f, 2.0f, -2.5f})) {
+            std::cerr << "Sandbox first-person left strafe movement failed\n";
             return false;
         }
 

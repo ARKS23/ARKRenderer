@@ -136,7 +136,7 @@ namespace ark {
 
     void SandboxCameraController::updateFirstPerson(const InputSnapshot& input, float deltaSeconds) {
         if (input.rightMouseDown) {
-            // 世界坐标采用右手系；这里的 yaw/pitch 表示相机朝向，forward 会继续交给 glm::lookAt 的 RH view 语义。
+            // 世界坐标采用右手系；yaw/pitch 表示相机朝向，forward 会继续交给 glm::lookAt 的 RH view 语义。
             m_Yaw -= input.cursorDelta.x * m_MouseSensitivity;
             m_Pitch = std::clamp(m_Pitch - input.cursorDelta.y * m_MouseSensitivity,
                                  MinPitch,
@@ -151,7 +151,7 @@ namespace ark {
 
         glm::vec3 move{0.0f};
         const glm::vec3 forward = forwardDirection();
-        const glm::vec3 right = rightDirection();
+        const glm::vec3 right = firstPersonRightDirection();
         constexpr glm::vec3 WorldUp{0.0f, 1.0f, 0.0f};
         if (input.moveForward) {
             move += forward;
@@ -211,5 +211,10 @@ namespace ark {
 
     glm::vec3 SandboxCameraController::rightDirection() const {
         return glm::normalize(glm::cross(glm::vec3{0.0f, 1.0f, 0.0f}, forwardDirection()));
+    }
+
+    glm::vec3 SandboxCameraController::firstPersonRightDirection() const {
+        // 第一人称横移要匹配屏幕右侧；RH lookAt 下相机右向量为 forward x worldUp。
+        return glm::normalize(glm::cross(forwardDirection(), glm::vec3{0.0f, 1.0f, 0.0f}));
     }
 } // namespace ark

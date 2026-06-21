@@ -86,6 +86,7 @@ namespace ark {
     private:
         glm::vec3 forwardDirection() const;
         glm::vec3 rightDirection() const;
+        glm::vec3 firstPersonRightDirection() const;
         void updateOrbit(const InputSnapshot& input);
         void updateFirstPerson(const InputSnapshot& input, float deltaSeconds);
 
