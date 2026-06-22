@@ -139,6 +139,39 @@ src/renderer/
 
 ## Public / Internal 边界
 
+## Header Inventory / Ownership Map
+
+本阶段整理后，`src/renderer` 根目录只保留 public facade 和 legacy compatibility wrapper：
+
+| Header | Ownership | 说明 |
+| --- | --- | --- |
+| `Renderer.h` | Public facade | renderer 生命周期、resize、render 主入口 |
+| `RenderScene.h` | Public facade | renderer-facing scene submission 容器 |
+| `RenderView.h` | Public facade | per-frame camera、projection、postprocess、shadow、visibility 参数集合 |
+| `Bounds.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/Bounds.h` |
+| `Frustum.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/Frustum.h` |
+| `FrameContext.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/FrameContext.h` |
+| `FrameOverlay.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/FrameOverlay.h` |
+| `FrameRenderer.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/FrameRenderer.h` |
+| `RenderGraph.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/RenderGraph.h` |
+| `RenderPass.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/RenderPass.h` |
+| `RenderQueue.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/RenderQueue.h` |
+| `EnvironmentBrdfLutResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/EnvironmentBrdfLutResource.h` |
+| `EnvironmentCubeResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/EnvironmentCubeResource.h` |
+| `EnvironmentResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/EnvironmentResource.h` |
+| `MeshResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/MeshResource.h` |
+| `ModelResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/ModelResource.h` |
+| `TextureCache.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/TextureCache.h` |
+| `TextureResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/TextureResource.h` |
+| `PostProcessingSettings.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/PostProcessingSettings.h` |
+| `RendererQuality.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/RendererQuality.h` |
+| `ShadowConstants.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/ShadowConstants.h` |
+| `ShadowDebugSettings.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/ShadowDebugSettings.h` |
+| `SceneResource.h` | Legacy wrapper / Sample scene helper | 转发到 `renderer/scene/SceneResource.h` |
+| `RendererPreset.h` | Legacy wrapper / Sample preset helper | 转发到 `renderer/presets/RendererPreset.h` |
+
+新代码优先 include 分层后的真实路径；根目录 wrapper 仅用于兼容旧 include 和渐进迁移。
+
 ### Public facade
 
 保持在 `src/renderer` 根目录：
