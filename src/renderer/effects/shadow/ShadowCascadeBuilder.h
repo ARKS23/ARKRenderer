@@ -30,5 +30,6 @@ namespace ark {
     // 基于当前相机矩阵、主方向光和 CSM 设置生成每级 cascade 的 light-space projection。
     CascadeShadowFrameData buildCascadeShadowFrameData(const RenderView& view,
                                                        const SceneLighting& lighting,
-                                                       const ShadowSettings& settings);
+                                                       const ShadowSettings& settings,
+                                                       const Bounds3* casterBounds = nullptr);
 } // namespace ark

@@ -47,6 +47,20 @@ namespace {
         return true;
     }
 
+    bool projectedBoundsDepthInsideClip(const ark::ShadowCascade& cascade, const ark::Bounds3& bounds) {
+        if (!bounds.isValid()) {
+            return false;
+        }
+
+        for (const glm::vec3& corner : ark::boundsCorners(bounds)) {
+            const glm::vec3 ndc = projectPoint(cascade.lightViewProjection, corner);
+            if (!std::isfinite(ndc.z) || ndc.z < -0.001f || ndc.z > 1.001f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool validateSplitDistances() {
         const ark::CascadeSplitDistances linear =
             ark::computeCascadeSplitDistances(0.1f, 100.0f, 4, 0.0f);
@@ -159,10 +173,58 @@ namespace {
 
         return true;
     }
+
+    bool validateCascadeCasterDepthExpansion() {
+        ark::RenderView view{};
+        const glm::vec3 cameraPosition{0.0f, 2.0f, -6.0f};
+        const glm::mat4 viewMatrix = glm::lookAt(cameraPosition,
+                                                glm::vec3{0.0f, 1.0f, 0.0f},
+                                                glm::vec3{0.0f, 1.0f, 0.0f});
+        glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), 16.0f / 9.0f, 0.1f, 120.0f);
+        projection[1][1] *= -1.0f;
+        view.setMatrices(viewMatrix, projection, cameraPosition);
+        view.setClipRange(0.1f, 120.0f);
+
+        ark::ShadowSettings settings{};
+        settings.enabled = true;
+        settings.strength = 1.0f;
+        settings.nearPlane = 0.05f;
+        settings.stabilizeProjection = true;
+        settings.cascades.enabled = true;
+        settings.cascades.cascadeCount = 4;
+        settings.cascades.splitLambda = 0.5f;
+        settings.cascades.maxDistance = 60.0f;
+        settings.cascades.cascadeExtent = 1024;
+        view.setShadowSettings(settings);
+
+        ark::SceneLighting lighting{};
+        lighting.mainLight.direction = glm::vec3{-0.4f, -0.8f, -0.2f};
+
+        ark::Bounds3 casterBounds = ark::makeBoundsFromPoint(glm::vec3{-24.0f, -12.0f, -24.0f});
+        ark::expandBounds(casterBounds, glm::vec3{24.0f, 36.0f, 24.0f});
+
+        const ark::CascadeShadowFrameData frameData =
+            ark::buildCascadeShadowFrameData(view, lighting, view.shadowSettings(), &casterBounds);
+        if (!frameData.isEnabled()) {
+            std::cerr << "CSM caster depth frame data was not generated\n";
+            return false;
+        }
+
+        for (ark::u32 index = 0; index < frameData.cascadeCount; ++index) {
+            if (!projectedBoundsDepthInsideClip(frameData.cascades[index], casterBounds)) {
+                std::cerr << "CSM caster bounds depth is clipped for cascade " << index << "\n";
+                return false;
+            }
+        }
+
+        return true;
+    }
 } // namespace
 
 int main() {
-    return validateSplitDistances() && validateCascadeFrameData()
+    return validateSplitDistances() &&
+                   validateCascadeFrameData() &&
+                   validateCascadeCasterDepthExpansion()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

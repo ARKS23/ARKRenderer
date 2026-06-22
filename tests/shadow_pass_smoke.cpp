@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <vector>
 
 namespace {
@@ -350,7 +351,8 @@ namespace {
         }
 
         bool updateBuffer(ark::rhi::Buffer& buffer, const void* data, ark::u64 size, ark::u64 = 0) override {
-            if (buffer.getDesc().debugName == "ShadowUniformBuffer" &&
+            const std::string& debugName = buffer.getDesc().debugName;
+            if (debugName.rfind("ShadowUniformBuffer", 0) == 0 &&
                 size == sizeof(CapturedShadowUniform)) {
                 std::memcpy(&lastShadowUniform, data, sizeof(CapturedShadowUniform));
                 ++shadowUniformUpdates;

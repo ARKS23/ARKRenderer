@@ -52,6 +52,34 @@ namespace ark {
             rangeMax = center + halfExtent;
         }
 
+        float maxDistanceFromPointToBounds(const glm::vec3& point, const Bounds3& bounds) {
+            if (!bounds.isValid()) {
+                return 0.0f;
+            }
+
+            float result = 0.0f;
+            for (const glm::vec3& corner : boundsCorners(bounds)) {
+                result = std::max(result, glm::length(corner - point));
+            }
+            return result;
+        }
+
+        void includeDepthRangeFromBounds(const glm::mat4& lightView,
+                                         const Bounds3& bounds,
+                                         float& minDepth,
+                                         float& maxDepth) {
+            if (!bounds.isValid()) {
+                return;
+            }
+
+            for (const glm::vec3& corner : boundsCorners(bounds)) {
+                const glm::vec4 lightCorner = lightView * glm::vec4{corner, 1.0f};
+                const float depth = -lightCorner.z;
+                minDepth = std::min(minDepth, depth);
+                maxDepth = std::max(maxDepth, depth);
+            }
+        }
+
         bool computeTexelSize(float rangeMin, float rangeMax, u32 mapExtent, float& texelSize) {
             if (mapExtent == 0) {
                 return false;
@@ -170,17 +198,30 @@ namespace ark {
             return worldBounds.isValid();
         }
 
-        bool buildCascadeLightMatrix(const Bounds3& worldBounds, const SceneLighting& lighting, const ShadowSettings& settings, glm::mat4& lightViewProjection) {
+        bool buildCascadeLightMatrix(const Bounds3& receiverBounds,
+                                     const Bounds3* casterBounds,
+                                     const SceneLighting& lighting,
+                                     const ShadowSettings& settings,
+                                     glm::mat4& lightViewProjection) {
             // 给某一个 cascade 的 world-space bounds 构造方向光的 lightViewProjection 矩阵。
-            if (!worldBounds.isValid()) return false;
+            // receiverBounds 决定本级 cascade 的受影区域；casterBounds 只用于扩展 light-space depth。
+            if (!receiverBounds.isValid()) return false;
 
             const glm::vec3 lightDirection = normalizeLightDirection(lighting.mainLight.direction);
-            const glm::vec3 lightTarget = worldBounds.center();
-            const glm::vec3 halfExtent = worldBounds.halfExtent();
+            const glm::vec3 lightTarget = receiverBounds.center();
+            Bounds3 depthBounds = receiverBounds;
+            if (casterBounds && casterBounds->isValid()) {
+                mergeBounds(depthBounds, *casterBounds);
+            }
+
+            const glm::vec3 halfExtent = receiverBounds.halfExtent();
             const float radius = std::max(glm::length(halfExtent), MinCascadeHalfExtent);
+            const float coverageRadius =
+                std::max(maxDistanceFromPointToBounds(lightTarget, depthBounds), radius);
             const float padding = std::max(0.25f, radius * 0.05f);
             // 方向光没有真实位置；这里沿“光线反方向”退一段距离，只是为了构造稳定的 light view。
-            const float lightDistance = radius + padding + settings.nearPlane;
+            // 方向光没有真实位置；这里后退足够距离，避免大型 caster bounds 落到 light near plane 前。
+            const float lightDistance = coverageRadius + padding + settings.nearPlane;
             const glm::vec3 lightPosition = lightTarget - lightDirection * lightDistance;
             const glm::mat4 lightView = glm::lookAt(lightPosition, lightTarget, chooseLightUp(lightDirection));
 
@@ -194,7 +235,7 @@ namespace ark {
             float maxDepth = std::numeric_limits<float>::lowest();
 
             // 使用 cascade world AABB 的 8 个角点做保守拟合，保证记录在 frame data 中的 bounds 也落入投影。
-            for (const glm::vec3& corner : boundsCorners(worldBounds)) {
+            for (const glm::vec3& corner : boundsCorners(receiverBounds)) {
                 const glm::vec4 lightCorner = lightView * glm::vec4{corner, 1.0f};
                 // light-space x/y 包住所有角点，得到这一层 cascade 的正交投影横向覆盖。
                 left = std::min(left, lightCorner.x);
@@ -207,6 +248,8 @@ namespace ark {
                 minDepth = std::min(minDepth, depth);
                 maxDepth = std::max(maxDepth, depth);
             }
+            // casterBounds 只扩展 light-space 深度，避免远处/高处遮挡物被 cascade near/far 裁掉。
+            includeDepthRangeFromBounds(lightView, depthBounds, minDepth, maxDepth);
 
             if (!isValidRange(left, right) || !isValidRange(bottom, top) || !isValidRange(minDepth, maxDepth)) {
                 return false;
@@ -291,7 +334,8 @@ namespace ark {
 
     CascadeShadowFrameData buildCascadeShadowFrameData(const RenderView& view,
                                                        const SceneLighting& lighting,
-                                                       const ShadowSettings& settings) {
+                                                       const ShadowSettings& settings,
+                                                       const Bounds3* casterBounds) {
         CascadeShadowFrameData frameData{};
         if (!settings.cascades.enabled) {
             return frameData;
@@ -317,7 +361,7 @@ namespace ark {
             cascade.nearDistance = splitDistances.distances[index];
             cascade.farDistance = splitDistances.distances[index + 1];
             if (!buildCameraFrustumSliceBounds(view, cascade.nearDistance, cascade.farDistance, cascade.worldBounds) ||
-                !buildCascadeLightMatrix(cascade.worldBounds, lighting, settings, cascade.lightViewProjection)) {
+                !buildCascadeLightMatrix(cascade.worldBounds, casterBounds, lighting, settings, cascade.lightViewProjection)) {
                 return {};
             }
         }

@@ -103,6 +103,7 @@ namespace {
             !containsText(shaderSource, "ShadowDebugModeShadowFactor") ||
             !containsText(shaderSource, "ShadowDebugModeLightDepth") ||
             !containsText(shaderSource, "cascadeDebugColor") ||
+            !containsText(shaderSource, "resolveDebugCascadeIndex") ||
             !containsText(shaderSource, "applyShadowDebugOverlay") ||
             !containsText(shaderSource, "normalize(normal)") ||
             !containsText(shaderSource, "alphaCutoff") ||

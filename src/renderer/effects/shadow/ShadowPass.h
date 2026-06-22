@@ -17,6 +17,7 @@
 #include <glm/mat4x4.hpp>
 
 #include <array>
+#include <vector>
 
 namespace ark {
     struct ShadowSettings;
@@ -38,21 +39,29 @@ namespace ark {
             bool useTextureArray = false;
         };
 
+        struct ShadowDrawResources {
+            Scope<rhi::Buffer> uniformBuffer;
+            Scope<rhi::DescriptorSet> descriptorSet;
+        };
+
         bool createDescriptorResources();
         bool createShaderResources();
         bool createPipelineResources();
         static ShadowTargetDesc makeShadowTargetDesc(const ShadowSettings& settings);
         bool ensureShadowTarget(FrameContext& frameContext, const ShadowTargetDesc& targetDesc);
         bool releaseShadowTargetDeferred(FrameContext& frameContext);
-        bool updateShadowUniform(FrameContext& frameContext, u32 frameSlot);
+        bool ensureDrawResources(u32 frameSlot, usize requiredCount);
         rhi::TextureView* shadowRenderTargetView(u32 layerIndex) const;
         bool beginShadowRendering(FrameContext& frameContext, rhi::TextureView& depthView);
         void setViewportAndScissor(FrameContext& frameContext);
-        bool renderShadowLayer(FrameContext& frameContext, u32 frameSlot, rhi::TextureView& depthView, const glm::mat4& lightViewProjection);
+        bool renderShadowLayer(FrameContext& frameContext,
+                               u32 frameSlot,
+                               usize layerResourceBase,
+                               rhi::TextureView& depthView,
+                               const glm::mat4& lightViewProjection);
 
         rhi::RenderDevice* m_Device = nullptr;
-        std::array<Scope<rhi::Buffer>, FramesInFlight> m_ShadowBuffers;
-        std::array<Scope<rhi::DescriptorSet>, FramesInFlight> m_DescriptorSets;
+        std::array<std::vector<ShadowDrawResources>, FramesInFlight> m_DrawResources;
         Scope<rhi::DescriptorSetLayout> m_DescriptorSetLayout;
         Scope<rhi::PipelineLayout> m_PipelineLayout;
         Scope<rhi::PipelineState> m_Pipeline;

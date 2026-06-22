@@ -24,6 +24,8 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <string>
+#include <utility>
 
 namespace ark {
     namespace {
@@ -259,8 +261,10 @@ namespace ark {
             frameContext.shadowBias = settings.bias;
             frameContext.shadowFilterMode = static_cast<float>(settings.filterMode);
             frameContext.shadowFilterRadiusTexels = settings.filterRadiusTexels;
+            const Bounds3* casterBounds =
+                frameContext.scene && frameContext.scene->hasBounds() ? &frameContext.scene->bounds() : nullptr;
             frameContext.cascadeShadows =
-                buildCascadeShadowFrameData(*frameContext.view, lighting, settings);
+                buildCascadeShadowFrameData(*frameContext.view, lighting, settings, casterBounds);
         }
     } // namespace
 
@@ -339,9 +343,16 @@ namespace ark {
 
         const u32 frameSlot =
             frameContext.frameResource ? frameContext.frameResource->frameSlot % FramesInFlight : 0;
-        if (!m_Pipeline || frameSlot >= m_DescriptorSets.size() ||
-            !m_DescriptorSets[frameSlot] || !m_ShadowBuffers[frameSlot]) {
+        if (!m_Pipeline || frameSlot >= m_DrawResources.size()) {
             ARK_ERROR("ShadowPass requires descriptor and pipeline resources");
+            return false;
+        }
+
+        const usize drawCount = frameContext.queue->size();
+        const usize layerCount = frameContext.cascadeShadows.isEnabled()
+                                     ? frameContext.cascadeShadows.cascadeCount
+                                     : 1;
+        if (layerCount == 0 || !ensureDrawResources(frameSlot, drawCount * layerCount)) {
             return false;
         }
 
@@ -369,6 +380,7 @@ namespace ark {
                 if (!cascadeView ||
                     !renderShadowLayer(frameContext,
                                        frameSlot,
+                                       static_cast<usize>(cascadeIndex) * drawCount,
                                        *cascadeView,
                                        frameContext.cascadeShadows.cascades[cascadeIndex].lightViewProjection)) {
                     return false;
@@ -377,7 +389,7 @@ namespace ark {
         } else {
             rhi::TextureView* shadowView = shadowRenderTargetView(0);
             if (!shadowView ||
-                !renderShadowLayer(frameContext, frameSlot, *shadowView, frameContext.lightViewProjection)) {
+                !renderShadowLayer(frameContext, frameSlot, 0, *shadowView, frameContext.lightViewProjection)) {
                 return false;
             }
         }
@@ -410,24 +422,6 @@ namespace ark {
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(layoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
-        }
-
-        for (u32 frameSlot = 0; frameSlot < FramesInFlight; ++frameSlot) {
-            rhi::BufferDesc bufferDesc{};
-            bufferDesc.debugName = "ShadowUniformBuffer";
-            bufferDesc.size = sizeof(ShadowUniform);
-            bufferDesc.usage = rhi::BufferUsage::Uniform;
-            bufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
-            m_ShadowBuffers[frameSlot] = m_Device->createBuffer(bufferDesc);
-            m_DescriptorSets[frameSlot] = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
-            if (!m_ShadowBuffers[frameSlot] || !m_DescriptorSets[frameSlot]) {
-                return false;
-            }
-
-            rhi::BufferDescriptor bufferDescriptor{};
-            bufferDescriptor.buffer = m_ShadowBuffers[frameSlot].get();
-            bufferDescriptor.range = sizeof(ShadowUniform);
-            m_DescriptorSets[frameSlot]->updateUniformBuffer(0, bufferDescriptor);
         }
 
         return true;
@@ -615,9 +609,31 @@ namespace ark {
         return true;
     }
 
-    bool ShadowPass::updateShadowUniform(FrameContext& frameContext, u32 frameSlot) {
-        if (!frameContext.context || frameSlot >= m_ShadowBuffers.size() || !m_ShadowBuffers[frameSlot]) {
+    bool ShadowPass::ensureDrawResources(u32 frameSlot, usize requiredCount) {
+        if (!m_Device || !m_DescriptorSetLayout || frameSlot >= m_DrawResources.size()) {
             return false;
+        }
+
+        std::vector<ShadowDrawResources>& resources = m_DrawResources[frameSlot];
+        while (resources.size() < requiredCount) {
+            ShadowDrawResources drawResources{};
+
+            rhi::BufferDesc bufferDesc{};
+            bufferDesc.debugName = "ShadowUniformBuffer." + std::to_string(resources.size());
+            bufferDesc.size = sizeof(ShadowUniform);
+            bufferDesc.usage = rhi::BufferUsage::Uniform;
+            bufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+            drawResources.uniformBuffer = m_Device->createBuffer(bufferDesc);
+            drawResources.descriptorSet = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
+            if (!drawResources.uniformBuffer || !drawResources.descriptorSet) {
+                return false;
+            }
+
+            rhi::BufferDescriptor bufferDescriptor{};
+            bufferDescriptor.buffer = drawResources.uniformBuffer.get();
+            bufferDescriptor.range = sizeof(ShadowUniform);
+            drawResources.descriptorSet->updateUniformBuffer(0, bufferDescriptor);
+            resources.push_back(std::move(drawResources));
         }
 
         return true;
@@ -659,6 +675,7 @@ namespace ark {
 
     bool ShadowPass::renderShadowLayer(FrameContext& frameContext,
                                        u32 frameSlot,
+                                       usize layerResourceBase,
                                        rhi::TextureView& depthView,
                                        const glm::mat4& lightViewProjection) {
         if (!beginShadowRendering(frameContext, depthView)) {
@@ -667,16 +684,26 @@ namespace ark {
 
         setViewportAndScissor(frameContext);
         frameContext.context->setPipeline(*m_Pipeline);
-        frameContext.context->bindDescriptorSet(0, *m_DescriptorSets[frameSlot]);
+        usize drawIndex = 0;
 
         // 单图阴影和 CSM 每层都执行同一份深度绘制逻辑，区别只在 light VP 和 depth attachment。
         for (const DrawItem& item : frameContext.queue->drawItems()) {
             if (item.material &&
                 item.material->renderState().alphaMode == asset::AlphaMode::Blend) {
+                ++drawIndex;
                 continue;
             }
 
-            if (!item.isDrawable() || !updateShadowUniform(frameContext, frameSlot)) {
+            const usize resourceIndex = layerResourceBase + drawIndex;
+            if (!item.isDrawable() ||
+                frameSlot >= m_DrawResources.size() ||
+                resourceIndex >= m_DrawResources[frameSlot].size()) {
+                frameContext.context->endRendering();
+                return false;
+            }
+
+            ShadowDrawResources& drawResources = m_DrawResources[frameSlot][resourceIndex];
+            if (!drawResources.uniformBuffer || !drawResources.descriptorSet) {
                 frameContext.context->endRendering();
                 return false;
             }
@@ -684,13 +711,16 @@ namespace ark {
             ShadowUniform uniform{};
             uniform.lightViewProjection = lightViewProjection;
             uniform.model = item.modelMatrix;
-            if (!frameContext.context->updateBuffer(*m_ShadowBuffers[frameSlot], &uniform, sizeof(uniform))) {
+            if (!frameContext.context->updateBuffer(*drawResources.uniformBuffer, &uniform, sizeof(uniform))) {
                 frameContext.context->endRendering();
                 return false;
             }
 
+            // 每个 draw 使用独立 uniform buffer，避免同一地址在命令录制期间被后续 draw 覆盖。
+            frameContext.context->bindDescriptorSet(0, *drawResources.descriptorSet);
             item.mesh->bind(*frameContext.context);
             frameContext.context->drawIndexed(item.mesh->makeDrawIndexedDesc());
+            ++drawIndex;
         }
 
         frameContext.context->endRendering();

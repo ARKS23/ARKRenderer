@@ -508,21 +508,30 @@ float3 cascadeDebugColor(uint cascadeIndex) {
     return float3(1.0f, 0.9f, 0.1f);
 }
 
+bool resolveDebugCascadeIndex(float3 worldPosition, out uint cascadeIndex) {
+    cascadeIndex = 0;
+    if (!isCascadeShadowEnabled()) {
+        return false;
+    }
+
+    const float4 viewPosition = mul(g_Camera.view, float4(worldPosition, 1.0f));
+    const float viewDepth = -viewPosition.z;
+    if (viewDepth <= 0.0f) {
+        return false;
+    }
+
+    bool insideCoverage = false;
+    cascadeIndex = selectShadowCascade(viewDepth, insideCoverage);
+    return insideCoverage;
+}
+
 bool resolveDebugShadowNdc(float3 worldPosition, out float3 shadowNdc, out uint cascadeIndex) {
     shadowNdc = float3(0.0f, 0.0f, 0.0f);
     cascadeIndex = 0;
 
     float4 shadowClip = float4(0.0f, 0.0f, 0.0f, 0.0f);
     if (isCascadeShadowEnabled()) {
-        const float4 viewPosition = mul(g_Camera.view, float4(worldPosition, 1.0f));
-        const float viewDepth = -viewPosition.z;
-        if (viewDepth <= 0.0f) {
-            return false;
-        }
-
-        bool insideCoverage = false;
-        cascadeIndex = selectShadowCascade(viewDepth, insideCoverage);
-        if (!insideCoverage) {
+        if (!resolveDebugCascadeIndex(worldPosition, cascadeIndex)) {
             return false;
         }
 
@@ -551,6 +560,14 @@ float3 applyShadowDebugOverlay(float3 litColor, float3 worldPosition, float3 wor
         return litColor;
     }
 
+    if (mode == ShadowDebugModeCascadeColor) {
+        uint cascadeIndex = 0;
+        if (!resolveDebugCascadeIndex(worldPosition, cascadeIndex)) {
+            return litColor;
+        }
+        return lerp(litColor, cascadeDebugColor(cascadeIndex), ShadowDebugOverlayAlpha);
+    }
+
     const float3 n = normalize(worldNormal);
     const float3 l = normalize(-g_Lighting.lightDirection.xyz);
     const float nDotL = saturate(dot(n, l));
@@ -566,9 +583,6 @@ float3 applyShadowDebugOverlay(float3 litColor, float3 worldPosition, float3 wor
         return litColor;
     }
 
-    if (mode == ShadowDebugModeCascadeColor) {
-        return lerp(litColor, cascadeDebugColor(cascadeIndex), ShadowDebugOverlayAlpha);
-    }
     if (mode == ShadowDebugModeLightDepth) {
         const float depth = saturate(shadowNdc.z);
         return lerp(litColor, float3(depth, depth, depth), ShadowDebugOverlayAlpha);
