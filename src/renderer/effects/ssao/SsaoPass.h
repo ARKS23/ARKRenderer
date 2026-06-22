@@ -109,7 +109,8 @@ namespace ark {
         Scope<rhi::Shader> m_GeometryFragmentShader;
         Scope<rhi::Shader> m_FullscreenVertexShader;
         Scope<rhi::Shader> m_FullscreenFragmentShader;
-        Scope<rhi::Sampler> m_Sampler;
+        Scope<rhi::Sampler> m_LinearSampler;
+        Scope<rhi::Sampler> m_PointSampler;
         std::array<std::vector<GeometryDrawResources>, FramesInFlight> m_GeometryDrawResources;
         std::array<std::vector<FullscreenDrawResources>, FramesInFlight> m_FullscreenDrawResources;
         Target m_NormalDepthTarget;

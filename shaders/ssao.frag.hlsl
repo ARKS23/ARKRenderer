@@ -15,6 +15,7 @@ SamplerState g_SsaoSampler;
 struct SsaoFullscreenUniform {
     float4x4 projection;
     float4x4 inverseProjection;
+    float4x4 inverseView;
     // x: radius, y: intensity, z: bias, w: power.
     float4 parameters0;
     // x: sampleCount, y: blurRadius, z: debugMode, w: fullscreen mode.
@@ -35,8 +36,8 @@ static const uint SsaoDebugNormalDepth = 2;
 static const float PI = 3.14159265359f;
 static const uint MaxSsaoSamples = 64;
 
-float hash21(float2 value) {
-    return frac(sin(dot(value, float2(127.1f, 311.7f))) * 43758.5453123f);
+float hash31(float3 value) {
+    return frac(sin(dot(value, float3(127.1f, 311.7f, 74.7f))) * 43758.5453123f);
 }
 
 float3 decodeViewNormal(float3 encodedNormal) {
@@ -56,6 +57,10 @@ float3 reconstructViewPosition(float2 uv, float viewDepth) {
     return viewRay.xyz * (viewDepth / rayDepth);
 }
 
+float3 reconstructWorldPosition(float3 viewPosition) {
+    return mul(g_Ssao.inverseView, float4(viewPosition, 1.0f)).xyz;
+}
+
 float2 projectViewToUv(float3 viewPosition, out bool valid) {
     valid = false;
     const float4 clip = mul(g_Ssao.projection, float4(viewPosition, 1.0f));
@@ -71,8 +76,14 @@ float2 projectViewToUv(float3 viewPosition, out bool valid) {
     return uv;
 }
 
-float3x3 buildTangentBasis(float3 normal, float2 uv) {
-    const float angle = hash21(uv * 4096.0f) * 2.0f * PI;
+float stableWorldNoise(float3 worldPosition, float radius) {
+    // Anchor the random rotation in world space so SSAO noise does not crawl when the camera turns.
+    const float cellScale = rcp(max(radius * 0.5f, 0.05f));
+    return hash31(floor(worldPosition * cellScale));
+}
+
+float3x3 buildTangentBasis(float3 normal, float rotationAngle) {
+    const float angle = rotationAngle;
     const float3 randomVector = normalize(float3(cos(angle), sin(angle), 0.0f));
     float3 tangent = randomVector - normal * dot(randomVector, normal);
     if (dot(tangent, tangent) < 0.0001f) {
@@ -96,10 +107,12 @@ float evaluateSsao(float2 uv) {
 
     const float3 normal = decodeViewNormal(normalDepth.rgb);
     const float3 viewPosition = reconstructViewPosition(uv, viewDepth);
-    const float3x3 basis = buildTangentBasis(normal, uv);
     const uint sampleCount = (uint)clamp(g_Ssao.parameters1.x, 1.0f, (float)MaxSsaoSamples);
     const float radius = max(g_Ssao.parameters0.x, 0.0001f);
     const float bias = max(g_Ssao.parameters0.z, 0.0f);
+    const float3 worldPosition = reconstructWorldPosition(viewPosition);
+    const float rotationAngle = stableWorldNoise(worldPosition, radius) * 2.0f * PI;
+    const float3x3 basis = buildTangentBasis(normal, rotationAngle);
 
     float occlusion = 0.0f;
     [loop]
@@ -109,7 +122,7 @@ float evaluateSsao(float2 uv) {
         }
 
         const float sequence = ((float)sampleIndex + 0.5f) / max((float)sampleCount, 1.0f);
-        const float angle = (float)sampleIndex * 2.39996323f + hash21(uv * 2048.0f) * 2.0f * PI;
+        const float angle = (float)sampleIndex * 2.39996323f + rotationAngle;
         const float diskRadius = sqrt(sequence);
         const float3 localSample = float3(
             cos(angle) * diskRadius,
@@ -149,19 +162,48 @@ float blurSsao(float2 uv) {
         return g_Source0.Sample(g_SsaoSampler, uv).r;
     }
 
+    const float4 centerNormalDepth = g_Source1.Sample(g_SsaoSampler, uv);
+    const float centerDepth = centerNormalDepth.a;
+    if (centerDepth <= 0.0f) {
+        return g_Source0.Sample(g_SsaoSampler, uv).r;
+    }
+
+    const float3 centerNormal = decodeViewNormal(centerNormalDepth.rgb);
+    const float radiusWorld = max(g_Ssao.parameters0.x, 0.0001f);
+    const float depthSigma = max(radiusWorld * 0.35f, 0.02f);
+    const float spatialSigma = max((float)radius * 0.5f, 1.0f);
+
     float sum = 0.0f;
     float weight = 0.0f;
     [loop]
     for (int y = -radius; y <= radius; ++y) {
         [loop]
         for (int x = -radius; x <= radius; ++x) {
-            const float2 sampleUv = uv + float2((float)x, (float)y) * g_Ssao.texelSize.xy;
-            sum += g_Source0.Sample(g_SsaoSampler, sampleUv).r;
-            weight += 1.0f;
+            const float2 sampleOffset = float2((float)x, (float)y);
+            const float2 sampleUv = uv + sampleOffset * g_Ssao.texelSize.xy;
+            const float4 sampleNormalDepth = g_Source1.Sample(g_SsaoSampler, sampleUv);
+            const float sampleDepth = sampleNormalDepth.a;
+            if (sampleDepth <= 0.0f) {
+                continue;
+            }
+
+            const float3 sampleNormal = decodeViewNormal(sampleNormalDepth.rgb);
+            const float depthWeight = saturate(1.0f - abs(sampleDepth - centerDepth) / depthSigma);
+            const float normalWeight = pow(saturate(dot(centerNormal, sampleNormal)), 16.0f);
+            const float spatialWeight =
+                exp(-dot(sampleOffset, sampleOffset) / (2.0f * spatialSigma * spatialSigma));
+            const float sampleWeight = spatialWeight * depthWeight * normalWeight;
+
+            sum += g_Source0.Sample(g_SsaoSampler, sampleUv).r * sampleWeight;
+            weight += sampleWeight;
         }
     }
 
-    return sum / max(weight, 1.0f);
+    if (weight <= 0.0001f) {
+        return g_Source0.Sample(g_SsaoSampler, uv).r;
+    }
+
+    return sum / weight;
 }
 
 float4 compositeSsao(float2 uv) {

@@ -62,12 +62,13 @@ namespace ark {
         struct alignas(16) SsaoFullscreenUniform {
             glm::mat4 projection{1.0f};
             glm::mat4 inverseProjection{1.0f};
+            glm::mat4 inverseView{1.0f};
             glm::vec4 parameters0{0.0f};
             glm::vec4 parameters1{0.0f};
             glm::vec4 texelSize{1.0f};
         };
 
-        static_assert(sizeof(SsaoFullscreenUniform) == 176);
+        static_assert(sizeof(SsaoFullscreenUniform) == 240);
 
         const SsaoSettings& resolveSettings(const FrameContext& frameContext) {
             static const PostProcessingSettings DefaultPostProcessing{};
@@ -156,6 +157,7 @@ namespace ark {
             if (frameContext.view) {
                 uniform.projection = frameContext.view->projectionMatrix();
                 uniform.inverseProjection = glm::inverse(frameContext.view->projectionMatrix());
+                uniform.inverseView = glm::affineInverse(frameContext.view->viewMatrix());
             }
             uniform.parameters0 = glm::vec4{
                 settings.radius,
@@ -290,7 +292,7 @@ namespace ark {
                                   1,
                                   FullscreenMode::Blur,
                                   *m_OcclusionTarget.view,
-                                  *m_OcclusionTarget.view,
+                                  *m_NormalDepthTarget.view,
                                   m_BlurTarget,
                                   settings)) {
             return false;
@@ -387,16 +389,23 @@ namespace ark {
             return false;
         }
 
-        rhi::SamplerDesc samplerDesc{};
-        samplerDesc.debugName = "SsaoLinearClampSampler";
-        samplerDesc.minFilter = rhi::FilterMode::Linear;
-        samplerDesc.magFilter = rhi::FilterMode::Linear;
-        samplerDesc.mipFilter = rhi::FilterMode::Nearest;
-        samplerDesc.addressU = rhi::AddressMode::ClampToEdge;
-        samplerDesc.addressV = rhi::AddressMode::ClampToEdge;
-        samplerDesc.addressW = rhi::AddressMode::ClampToEdge;
-        m_Sampler = m_Device->createSampler(samplerDesc);
-        return m_Sampler != nullptr;
+        rhi::SamplerDesc linearSamplerDesc{};
+        linearSamplerDesc.debugName = "SsaoLinearClampSampler";
+        linearSamplerDesc.minFilter = rhi::FilterMode::Linear;
+        linearSamplerDesc.magFilter = rhi::FilterMode::Linear;
+        linearSamplerDesc.mipFilter = rhi::FilterMode::Nearest;
+        linearSamplerDesc.addressU = rhi::AddressMode::ClampToEdge;
+        linearSamplerDesc.addressV = rhi::AddressMode::ClampToEdge;
+        linearSamplerDesc.addressW = rhi::AddressMode::ClampToEdge;
+        m_LinearSampler = m_Device->createSampler(linearSamplerDesc);
+
+        rhi::SamplerDesc pointSamplerDesc = linearSamplerDesc;
+        pointSamplerDesc.debugName = "SsaoPointClampSampler";
+        pointSamplerDesc.minFilter = rhi::FilterMode::Nearest;
+        pointSamplerDesc.magFilter = rhi::FilterMode::Nearest;
+        pointSamplerDesc.mipFilter = rhi::FilterMode::Nearest;
+        m_PointSampler = m_Device->createSampler(pointSamplerDesc);
+        return m_LinearSampler && m_PointSampler;
     }
 
     bool SsaoPass::createShaderResources() {
@@ -900,7 +909,7 @@ namespace ark {
                                         rhi::TextureView& source1,
                                         Target& target,
                                         const SsaoSettings& settings) {
-        if (!frameContext.context || !target.texture || !target.view || !m_Sampler) {
+        if (!frameContext.context || !target.texture || !target.view || !m_LinearSampler || !m_PointSampler) {
             ARK_ERROR("SsaoPass requires context, target and sampler for fullscreen pass");
             return false;
         }
@@ -930,7 +939,8 @@ namespace ark {
         resources.descriptorSet->updateSampledImage(1, source1Descriptor);
 
         rhi::SamplerDescriptor samplerDescriptor{};
-        samplerDescriptor.sampler = m_Sampler.get();
+        samplerDescriptor.sampler =
+            mode == FullscreenMode::Composite ? m_LinearSampler.get() : m_PointSampler.get();
         resources.descriptorSet->updateSampler(2, samplerDescriptor);
 
         const SsaoFullscreenUniform uniform = makeSsaoFullscreenUniform(

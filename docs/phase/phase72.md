@@ -333,3 +333,11 @@ SSAO normal-depth pass 应优先支持：
 - Bloom / ToneMapping / Shadow / CSM debug 不被破坏。
 - 调整 SSAO 参数和窗口 resize 稳定。
 - 测试通过或明确记录历史已知失败项。
+
+## SSAO 稳定性补丁记录
+
+- 发现问题：转动视角时，SSAO 在模型轮廓、墙角、布料边缘附近容易出现边缘漂移和 halo。
+- 修复 1：normal-depth / occlusion evaluate 路径使用 point clamp 采样，避免前景和背景深度被线性插值混合。
+- 修复 2：blur 阶段改为基于 normal-depth 的 bilateral blur，通过深度差和法线夹角抑制跨物体边界扩散。
+- 修复 3：SSAO kernel 随机旋转改为 world-space anchored noise，避免相机转动时同一世界表面因落到不同屏幕像素而切换采样方向。
+- 该补丁不改变 `SsaoSettings` / Sandbox UI 对外契约，只收敛 `SsaoPass` 内部采样策略；FrameContext 仍只传递 pass 间资源引用。

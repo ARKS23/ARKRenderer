@@ -405,12 +405,16 @@ namespace {
             !containsText(shaderSource, "SsaoDebugOcclusion") ||
             !containsText(shaderSource, "SsaoDebugNormalDepth") ||
             !containsText(shaderSource, "reconstructViewPosition") ||
+            !containsText(shaderSource, "reconstructWorldPosition") ||
             !containsText(shaderSource, "projectViewToUv") ||
+            !containsText(shaderSource, "stableWorldNoise") ||
             !containsText(shaderSource, "buildTangentBasis") ||
             !containsText(shaderSource, "evaluateSsao") ||
             !containsText(shaderSource, "blurSsao") ||
             !containsText(shaderSource, "compositeSsao") ||
             !containsText(shaderSource, "MaxSsaoSamples") ||
+            !containsText(shaderSource, "depthWeight") ||
+            !containsText(shaderSource, "normalWeight") ||
             !containsText(shaderSource, "g_Ssao.parameters0") ||
             !containsText(shaderSource, "g_Ssao.parameters1")) {
             std::cerr << "SSAO fragment shader does not expose expected evaluate/blur/composite path\n";

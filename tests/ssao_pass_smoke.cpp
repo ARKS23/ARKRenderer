@@ -28,12 +28,13 @@ namespace {
     struct CapturedSsaoUniform {
         float projection[16]{};
         float inverseProjection[16]{};
+        float inverseView[16]{};
         float parameters0[4]{};
         float parameters1[4]{};
         float texelSize[4]{};
     };
 
-    static_assert(sizeof(CapturedSsaoUniform) == 176);
+    static_assert(sizeof(CapturedSsaoUniform) == 240);
 
     bool hasPrefix(std::string_view text, std::string_view prefix) {
         return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
@@ -496,7 +497,7 @@ namespace {
                device.shaderDescs.size() == 4 &&
                device.pipelineLayoutDescs.size() == 2 &&
                device.pipelineDescs.size() == 2 &&
-               device.samplerDescs.size() == 1;
+               device.samplerDescs.size() == 2;
     }
 
     bool validateEnabledResources(const FakeRenderDevice& device) {
@@ -542,6 +543,15 @@ namespace {
             !device.pipelineDescs[0].depthStencilState.enableDepthWrite ||
             device.pipelineDescs[0].depthFormat != ark::rhi::Format::D32Float) {
             std::cerr << "SsaoPass normal-depth pipeline should own and write its private depth target\n";
+            return false;
+        }
+
+        if (device.samplerDescs.size() != 2 ||
+            device.samplerDescs[0].minFilter != ark::rhi::FilterMode::Linear ||
+            device.samplerDescs[0].magFilter != ark::rhi::FilterMode::Linear ||
+            device.samplerDescs[1].minFilter != ark::rhi::FilterMode::Nearest ||
+            device.samplerDescs[1].magFilter != ark::rhi::FilterMode::Nearest) {
+            std::cerr << "SsaoPass should create linear and point clamp samplers\n";
             return false;
         }
 
