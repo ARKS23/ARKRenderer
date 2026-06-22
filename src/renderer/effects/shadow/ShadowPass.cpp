@@ -9,6 +9,7 @@
 #include "renderer/RenderQueue.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
+#include "renderer/TextureResource.h"
 #include "renderer/effects/shadow/ShadowCascadeBuilder.h"
 #include "renderer/material/MaterialResource.h"
 #include "rhi/DeviceContext.h"
@@ -35,6 +36,18 @@ namespace ark {
         };
 
         static_assert(sizeof(ShadowUniform) == 128);
+
+        struct alignas(16) ShadowMaterialUniform {
+            glm::vec4 baseColorFactor{1.0f};
+            glm::vec4 baseColorUvTransform0{0.0f, 0.0f, 1.0f, 1.0f};
+            glm::vec4 baseColorUvTransform1{0.0f};
+            float alphaCutoff = 0.5f;
+            float alphaMode = 0.0f;
+            float baseColorTexCoord = 0.0f;
+            float padding = 0.0f;
+        };
+
+        static_assert(sizeof(ShadowMaterialUniform) == 64);
 
         bool isShadowEnabled(const FrameContext& frameContext) {
             return frameContext.view && frameContext.view->shadowSettings().enabled &&
@@ -237,6 +250,44 @@ namespace ark {
             return settings.cascades.enabled && settings.cascades.cascadeCount > 0;
         }
 
+        bool isBlendShadowSkipped(const DrawItem& item) {
+            return item.material &&
+                   item.material->renderState().alphaMode == asset::AlphaMode::Blend;
+        }
+
+        glm::vec4 makeOffsetScale(const MaterialTextureTransform& transform) {
+            return glm::vec4{transform.offset[0], transform.offset[1], transform.scale[0], transform.scale[1]};
+        }
+
+        glm::vec4 makeRotation(const MaterialTextureTransform& transform) {
+            return glm::vec4{transform.rotation, 0.0f, 0.0f, 0.0f};
+        }
+
+        ShadowMaterialUniform makeShadowMaterialUniform(const MaterialResource& material) {
+            const MaterialFactors& factors = material.factors();
+            const MaterialRenderState& renderState = material.renderState();
+            const MaterialTextureCoordinateSet& textureCoordinates = material.textureCoordinates();
+            const MaterialTextureTransformSet& textureTransforms = material.textureTransforms();
+
+            ShadowMaterialUniform uniform{};
+            uniform.baseColorFactor = glm::vec4{
+                factors.baseColorFactor[0],
+                factors.baseColorFactor[1],
+                factors.baseColorFactor[2],
+                factors.baseColorFactor[3],
+            };
+            uniform.baseColorUvTransform0 = makeOffsetScale(textureTransforms.baseColor);
+            uniform.baseColorUvTransform1 = makeRotation(textureTransforms.baseColor);
+            uniform.alphaCutoff = renderState.alphaCutoff;
+            uniform.alphaMode = static_cast<float>(renderState.alphaMode);
+            uniform.baseColorTexCoord = static_cast<float>(textureCoordinates.baseColor);
+            return uniform;
+        }
+
+        rhi::CullMode makeShadowCullMode(const MaterialRenderState& renderState) {
+            return renderState.doubleSided ? rhi::CullMode::None : rhi::CullMode::Back;
+        }
+
         void clearFrameShadowBindings(FrameContext& frameContext) {
             frameContext.shadowMapView = nullptr;
             frameContext.shadowSampler = nullptr;
@@ -325,6 +376,10 @@ namespace ark {
             if (!item.mesh->upload(*frameContext.context)) {
                 return false;
             }
+
+            if (!isBlendShadowSkipped(item) && !item.material->upload(*frameContext.context)) {
+                return false;
+            }
         }
 
         publishFrameShadowBindings(frameContext, m_ShadowMapView.get(), m_ShadowSampler.get());
@@ -343,7 +398,7 @@ namespace ark {
 
         const u32 frameSlot =
             frameContext.frameResource ? frameContext.frameResource->frameSlot % FramesInFlight : 0;
-        if (!m_Pipeline || frameSlot >= m_DrawResources.size()) {
+        if (!m_SingleSidedPipeline || !m_DoubleSidedPipeline || frameSlot >= m_DrawResources.size()) {
             ARK_ERROR("ShadowPass requires descriptor and pipeline resources");
             return false;
         }
@@ -419,6 +474,24 @@ namespace ark {
             .count = 1,
             .stages = rhi::ShaderStageFlags::Vertex,
         });
+        layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 1,
+            .type = rhi::DescriptorType::SampledImage,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
+        layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 2,
+            .type = rhi::DescriptorType::Sampler,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
+        layoutDesc.bindings.push_back(rhi::DescriptorBindingDesc{
+            .binding = 3,
+            .type = rhi::DescriptorType::UniformBuffer,
+            .count = 1,
+            .stages = rhi::ShaderStageFlags::Fragment,
+        });
         m_DescriptorSetLayout = m_Device->createDescriptorSetLayout(layoutDesc);
         if (!m_DescriptorSetLayout) {
             return false;
@@ -470,31 +543,52 @@ namespace ark {
             return false;
         }
 
-        rhi::VertexBufferLayoutDesc vertexLayout{};
-        vertexLayout.binding = 0;
-        vertexLayout.stride = sizeof(asset::MeshVertex);
-        vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
-            .location = 0,
-            .format = rhi::Format::R32G32B32Float,
-            .offset = offsetof(asset::MeshVertex, position),
-        });
+        auto makePipelineDesc = [&](const char* debugName, const MaterialRenderState& renderState) {
+            rhi::VertexBufferLayoutDesc vertexLayout{};
+            vertexLayout.binding = 0;
+            vertexLayout.stride = sizeof(asset::MeshVertex);
+            vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
+                .location = 0,
+                .format = rhi::Format::R32G32B32Float,
+                .offset = offsetof(asset::MeshVertex, position),
+            });
+            vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
+                .location = 1,
+                .format = rhi::Format::R32G32Float,
+                .offset = offsetof(asset::MeshVertex, uv0),
+            });
+            vertexLayout.attributes.push_back(rhi::VertexAttributeDesc{
+                .location = 2,
+                .format = rhi::Format::R32G32Float,
+                .offset = offsetof(asset::MeshVertex, uv1),
+            });
 
-        rhi::GraphicsPipelineDesc pipelineDesc{};
-        pipelineDesc.debugName = "ShadowDepthPipeline";
-        pipelineDesc.vertexShader = m_VertexShader.get();
-        pipelineDesc.fragmentShader = m_FragmentShader.get();
-        pipelineDesc.layout = m_PipelineLayout.get();
-        pipelineDesc.vertexInput.buffers.push_back(vertexLayout);
-        pipelineDesc.topology = rhi::PrimitiveTopology::TriangleList;
-        pipelineDesc.rasterState.cullMode = rhi::CullMode::Back;
-        pipelineDesc.rasterState.frontFace = rhi::FrontFace::CounterClockwise;
-        pipelineDesc.depthStencilState.enableDepthTest = true;
-        pipelineDesc.depthStencilState.enableDepthWrite = true;
-        pipelineDesc.depthStencilState.depthCompareOp = rhi::CompareOp::Less;
-        pipelineDesc.colorFormat = rhi::Format::Unknown;
-        pipelineDesc.depthFormat = rhi::Format::D32Float;
-        m_Pipeline = m_Device->createGraphicsPipeline(pipelineDesc);
-        return m_Pipeline != nullptr;
+            rhi::GraphicsPipelineDesc pipelineDesc{};
+            pipelineDesc.debugName = debugName;
+            pipelineDesc.vertexShader = m_VertexShader.get();
+            pipelineDesc.fragmentShader = m_FragmentShader.get();
+            pipelineDesc.layout = m_PipelineLayout.get();
+            pipelineDesc.vertexInput.buffers.push_back(vertexLayout);
+            pipelineDesc.topology = rhi::PrimitiveTopology::TriangleList;
+            pipelineDesc.rasterState.cullMode = makeShadowCullMode(renderState);
+            pipelineDesc.rasterState.frontFace = rhi::FrontFace::CounterClockwise;
+            pipelineDesc.depthStencilState.enableDepthTest = true;
+            pipelineDesc.depthStencilState.enableDepthWrite = true;
+            pipelineDesc.depthStencilState.depthCompareOp = rhi::CompareOp::Less;
+            pipelineDesc.colorFormat = rhi::Format::Unknown;
+            pipelineDesc.depthFormat = rhi::Format::D32Float;
+            return pipelineDesc;
+        };
+
+        MaterialRenderState singleSided{};
+        singleSided.doubleSided = false;
+        MaterialRenderState doubleSided{};
+        doubleSided.doubleSided = true;
+        m_SingleSidedPipeline = m_Device->createGraphicsPipeline(
+            makePipelineDesc("ShadowDepthPipeline.SingleSided", singleSided));
+        m_DoubleSidedPipeline = m_Device->createGraphicsPipeline(
+            makePipelineDesc("ShadowDepthPipeline.DoubleSided", doubleSided));
+        return m_SingleSidedPipeline && m_DoubleSidedPipeline;
     }
 
     bool ShadowPass::ensureShadowTarget(FrameContext& frameContext, const ShadowTargetDesc& targetDesc) {
@@ -624,8 +718,16 @@ namespace ark {
             bufferDesc.usage = rhi::BufferUsage::Uniform;
             bufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
             drawResources.uniformBuffer = m_Device->createBuffer(bufferDesc);
+
+            rhi::BufferDesc materialBufferDesc{};
+            materialBufferDesc.debugName = "ShadowMaterialUniformBuffer." + std::to_string(resources.size());
+            materialBufferDesc.size = sizeof(ShadowMaterialUniform);
+            materialBufferDesc.usage = rhi::BufferUsage::Uniform;
+            materialBufferDesc.memoryUsage = rhi::MemoryUsage::CpuToGpu;
+            drawResources.materialBuffer = m_Device->createBuffer(materialBufferDesc);
+
             drawResources.descriptorSet = m_Device->createDescriptorSet(*m_DescriptorSetLayout);
-            if (!drawResources.uniformBuffer || !drawResources.descriptorSet) {
+            if (!drawResources.uniformBuffer || !drawResources.materialBuffer || !drawResources.descriptorSet) {
                 return false;
             }
 
@@ -633,10 +735,57 @@ namespace ark {
             bufferDescriptor.buffer = drawResources.uniformBuffer.get();
             bufferDescriptor.range = sizeof(ShadowUniform);
             drawResources.descriptorSet->updateUniformBuffer(0, bufferDescriptor);
+
+            rhi::BufferDescriptor materialBufferDescriptor{};
+            materialBufferDescriptor.buffer = drawResources.materialBuffer.get();
+            materialBufferDescriptor.range = sizeof(ShadowMaterialUniform);
+            drawResources.descriptorSet->updateUniformBuffer(3, materialBufferDescriptor);
             resources.push_back(std::move(drawResources));
         }
 
         return true;
+    }
+
+    bool ShadowPass::updateDrawResources(FrameContext& frameContext,
+                                         ShadowDrawResources& drawResources,
+                                         const MaterialResource& material,
+                                         const glm::mat4& lightViewProjection,
+                                         const glm::mat4& modelMatrix) {
+        if (!frameContext.context || !drawResources.uniformBuffer || !drawResources.materialBuffer ||
+            !drawResources.descriptorSet) {
+            return false;
+        }
+
+        const MaterialTextureSet& textures = material.textures();
+        if (!textures.baseColor || !textures.baseColor->textureView() || !textures.baseColor->sampler()) {
+            ARK_ERROR("ShadowPass requires a ready baseColor texture for alpha mask shadow caster");
+            return false;
+        }
+
+        ShadowUniform uniform{};
+        uniform.lightViewProjection = lightViewProjection;
+        uniform.model = modelMatrix;
+        if (!frameContext.context->updateBuffer(*drawResources.uniformBuffer, &uniform, sizeof(uniform))) {
+            return false;
+        }
+
+        const ShadowMaterialUniform materialUniform = makeShadowMaterialUniform(material);
+        if (!frameContext.context->updateBuffer(*drawResources.materialBuffer, &materialUniform, sizeof(materialUniform))) {
+            return false;
+        }
+
+        rhi::SampledImageDescriptor baseColorImageDescriptor{};
+        baseColorImageDescriptor.view = textures.baseColor->textureView();
+        drawResources.descriptorSet->updateSampledImage(1, baseColorImageDescriptor);
+
+        rhi::SamplerDescriptor baseColorSamplerDescriptor{};
+        baseColorSamplerDescriptor.sampler = textures.baseColor->sampler();
+        drawResources.descriptorSet->updateSampler(2, baseColorSamplerDescriptor);
+        return true;
+    }
+
+    rhi::PipelineState* ShadowPass::selectPipeline(const MaterialRenderState& renderState) const {
+        return renderState.doubleSided ? m_DoubleSidedPipeline.get() : m_SingleSidedPipeline.get();
     }
 
     rhi::TextureView* ShadowPass::shadowRenderTargetView(u32 layerIndex) const {
@@ -683,13 +832,11 @@ namespace ark {
         }
 
         setViewportAndScissor(frameContext);
-        frameContext.context->setPipeline(*m_Pipeline);
         usize drawIndex = 0;
 
         // 单图阴影和 CSM 每层都执行同一份深度绘制逻辑，区别只在 light VP 和 depth attachment。
         for (const DrawItem& item : frameContext.queue->drawItems()) {
-            if (item.material &&
-                item.material->renderState().alphaMode == asset::AlphaMode::Blend) {
+            if (isBlendShadowSkipped(item)) {
                 ++drawIndex;
                 continue;
             }
@@ -703,19 +850,19 @@ namespace ark {
             }
 
             ShadowDrawResources& drawResources = m_DrawResources[frameSlot][resourceIndex];
-            if (!drawResources.uniformBuffer || !drawResources.descriptorSet) {
+            if (!drawResources.uniformBuffer || !drawResources.materialBuffer || !drawResources.descriptorSet) {
                 frameContext.context->endRendering();
                 return false;
             }
 
-            ShadowUniform uniform{};
-            uniform.lightViewProjection = lightViewProjection;
-            uniform.model = item.modelMatrix;
-            if (!frameContext.context->updateBuffer(*drawResources.uniformBuffer, &uniform, sizeof(uniform))) {
+            rhi::PipelineState* pipeline = selectPipeline(item.material->renderState());
+            if (!pipeline ||
+                !updateDrawResources(frameContext, drawResources, *item.material, lightViewProjection, item.modelMatrix)) {
                 frameContext.context->endRendering();
                 return false;
             }
 
+            frameContext.context->setPipeline(*pipeline);
             // 每个 draw 使用独立 uniform buffer，避免同一地址在命令录制期间被后续 draw 覆盖。
             frameContext.context->bindDescriptorSet(0, *drawResources.descriptorSet);
             item.mesh->bind(*frameContext.context);

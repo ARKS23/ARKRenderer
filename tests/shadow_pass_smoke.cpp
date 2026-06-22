@@ -40,6 +40,18 @@ namespace {
 
     static_assert(sizeof(CapturedShadowUniform) == 128);
 
+    struct alignas(16) CapturedShadowMaterialUniform {
+        glm::vec4 baseColorFactor{1.0f};
+        glm::vec4 baseColorUvTransform0{0.0f, 0.0f, 1.0f, 1.0f};
+        glm::vec4 baseColorUvTransform1{0.0f};
+        float alphaCutoff = 0.5f;
+        float alphaMode = 0.0f;
+        float baseColorTexCoord = 0.0f;
+        float padding = 0.0f;
+    };
+
+    static_assert(sizeof(CapturedShadowMaterialUniform) == 64);
+
     bool near(float lhs, float rhs, float epsilon = 0.0001f) {
         return std::abs(lhs - rhs) <= epsilon;
     }
@@ -205,18 +217,35 @@ namespace {
             if (binding == 0) {
                 shadowUniformBuffer = buffer.buffer;
                 shadowUniformRange = buffer.range;
+            } else if (binding == 3) {
+                shadowMaterialUniformBuffer = buffer.buffer;
+                shadowMaterialUniformRange = buffer.range;
             }
         }
 
-        void updateSampledImage(ark::u32, const ark::rhi::SampledImageDescriptor&) override {
+        void updateSampledImage(ark::u32 binding, const ark::rhi::SampledImageDescriptor& image) override {
+            sampledImageBindings.push_back(binding);
+            if (binding == 1) {
+                baseColorImage = image.view;
+            }
         }
 
-        void updateSampler(ark::u32, const ark::rhi::SamplerDescriptor&) override {
+        void updateSampler(ark::u32 binding, const ark::rhi::SamplerDescriptor& sampler) override {
+            samplerBindings.push_back(binding);
+            if (binding == 2) {
+                baseColorSampler = sampler.sampler;
+            }
         }
 
         std::vector<ark::u32> uniformBindings;
+        std::vector<ark::u32> sampledImageBindings;
+        std::vector<ark::u32> samplerBindings;
         ark::rhi::Buffer* shadowUniformBuffer = nullptr;
         ark::u64 shadowUniformRange = 0;
+        ark::rhi::Buffer* shadowMaterialUniformBuffer = nullptr;
+        ark::u64 shadowMaterialUniformRange = 0;
+        ark::rhi::TextureView* baseColorImage = nullptr;
+        ark::rhi::Sampler* baseColorSampler = nullptr;
     };
 
     class FakeFence final : public ark::rhi::Fence {
@@ -341,8 +370,9 @@ namespace {
             lastScissor = rect;
         }
 
-        void setPipeline(ark::rhi::PipelineState&) override {
+        void setPipeline(ark::rhi::PipelineState& pipeline) override {
             ++pipelineBinds;
+            lastPipelineCullMode = pipeline.getDesc().rasterState.cullMode;
         }
 
         void bindDescriptorSet(ark::u32 setIndex, ark::rhi::DescriptorSet&) override {
@@ -356,6 +386,10 @@ namespace {
                 size == sizeof(CapturedShadowUniform)) {
                 std::memcpy(&lastShadowUniform, data, sizeof(CapturedShadowUniform));
                 ++shadowUniformUpdates;
+            } else if (debugName.rfind("ShadowMaterialUniformBuffer", 0) == 0 &&
+                       size == sizeof(CapturedShadowMaterialUniform)) {
+                std::memcpy(&lastShadowMaterialUniform, data, sizeof(CapturedShadowMaterialUniform));
+                ++shadowMaterialUniformUpdates;
             }
 
             return true;
@@ -432,6 +466,7 @@ namespace {
         ark::rhi::ScissorRect lastScissor{};
         ark::rhi::DrawIndexedDesc lastDrawIndexed{};
         CapturedShadowUniform lastShadowUniform{};
+        CapturedShadowMaterialUniform lastShadowMaterialUniform{};
         std::vector<ark::rhi::TextureView*> depthAttachmentViews;
         std::vector<ark::rhi::ResourceState> barrierAfterStates;
         int beginRenderingCalls = 0;
@@ -439,6 +474,7 @@ namespace {
         int pipelineBinds = 0;
         int descriptorBinds = 0;
         int shadowUniformUpdates = 0;
+        int shadowMaterialUniformUpdates = 0;
         int textureUploads = 0;
         int bufferUploads = 0;
         int deferredTextureReleases = 0;
@@ -448,6 +484,7 @@ namespace {
         int indexBufferBinds = 0;
         int indexedDraws = 0;
         ark::u32 lastDescriptorSetIndex = 99;
+        ark::rhi::CullMode lastPipelineCullMode = ark::rhi::CullMode::None;
     };
 
     ark::asset::MeshPrimitiveData makeTriangle() {
@@ -472,7 +509,9 @@ namespace {
     bool createMaterial(FakeRenderDevice& device,
                         ark::TextureCache& textureCache,
                         ark::MaterialResource& material,
-                        ark::asset::AlphaMode alphaMode = ark::asset::AlphaMode::Opaque) {
+                        ark::asset::AlphaMode alphaMode = ark::asset::AlphaMode::Opaque,
+                        bool doubleSided = false,
+                        float alphaCutoff = 0.5f) {
         ark::MaterialTextureSet textures{};
         textures.baseColor = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::White);
         textures.normal = textureCache.getOrCreateFallback(device, ark::FallbackTextureKind::FlatNormal);
@@ -489,6 +528,8 @@ namespace {
         materialData.debugName = "ShadowPassMaterial";
         materialData.baseColorTexturePath = "shadow_pass_dummy.png";
         materialData.alphaMode = alphaMode;
+        materialData.doubleSided = doubleSided;
+        materialData.alphaCutoff = alphaCutoff;
         return material.create(materialData, textures);
     }
 
@@ -586,13 +627,25 @@ namespace {
             !containsBinding(device.descriptorSetLayoutDescs.front().bindings,
                              0,
                              ark::rhi::DescriptorType::UniformBuffer,
-                             ark::rhi::ShaderStageFlags::Vertex)) {
+                             ark::rhi::ShaderStageFlags::Vertex) ||
+            !containsBinding(device.descriptorSetLayoutDescs.front().bindings,
+                             1,
+                             ark::rhi::DescriptorType::SampledImage,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(device.descriptorSetLayoutDescs.front().bindings,
+                             2,
+                             ark::rhi::DescriptorType::Sampler,
+                             ark::rhi::ShaderStageFlags::Fragment) ||
+            !containsBinding(device.descriptorSetLayoutDescs.front().bindings,
+                             3,
+                             ark::rhi::DescriptorType::UniformBuffer,
+                             ark::rhi::ShaderStageFlags::Fragment)) {
             std::cerr << "ShadowPass descriptor layout is invalid\n";
             return false;
         }
 
-        if (device.pipelineDescs.empty()) {
-            std::cerr << "ShadowPass did not create a depth pipeline\n";
+        if (device.pipelineDescs.size() != 2) {
+            std::cerr << "ShadowPass did not create single/double-sided depth pipelines\n";
             return false;
         }
 
@@ -603,8 +656,12 @@ namespace {
             !pipelineDesc.depthStencilState.enableDepthWrite ||
             pipelineDesc.depthStencilState.depthCompareOp != ark::rhi::CompareOp::Less ||
             pipelineDesc.vertexInput.buffers.size() != 1 ||
-            pipelineDesc.vertexInput.buffers.front().attributes.size() != 1 ||
-            pipelineDesc.vertexInput.buffers.front().attributes.front().location != 0) {
+            pipelineDesc.vertexInput.buffers.front().attributes.size() != 3 ||
+            pipelineDesc.vertexInput.buffers.front().attributes[0].location != 0 ||
+            pipelineDesc.vertexInput.buffers.front().attributes[1].location != 1 ||
+            pipelineDesc.vertexInput.buffers.front().attributes[2].location != 2 ||
+            device.pipelineDescs[0].rasterState.cullMode != ark::rhi::CullMode::Back ||
+            device.pipelineDescs[1].rasterState.cullMode != ark::rhi::CullMode::None) {
             std::cerr << "ShadowPass pipeline state is invalid\n";
             return false;
         }
@@ -676,6 +733,7 @@ namespace {
             context.descriptorBinds != 1 ||
             context.lastDescriptorSetIndex != 0 ||
             context.shadowUniformUpdates != 1 ||
+            context.shadowMaterialUniformUpdates != 1 ||
             context.vertexBufferBinds != 1 ||
             context.indexBufferBinds != 1 ||
             context.indexedDraws != 1 ||
@@ -693,7 +751,11 @@ namespace {
 
         if (device.descriptorSets.empty() ||
             !device.descriptorSets.front()->shadowUniformBuffer ||
-            device.descriptorSets.front()->shadowUniformRange != sizeof(CapturedShadowUniform)) {
+            device.descriptorSets.front()->shadowUniformRange != sizeof(CapturedShadowUniform) ||
+            !device.descriptorSets.front()->shadowMaterialUniformBuffer ||
+            device.descriptorSets.front()->shadowMaterialUniformRange != sizeof(CapturedShadowMaterialUniform) ||
+            !device.descriptorSets.front()->baseColorImage ||
+            !device.descriptorSets.front()->baseColorSampler) {
             std::cerr << "ShadowPass descriptor set did not bind the uniform buffer\n";
             return false;
         }
@@ -842,6 +904,7 @@ namespace {
         if (context.pipelineBinds != 4 ||
             context.descriptorBinds != 4 ||
             context.shadowUniformUpdates != 4 ||
+            context.shadowMaterialUniformUpdates != 4 ||
             context.vertexBufferBinds != 4 ||
             context.indexBufferBinds != 4 ||
             context.indexedDraws != 4 ||
@@ -862,6 +925,74 @@ namespace {
             near(context.lastShadowUniform.lightViewProjection[2][2], 1.0f) &&
             near(context.lastShadowUniform.lightViewProjection[3][3], 1.0f)) {
             std::cerr << "ShadowPass CSM path did not write cascade light view-projection matrices\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateAlphaMaskShadowCasterPath() {
+        FakeRenderDevice device{};
+        FakeDeviceContext context{};
+        ark::TextureCache textureCache{};
+        ark::MeshResource mesh{};
+        ark::MaterialResource material{};
+        ark::RenderScene scene{};
+        ark::RenderQueue queue{};
+        ark::RenderView view{};
+        ark::ShadowPass pass{};
+
+        constexpr float AlphaCutoff = 0.73f;
+        if (!mesh.create(device, makeTriangle()) ||
+            !createMaterial(device, textureCache, material, ark::asset::AlphaMode::Mask, true, AlphaCutoff)) {
+            std::cerr << "Failed to create alpha mask shadow caster resources\n";
+            return false;
+        }
+
+        scene.addObject(mesh, material, glm::mat4{1.0f}, "AlphaMaskShadowCaster");
+        queue.build(scene);
+
+        ark::ShadowSettings shadows{};
+        shadows.enabled = true;
+        shadows.strength = 1.0f;
+        shadows.mapExtent = 256;
+        view.setShadowSettings(shadows);
+
+        pass.setup(device);
+
+        ark::FrameContext frameContext{};
+        frameContext.scene = &scene;
+        frameContext.view = &view;
+        frameContext.queue = &queue;
+        frameContext.device = &device;
+        frameContext.context = &context;
+        frameContext.frameResource = &context.frame;
+
+        if (!pass.prepare(frameContext) || !pass.execute(frameContext)) {
+            std::cerr << "Alpha mask ShadowPass path failed\n";
+            return false;
+        }
+
+        if (context.indexedDraws != 1 ||
+            context.shadowUniformUpdates != 1 ||
+            context.shadowMaterialUniformUpdates != 1 ||
+            context.lastPipelineCullMode != ark::rhi::CullMode::None) {
+            std::cerr << "Alpha mask shadow caster did not use the expected draw path\n";
+            return false;
+        }
+
+        if (!near(context.lastShadowMaterialUniform.alphaMode,
+                  static_cast<float>(ark::asset::AlphaMode::Mask)) ||
+            !near(context.lastShadowMaterialUniform.alphaCutoff, AlphaCutoff) ||
+            !near(context.lastShadowMaterialUniform.baseColorFactor.a, 1.0f)) {
+            std::cerr << "Alpha mask shadow material uniform is invalid\n";
+            return false;
+        }
+
+        if (device.descriptorSets.empty() ||
+            !device.descriptorSets.front()->baseColorImage ||
+            !device.descriptorSets.front()->baseColorSampler) {
+            std::cerr << "Alpha mask shadow caster did not bind baseColor texture descriptors\n";
             return false;
         }
 
@@ -1037,7 +1168,8 @@ namespace {
 
 int main() {
     return validateShadowPassDisabledPath() && validateShadowPassDepthRender() &&
-                   validateShadowPassCascadeRenderPath() && validateShadowPassSceneBoundsFitting() &&
+                   validateShadowPassCascadeRenderPath() && validateAlphaMaskShadowCasterPath() &&
+                   validateShadowPassSceneBoundsFitting() &&
                    validateShadowMapRuntimeResize()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

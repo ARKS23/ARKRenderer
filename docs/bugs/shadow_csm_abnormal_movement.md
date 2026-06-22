@@ -159,3 +159,24 @@
 - CSM receiver coverage 与 caster coverage 分离，阴影不再因相机移动明显丢失。
 - Alpha mask 材质不再产生整块错误阴影。
 - sandbox 中关闭 debug overlay 后，阴影视觉结果稳定、可解释。
+
+## 当前修复落地记录
+
+### Step 1 / Step 2
+
+- ShadowPass 已改为每个 frame slot / cascade layer / draw 使用独立 shadow uniform buffer 和 descriptor set，避免命令录制期间复写同一块 uniform 内存。
+- CSM builder 已支持传入 scene/caster bounds，并只用它扩展 light-space depth，receiver slice 的 XY 覆盖仍由当前 cascade 负责。
+
+### Step 3：alpha mask shadow caster
+
+- Shadow shader 现在透传 `uv0/uv1`，fragment 阶段只在 `AlphaMode::Mask` 时采样 baseColor alpha。
+- ShadowPass 为每个 draw 写入轻量 `ShadowMaterialUniform`，包含 baseColor factor、UV transform、alpha cutoff 和 alpha mode。
+- `AlphaMode::Blend` 仍跳过投影；`AlphaMode::Mask` 按 cutoff discard；`doubleSided` 材质会选择双面 shadow pipeline。
+- 当前实现没有把 Opaque/Mask 拆成多套 shader variant，而是复用同一套 fragment shader 的 uniform 分支，减少 pipeline 组合数量。
+
+### Step 4：CSM 质量增强
+
+- 每级 cascade 的 light-space XY 覆盖改为稳定球体拟合：从 camera view-space slice 计算稳定中心和半径，再构造正交投影。
+- 每级 cascade 保留 texel snapping，降低相机小幅移动时的 shadow swimming。
+- 每级拟合范围增加少量 split overlap，逻辑 split 距离不变，但 shadow map 边缘会多覆盖一点 receiver 区域，减少 split 边界裁切和 seam。
+- caster/scene bounds 仍只扩展 light-space depth，不扩大 XY，避免整场景 bounds 过度稀释每级 cascade 的 texel density。

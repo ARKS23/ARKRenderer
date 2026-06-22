@@ -254,6 +254,8 @@ namespace {
         if (!containsText(shaderSource, "struct ShadowUniform") ||
             !containsText(shaderSource, "lightViewProjection") ||
             !containsText(shaderSource, "float4x4 model") ||
+            !containsText(shaderSource, "[[vk::location(1)]] float2 uv0") ||
+            !containsText(shaderSource, "[[vk::location(2)]] float2 uv1") ||
             !containsText(shaderSource, "[[vk::binding(0, 0)]]") ||
             !containsText(shaderSource, "mul(g_Shadow.lightViewProjection")) {
             std::cerr << "Shadow vertex shader does not expose expected depth transform path\n";
@@ -276,8 +278,13 @@ namespace {
             return false;
         }
 
-        if (!containsText(shaderSource, "void main()")) {
-            std::cerr << "Shadow fragment shader should be an empty depth-only stage\n";
+        if (!containsText(shaderSource, "Texture2D<float4> g_BaseColorTexture") ||
+            !containsText(shaderSource, "SamplerState g_BaseColorSampler") ||
+            !containsText(shaderSource, "struct ShadowMaterialUniform") ||
+            !containsText(shaderSource, "alphaCutoff") ||
+            !containsText(shaderSource, "AlphaModeMask") ||
+            !containsText(shaderSource, "discard")) {
+            std::cerr << "Shadow fragment shader does not expose expected alpha mask caster path\n";
             return false;
         }
 

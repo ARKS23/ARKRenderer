@@ -20,6 +20,8 @@
 #include <vector>
 
 namespace ark {
+    struct MaterialRenderState;
+    class MaterialResource;
     struct ShadowSettings;
 
     class ShadowPass : public RenderPass {
@@ -41,6 +43,7 @@ namespace ark {
 
         struct ShadowDrawResources {
             Scope<rhi::Buffer> uniformBuffer;
+            Scope<rhi::Buffer> materialBuffer;
             Scope<rhi::DescriptorSet> descriptorSet;
         };
 
@@ -51,6 +54,12 @@ namespace ark {
         bool ensureShadowTarget(FrameContext& frameContext, const ShadowTargetDesc& targetDesc);
         bool releaseShadowTargetDeferred(FrameContext& frameContext);
         bool ensureDrawResources(u32 frameSlot, usize requiredCount);
+        bool updateDrawResources(FrameContext& frameContext,
+                                 ShadowDrawResources& drawResources,
+                                 const MaterialResource& material,
+                                 const glm::mat4& lightViewProjection,
+                                 const glm::mat4& modelMatrix);
+        rhi::PipelineState* selectPipeline(const MaterialRenderState& renderState) const;
         rhi::TextureView* shadowRenderTargetView(u32 layerIndex) const;
         bool beginShadowRendering(FrameContext& frameContext, rhi::TextureView& depthView);
         void setViewportAndScissor(FrameContext& frameContext);
@@ -64,7 +73,8 @@ namespace ark {
         std::array<std::vector<ShadowDrawResources>, FramesInFlight> m_DrawResources;
         Scope<rhi::DescriptorSetLayout> m_DescriptorSetLayout;
         Scope<rhi::PipelineLayout> m_PipelineLayout;
-        Scope<rhi::PipelineState> m_Pipeline;
+        Scope<rhi::PipelineState> m_SingleSidedPipeline;
+        Scope<rhi::PipelineState> m_DoubleSidedPipeline;
         Scope<rhi::Shader> m_VertexShader;
         Scope<rhi::Shader> m_FragmentShader;
         Scope<rhi::Texture> m_ShadowMap;

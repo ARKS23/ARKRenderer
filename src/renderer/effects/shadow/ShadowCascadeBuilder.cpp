@@ -18,6 +18,13 @@ namespace ark {
         constexpr float MinCameraNearDistance = 0.001f;
         constexpr float MinCascadeDepthRange = 0.01f;
         constexpr float MinCascadeHalfExtent = 0.25f;
+        constexpr float CascadeSplitOverlapRatio = 0.05f;
+
+        struct FrustumSliceFit {
+            Bounds3 worldBounds;
+            glm::vec3 stableCenter{0.0f};
+            float stableRadius = 0.0f;
+        };
 
         bool isFiniteVec3(const glm::vec3& value) {
             return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
@@ -155,8 +162,12 @@ namespace ark {
             snapVerticalRangeToReferenceTexelGrid(bottom, top, stableReference.y, mapExtent);
         }
 
-        bool buildCameraFrustumSliceBounds(const RenderView& view, float nearDistance, float farDistance, Bounds3& worldBounds) {
-            // 根据cascade的near/ far深度范围，计算这一段相机视锥切片在世界空间中的AABB
+        bool buildCameraFrustumSliceFit(const RenderView& view,
+                                        float nearDistance,
+                                        float farDistance,
+                                        FrustumSliceFit& fit) {
+            // 根据 cascade 的 near/far 深度范围，计算这一段相机视锥切片在世界空间中的 AABB。
+            // 同时在 view-space 中计算稳定中心/半径，供后续 light-space 正交投影使用。
             const glm::mat4& projection = view.projectionMatrix();
             // 当前只处理常规 perspective projection；[0][0]/[1][1] 分别等价于 1/tan(fovX/2)、1/tan(fovY/2)。
             const float projectionX = std::abs(projection[0][0]);
@@ -169,7 +180,9 @@ namespace ark {
             }
 
             const glm::mat4 inverseView = glm::affineInverse(view.viewMatrix());
-            worldBounds = makeInvalidBounds();
+            const glm::vec3 viewCenter{0.0f, 0.0f, -(nearDistance + farDistance) * 0.5f};
+            fit.worldBounds = makeInvalidBounds();
+            fit.stableRadius = 0.0f;
             const std::array<float, 2> distances{nearDistance, farDistance};
             for (const float distance : distances) {
                 // 在 RH view space 中相机朝 -Z 看；给定深度 distance 时，slice 平面的 z 为 -distance。
@@ -190,59 +203,67 @@ namespace ark {
                     if (!isFiniteVec3(point)) {
                         return false;
                     }
-                    expandBounds(worldBounds, point);
+                    expandBounds(fit.worldBounds, point);
+                    fit.stableRadius = std::max(fit.stableRadius, glm::length(viewCorner - viewCenter));
                 }
             }
 
-            // 最终得到当前cascade视锥切片的世界空间AABB,后续用它来拟合方向光的正交投影。
-            return worldBounds.isValid();
+            const glm::vec4 worldCenter = inverseView * glm::vec4{viewCenter, 1.0f};
+            fit.stableCenter = glm::vec3{worldCenter};
+            fit.stableRadius = std::max(fit.stableRadius, MinCascadeHalfExtent);
+            // 最终得到当前 cascade 视锥切片的世界空间 AABB；后续 debug 仍可用它表示 receiver coverage。
+            return fit.worldBounds.isValid() && isFiniteVec3(fit.stableCenter) &&
+                   std::isfinite(fit.stableRadius) && fit.stableRadius > 0.0f;
         }
 
         bool buildCascadeLightMatrix(const Bounds3& receiverBounds,
                                      const Bounds3* casterBounds,
+                                     const glm::vec3& stableCenter,
+                                     float stableRadius,
                                      const SceneLighting& lighting,
                                      const ShadowSettings& settings,
                                      glm::mat4& lightViewProjection) {
             // 给某一个 cascade 的 world-space bounds 构造方向光的 lightViewProjection 矩阵。
             // receiverBounds 决定本级 cascade 的受影区域；casterBounds 只用于扩展 light-space depth。
-            if (!receiverBounds.isValid()) return false;
+            if (!receiverBounds.isValid() || !isFiniteVec3(stableCenter) ||
+                !std::isfinite(stableRadius) || stableRadius <= 0.0f) {
+                return false;
+            }
 
             const glm::vec3 lightDirection = normalizeLightDirection(lighting.mainLight.direction);
-            const glm::vec3 lightTarget = receiverBounds.center();
+            const glm::vec3 lightTarget = stableCenter;
             Bounds3 depthBounds = receiverBounds;
             if (casterBounds && casterBounds->isValid()) {
                 mergeBounds(depthBounds, *casterBounds);
             }
 
-            const glm::vec3 halfExtent = receiverBounds.halfExtent();
-            const float radius = std::max(glm::length(halfExtent), MinCascadeHalfExtent);
+            // 先使用 view-space frustum sphere 的稳定半径，再保守扩大到 receiver AABB，
+            // 避免 debug/coverage bounds 的角点落出 light-space XY 投影。
+            const float radius = std::max({
+                stableRadius,
+                maxDistanceFromPointToBounds(lightTarget, receiverBounds),
+                MinCascadeHalfExtent,
+            });
             const float coverageRadius =
                 std::max(maxDistanceFromPointToBounds(lightTarget, depthBounds), radius);
             const float padding = std::max(0.25f, radius * 0.05f);
-            // 方向光没有真实位置；这里沿“光线反方向”退一段距离，只是为了构造稳定的 light view。
             // 方向光没有真实位置；这里后退足够距离，避免大型 caster bounds 落到 light near plane 前。
             const float lightDistance = coverageRadius + padding + settings.nearPlane;
             const glm::vec3 lightPosition = lightTarget - lightDirection * lightDistance;
             const glm::mat4 lightView = glm::lookAt(lightPosition, lightTarget, chooseLightUp(lightDirection));
 
-            // 在 light space 中，x/y 范围决定正交投影的 left/right/bottom/top。
-            // z 深度范围决定正交投影 near/far，后续 shadow map 只覆盖这个 cascade slice。
-            float left = std::numeric_limits<float>::max();
-            float right = std::numeric_limits<float>::lowest();
-            float bottom = std::numeric_limits<float>::max();
-            float top = std::numeric_limits<float>::lowest();
+            // 稳定 CSM 使用固定半径决定每级 XY 正交范围，避免 AABB min/max 随相机旋转产生明显跳变。
+            const glm::vec4 lightTargetPosition = lightView * glm::vec4{lightTarget, 1.0f};
+            float left = lightTargetPosition.x - radius;
+            float right = lightTargetPosition.x + radius;
+            float bottom = lightTargetPosition.y - radius;
+            float top = lightTargetPosition.y + radius;
             float minDepth = std::numeric_limits<float>::max();
             float maxDepth = std::numeric_limits<float>::lowest();
 
-            // 使用 cascade world AABB 的 8 个角点做保守拟合，保证记录在 frame data 中的 bounds 也落入投影。
+            // z 深度范围仍用 receiver/caster bounds 拟合，保证遮挡物不会被 light near/far 裁掉。
             for (const glm::vec3& corner : boundsCorners(receiverBounds)) {
                 const glm::vec4 lightCorner = lightView * glm::vec4{corner, 1.0f};
-                // light-space x/y 包住所有角点，得到这一层 cascade 的正交投影横向覆盖。
-                left = std::min(left, lightCorner.x);
-                right = std::max(right, lightCorner.x);
-                bottom = std::min(bottom, lightCorner.y);
-                top = std::max(top, lightCorner.y);
-
                 // glm::lookAt RH 视图朝 -Z 看，离光源越远的点 lightCorner.z 越负；转成正深度便于 orthoRH_ZO。
                 const float depth = -lightCorner.z;
                 minDepth = std::min(minDepth, depth);
@@ -360,8 +381,29 @@ namespace ark {
             ShadowCascade& cascade = frameData.cascades[index];
             cascade.nearDistance = splitDistances.distances[index];
             cascade.farDistance = splitDistances.distances[index + 1];
-            if (!buildCameraFrustumSliceBounds(view, cascade.nearDistance, cascade.farDistance, cascade.worldBounds) ||
-                !buildCascadeLightMatrix(cascade.worldBounds, casterBounds, lighting, settings, cascade.lightViewProjection)) {
+
+            const float splitLength = cascade.farDistance - cascade.nearDistance;
+            const float overlap = std::max(splitLength * CascadeSplitOverlapRatio, MinCascadeDepthRange);
+            const float fitNearDistance = index == 0
+                                              ? cascade.nearDistance
+                                              : std::max(cameraNear, cascade.nearDistance - overlap);
+            const float fitFarDistance = index + 1 == splitDistances.cascadeCount
+                                             ? cascade.farDistance
+                                             : std::min(cascadeFar, cascade.farDistance + overlap);
+
+            FrustumSliceFit fit{};
+            if (!buildCameraFrustumSliceFit(view, fitNearDistance, fitFarDistance, fit)) {
+                return {};
+            }
+            cascade.worldBounds = fit.worldBounds;
+
+            if (!buildCascadeLightMatrix(cascade.worldBounds,
+                                         casterBounds,
+                                         fit.stableCenter,
+                                         fit.stableRadius,
+                                         lighting,
+                                         settings,
+                                         cascade.lightViewProjection)) {
                 return {};
             }
         }
