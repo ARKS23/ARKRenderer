@@ -9,6 +9,7 @@
 #include "renderer/RendererQuality.h"
 #include "renderer/SceneResource.h"
 #include "renderer/ShadowConstants.h"
+#include "renderer/ShadowDebugSettings.h"
 #include "renderer/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
 
@@ -22,6 +23,7 @@ int main() {
     static_assert(std::is_default_constructible_v<ark::RendererQualityDesc>);
     static_assert(std::is_default_constructible_v<ark::RendererPresetDesc>);
     static_assert(std::is_default_constructible_v<ark::SceneResourceLoadDesc>);
+    static_assert(std::is_default_constructible_v<ark::ShadowDebugSettings>);
     static_assert(std::is_default_constructible_v<ark::ModelResource>);
     static_assert(std::is_default_constructible_v<ark::MeshResource>);
     static_assert(std::is_default_constructible_v<ark::TextureResource>);
@@ -36,14 +38,36 @@ int main() {
     ark::SceneResourceLoadDesc sceneLoadDesc{};
     ark::PostProcessingSettings postProcessing{};
     ark::ShadowSettings shadows{};
+    ark::ShadowDebugSettings shadowDebug{};
+    shadowDebug.enabled = true;
+    shadowDebug.mode = ark::ShadowDebugMode::CascadeColor;
+    shadowDebug.showPreview = true;
+    shadowDebug.previewCascadeIndex = ark::MaxShadowCascadeCount + 4u;
 
     view.setPostProcessingSettings(postProcessing);
     view.setShadowSettings(shadows);
+    view.setShadowDebugSettings(shadowDebug);
 
     if (!scene.empty() || scene.size() != 0) {
         return EXIT_FAILURE;
     }
     if (view.shadowSettings().cascades.cascadeCount != ark::MaxShadowCascadeCount) {
+        return EXIT_FAILURE;
+    }
+    if (!view.shadowDebugSettings().enabled ||
+        view.shadowDebugSettings().mode != ark::ShadowDebugMode::CascadeColor ||
+        !view.shadowDebugSettings().showPreview ||
+        view.shadowDebugSettings().previewCascadeIndex != ark::MaxShadowCascadeCount - 1u) {
+        return EXIT_FAILURE;
+    }
+
+    shadowDebug.enabled = false;
+    shadowDebug.mode = ark::ShadowDebugMode::LightDepth;
+    shadowDebug.showPreview = true;
+    view.setShadowDebugSettings(shadowDebug);
+    if (view.shadowDebugSettings().enabled ||
+        view.shadowDebugSettings().mode != ark::ShadowDebugMode::None ||
+        view.shadowDebugSettings().showPreview) {
         return EXIT_FAILURE;
     }
     if (ark::sanitizeRendererQualityDesc(qualityDesc).environmentBake.brdfLutSampleCount !=

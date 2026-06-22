@@ -1193,6 +1193,10 @@ namespace {
         ark::RenderView view{};
         const glm::vec3 cameraPosition{1.5f, 2.5f, -6.0f};
         view.setMatrices(glm::mat4{1.0f}, glm::mat4{1.0f}, cameraPosition);
+        ark::ShadowDebugSettings shadowDebug{};
+        shadowDebug.enabled = true;
+        shadowDebug.mode = ark::ShadowDebugMode::CascadeColor;
+        view.setShadowDebugSettings(shadowDebug);
 
         ForwardPassCapture capture{};
         if (!captureForwardPass(ark::asset::AlphaMode::Opaque,
@@ -1226,6 +1230,8 @@ namespace {
             !near(uniform.cascadeShadow.x, 0.0f) ||
             !near(uniform.cascadeShadow.y, 0.0f) ||
             !near(uniform.cascadeShadow.z, 0.0f) ||
+            !near(uniform.cascadeShadow.w,
+                  static_cast<float>(static_cast<ark::u32>(ark::ShadowDebugMode::CascadeColor))) ||
             !near(uniform.cascadeSplits.x, 0.0f)) {
             std::cerr << "ForwardPass lighting uniform did not use scene lighting and view camera position\n";
             return false;
@@ -1372,7 +1378,8 @@ namespace {
             !near(capture.lightingUniform.shadow.w, 0.0f) ||
             !near(capture.lightingUniform.cascadeShadow.x, 0.0f) ||
             !near(capture.lightingUniform.cascadeShadow.y, 0.0f) ||
-            !near(capture.lightingUniform.cascadeShadow.z, 0.0f)) {
+            !near(capture.lightingUniform.cascadeShadow.z, 0.0f) ||
+            !near(capture.lightingUniform.cascadeShadow.w, 0.0f)) {
             std::cerr << "ForwardPass fallback environment should keep lighting disabled\n";
             return false;
         }
@@ -1425,7 +1432,8 @@ namespace {
             !near(uniform.shadow.w, 1.5f) ||
             !near(uniform.cascadeShadow.x, 1.0f) ||
             !near(uniform.cascadeShadow.y, static_cast<float>(ark::MaxShadowCascadeCount)) ||
-            !near(uniform.cascadeShadow.z, 1024.0f)) {
+            !near(uniform.cascadeShadow.z, 1024.0f) ||
+            !near(uniform.cascadeShadow.w, 0.0f)) {
             std::cerr << "ForwardPass CSM path did not write shadow/cascade settings\n";
             return false;
         }

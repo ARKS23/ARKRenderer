@@ -112,6 +112,11 @@ static const float AlphaModeMask = 1.0f;
 static const float AlphaModeBlend = 2.0f;
 static const float ShadowFilterPcf3x3 = 1.0f;
 static const float ShadowFilterPcf5x5 = 2.0f;
+static const uint ShadowDebugModeNone = 0;
+static const uint ShadowDebugModeCascadeColor = 1;
+static const uint ShadowDebugModeShadowFactor = 2;
+static const uint ShadowDebugModeLightDepth = 3;
+static const float ShadowDebugOverlayAlpha = 0.35f;
 static const float PI = 3.14159265359f;
 static const uint MaxShadowCascadeCount = 4;
 
@@ -125,7 +130,7 @@ struct LightingUniform {
     float4x4 lightViewProjection;
     // x: strength, y: bias, z: filter mode, w: filter radius in texels.
     float4 shadow;
-    // x: enabled, y: cascade count, z: cascade texture extent, w: reserved.
+    // x: enabled, y: cascade count, z: cascade texture extent, w: shadow debug mode.
     float4 cascadeShadow;
     float4x4 cascadeLightViewProjections[4];
     // View-space positive far distance for each cascade.
@@ -484,6 +489,94 @@ float sampleShadowVisibility(float3 worldPosition, float nDotL) {
     return evaluateShadowVisibility(shadowClip, nDotL, 0, false);
 }
 
+uint shadowDebugMode() {
+    return (uint)round(clamp(g_Lighting.cascadeShadow.w,
+                             (float)ShadowDebugModeNone,
+                             (float)ShadowDebugModeLightDepth));
+}
+
+float3 cascadeDebugColor(uint cascadeIndex) {
+    if (cascadeIndex == 0) {
+        return float3(1.0f, 0.1f, 0.1f);
+    }
+    if (cascadeIndex == 1) {
+        return float3(0.1f, 1.0f, 0.1f);
+    }
+    if (cascadeIndex == 2) {
+        return float3(0.1f, 0.35f, 1.0f);
+    }
+    return float3(1.0f, 0.9f, 0.1f);
+}
+
+bool resolveDebugShadowNdc(float3 worldPosition, out float3 shadowNdc, out uint cascadeIndex) {
+    shadowNdc = float3(0.0f, 0.0f, 0.0f);
+    cascadeIndex = 0;
+
+    float4 shadowClip = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (isCascadeShadowEnabled()) {
+        const float4 viewPosition = mul(g_Camera.view, float4(worldPosition, 1.0f));
+        const float viewDepth = -viewPosition.z;
+        if (viewDepth <= 0.0f) {
+            return false;
+        }
+
+        bool insideCoverage = false;
+        cascadeIndex = selectShadowCascade(viewDepth, insideCoverage);
+        if (!insideCoverage) {
+            return false;
+        }
+
+        shadowClip = mul(g_Lighting.cascadeLightViewProjections[cascadeIndex], float4(worldPosition, 1.0f));
+    } else {
+        if (g_Lighting.shadow.x <= 0.0f) {
+            return false;
+        }
+        shadowClip = mul(g_Lighting.lightViewProjection, float4(worldPosition, 1.0f));
+    }
+
+    if (shadowClip.w <= 0.0f) {
+        return false;
+    }
+
+    shadowNdc = shadowClip.xyz / shadowClip.w;
+    const float2 shadowUv = shadowNdc.xy * 0.5f + 0.5f;
+    return shadowUv.x >= 0.0f && shadowUv.x <= 1.0f &&
+           shadowUv.y >= 0.0f && shadowUv.y <= 1.0f &&
+           shadowNdc.z >= 0.0f && shadowNdc.z <= 1.0f;
+}
+
+float3 applyShadowDebugOverlay(float3 litColor, float3 worldPosition, float3 worldNormal) {
+    const uint mode = shadowDebugMode();
+    if (mode == ShadowDebugModeNone) {
+        return litColor;
+    }
+
+    const float3 n = normalize(worldNormal);
+    const float3 l = normalize(-g_Lighting.lightDirection.xyz);
+    const float nDotL = saturate(dot(n, l));
+
+    if (mode == ShadowDebugModeShadowFactor) {
+        const float visibility = sampleShadowVisibility(worldPosition, nDotL);
+        return lerp(litColor, float3(visibility, visibility, visibility), ShadowDebugOverlayAlpha);
+    }
+
+    float3 shadowNdc = float3(0.0f, 0.0f, 0.0f);
+    uint cascadeIndex = 0;
+    if (!resolveDebugShadowNdc(worldPosition, shadowNdc, cascadeIndex)) {
+        return litColor;
+    }
+
+    if (mode == ShadowDebugModeCascadeColor) {
+        return lerp(litColor, cascadeDebugColor(cascadeIndex), ShadowDebugOverlayAlpha);
+    }
+    if (mode == ShadowDebugModeLightDepth) {
+        const float depth = saturate(shadowNdc.z);
+        return lerp(litColor, float3(depth, depth, depth), ShadowDebugOverlayAlpha);
+    }
+
+    return litColor;
+}
+
 float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 n = normalize(inputs.worldNormal);
     const float3 l = normalize(-g_Lighting.lightDirection.xyz);
@@ -512,7 +605,8 @@ float3 evaluateDirectLighting(PbrInputs inputs, float3 worldPosition) {
     const float3 indirect = evaluateIndirectLighting(n, v, albedo, metallic, roughness, f0);
     const float shadowVisibility = sampleShadowVisibility(worldPosition, nDotL);
     const float3 direct = g_Lighting.lightColor.rgb * nDotL * (diffuse + specular) * shadowVisibility;
-    return (indirect + direct) * inputs.occlusion + inputs.emissive;
+    const float3 litColor = (indirect + direct) * inputs.occlusion + inputs.emissive;
+    return applyShadowDebugOverlay(litColor, worldPosition, inputs.worldNormal);
 }
 
 float4 main(PSInput input) : SV_Target0 {

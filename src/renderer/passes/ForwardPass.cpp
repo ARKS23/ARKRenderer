@@ -161,6 +161,16 @@ namespace ark {
 
         bool hasCascadeShadowMapView(const FrameContext& frameContext);
 
+        float shadowDebugModeValue(const FrameContext& frameContext) {
+            if (!frameContext.view) {
+                return static_cast<float>(ShadowDebugMode::None);
+            }
+
+            const ShadowDebugSettings& debug = frameContext.view->shadowDebugSettings();
+            return debug.enabled ? static_cast<float>(debug.mode)
+                                 : static_cast<float>(ShadowDebugMode::None);
+        }
+
         LightingUniform makeLightingUniform(const FrameContext& frameContext) {
             const SceneLighting defaultLighting{};
             const SceneLighting& lighting = frameContext.scene ? frameContext.scene->lighting() : defaultLighting;
@@ -176,7 +186,8 @@ namespace ark {
                                        frameContext.shadowBias,
                                        frameContext.shadowFilterMode,
                                        frameContext.shadowFilterRadiusTexels};
-            uniform.cascadeShadow = glm::vec4{0.0f};
+            const float debugMode = shadowDebugModeValue(frameContext);
+            uniform.cascadeShadow = glm::vec4{0.0f, 0.0f, 0.0f, debugMode};
             uniform.cascadeLightViewProjections.fill(glm::mat4{1.0f});
             uniform.cascadeSplits = glm::vec4{0.0f};
 
@@ -188,7 +199,7 @@ namespace ark {
                 uniform.cascadeShadow = glm::vec4{1.0f,
                                                   static_cast<float>(cascadeCount),
                                                   static_cast<float>(cascades.cascadeExtent),
-                                                  0.0f};
+                                                  debugMode};
 
                 for (u32 cascadeIndex = 0; cascadeIndex < cascadeCount; ++cascadeIndex) {
                     uniform.cascadeLightViewProjections[cascadeIndex] =

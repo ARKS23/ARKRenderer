@@ -4,6 +4,7 @@
 #include "core/Types.h"
 #include "renderer/PostProcessingSettings.h"
 #include "renderer/ShadowConstants.h"
+#include "renderer/ShadowDebugSettings.h"
 #include "rhi/RHICommon.h"
 
 #include <algorithm>
@@ -108,7 +109,7 @@ namespace ark {
             // 项目使用右手世界坐标和 RH_ZO 投影语义；Vulkan NDC 的 Y 翻转在这里统一处理。
             m_Projection = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 0.1f, 100.0f);
             m_Projection[1][1] *= -1.0f;
-            setClipRange(0.1f, 100.0f);
+            setClipRange(0.1f, 400.0f);
         }
 
         bool setPerspectiveCamera(const asset::CameraData& camera,
@@ -184,6 +185,14 @@ namespace ark {
 
         void setShadowSettings(const ShadowSettings& settings) {
             m_ShadowSettings = sanitizeShadowSettings(settings);
+        }
+
+        const ShadowDebugSettings& shadowDebugSettings() const {
+            return m_ShadowDebugSettings;
+        }
+
+        void setShadowDebugSettings(const ShadowDebugSettings& settings) {
+            m_ShadowDebugSettings = sanitizeShadowDebugSettings(settings);
         }
 
         const VisibilitySettings& visibilitySettings() const {
@@ -272,6 +281,7 @@ namespace ark {
         ToneMappingSettings m_ToneMappingSettings;
         PostProcessingSettings m_PostProcessingSettings;
         ShadowSettings m_ShadowSettings;
+        ShadowDebugSettings m_ShadowDebugSettings;
         VisibilitySettings m_VisibilitySettings;
     };
 } // namespace ark

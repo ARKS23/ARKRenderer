@@ -52,6 +52,7 @@ namespace ark {
             ShadowFilterMode::Pcf3x3,
             1.0f,
         };
+        ShadowDebugSettings shadowDebug{};
         VisibilitySettings visibility{};
     };
 

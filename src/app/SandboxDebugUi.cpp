@@ -6,6 +6,7 @@
 #include "renderer/RenderQueue.h"
 #include "rhi/RenderDevice.h"
 #include "rhi/SwapChain.h"
+#include "rhi/TextureView.h"
 #include "rhi/vulkan/VulkanCommandContext.h"
 #include "rhi/vulkan/VulkanDevice.h"
 #include "rhi/vulkan/VulkanFrameResource.h"
@@ -42,6 +43,44 @@ namespace ark {
             }
         }
 
+        const char* shadowDebugModeLabel(ShadowDebugMode mode) {
+            switch (mode) {
+            case ShadowDebugMode::CascadeColor:
+                return "Cascade Color";
+            case ShadowDebugMode::ShadowFactor:
+                return "Shadow Factor";
+            case ShadowDebugMode::LightDepth:
+                return "Light Depth";
+            case ShadowDebugMode::None:
+            default:
+                return "None";
+            }
+        }
+
+        const char* formatLabel(rhi::Format format) {
+            switch (format) {
+            case rhi::Format::D32Float:
+                return "D32Float";
+            case rhi::Format::D24UnormS8UInt:
+                return "D24UnormS8UInt";
+            case rhi::Format::Unknown:
+            default:
+                return "Unknown";
+            }
+        }
+
+        const char* textureViewTypeLabel(rhi::TextureViewType type) {
+            switch (type) {
+            case rhi::TextureViewType::Texture2DArray:
+                return "Texture2DArray";
+            case rhi::TextureViewType::Cube:
+                return "Cube";
+            case rhi::TextureViewType::Texture2D:
+            default:
+                return "Texture2D";
+            }
+        }
+
         bool comboToneMapping(ToneMappingOperator& operatorType) {
             const char* items[] = {"Reinhard", "Linear", "ACES"};
             int current = static_cast<int>(operatorType);
@@ -61,6 +100,17 @@ namespace ark {
             }
 
             filterMode = static_cast<ShadowFilterMode>(std::clamp(current, 0, 2));
+            return true;
+        }
+
+        bool comboShadowDebugMode(ShadowDebugMode& mode) {
+            const char* items[] = {"None", "Cascade Color", "Shadow Factor", "Light Depth"};
+            int current = static_cast<int>(mode);
+            if (!ImGui::Combo("Mode##ShadowDebug", &current, items, IM_ARRAYSIZE(items))) {
+                return false;
+            }
+
+            mode = static_cast<ShadowDebugMode>(std::clamp(current, 0, 3));
             return true;
         }
 
@@ -298,6 +348,7 @@ namespace ark {
             ImGui::SliderFloat("Manual Bounds", &shadows.orthographicHalfExtent, 1.0f, 128.0f, "%.1f");
 
             drawCascadeShadowPanel(shadows);
+            drawShadowDebugPanel();
         }
 
         void drawCascadeShadowPanel(ShadowSettings& shadows) {
@@ -320,6 +371,34 @@ namespace ark {
             }
 
             drawCascadeDiagnostics();
+        }
+
+        void drawShadowDebugPanel() {
+            ShadowDebugSettings& debug = m_Settings.view.shadowDebug;
+
+            ImGui::Separator();
+            ImGui::TextUnformatted("Shadow Debug");
+            ImGui::Checkbox("Enabled##ShadowDebug", &debug.enabled);
+            comboShadowDebugMode(debug.mode);
+            ImGui::Checkbox("Metadata Preview##ShadowDebug", &debug.showPreview);
+
+            const u32 cascadeCount =
+                m_LastCascadeShadows.isEnabled() ? m_LastCascadeShadows.cascadeCount : MaxShadowCascadeCount;
+            const u32 maxPreviewIndex = cascadeCount > 0 ? cascadeCount - 1u : 0u;
+            int previewCascade = static_cast<int>(std::min(debug.previewCascadeIndex, maxPreviewIndex));
+            if (ImGui::SliderInt("Preview Cascade", &previewCascade, 0, static_cast<int>(maxPreviewIndex))) {
+                debug.previewCascadeIndex = static_cast<u32>(previewCascade);
+            }
+
+            if (!debug.enabled) {
+                ImGui::TextDisabled("Debug is disabled for normal rendering");
+            } else {
+                ImGui::Text("Mode: %s", shadowDebugModeLabel(debug.mode));
+            }
+
+            if (debug.showPreview) {
+                drawShadowMapPreviewMetadata();
+            }
         }
 
         void drawVisibilityPanel() {
@@ -362,6 +441,28 @@ namespace ark {
                         m_Settings.view.visibility.enableFrustumCulling ? "On" : "Off");
         }
 
+        void drawShadowMapPreviewMetadata() {
+            ImGui::TextUnformatted("Shadow Map Preview: metadata only");
+            if (!m_LastHasShadowMapView) {
+                ImGui::TextDisabled("No shadow map view published by previous frame");
+                return;
+            }
+
+            const ShadowDebugSettings& debug = m_Settings.view.shadowDebug;
+            const u32 cascadeCount = m_LastCascadeShadows.isEnabled() ? m_LastCascadeShadows.cascadeCount : 1u;
+            const u32 selectedCascade =
+                std::min(debug.previewCascadeIndex, cascadeCount > 0 ? cascadeCount - 1u : 0u);
+            const u32 extent =
+                m_LastCascadeShadows.isEnabled() ? m_LastCascadeShadows.cascadeExtent : m_Settings.view.shadows.mapExtent;
+
+            ImGui::Text("Selected Cascade: %u / %u", selectedCascade, cascadeCount);
+            ImGui::Text("View Type: %s", textureViewTypeLabel(m_LastShadowViewDesc.type));
+            ImGui::Text("Format: %s", formatLabel(m_LastShadowViewDesc.format));
+            ImGui::Text("Layer: %u + %u", m_LastShadowViewDesc.baseArrayLayer, m_LastShadowViewDesc.arrayLayerCount);
+            ImGui::Text("Extent: %u", extent);
+            ImGui::TextDisabled("Image preview is deferred until ImGui sampled-image preview is available");
+        }
+
         void drawCascadeDiagnostics() {
             if (!m_LastCascadeShadows.isEnabled()) {
                 ImGui::TextDisabled("CSM Frame: inactive");
@@ -389,6 +490,13 @@ namespace ark {
             m_LastShadowStats = shadowQueue ? shadowQueue->stats() : RenderQueueStats{};
             // UI 面板在 render 前构建，因此这里缓存的是“上一帧 ShadowPass 实际生成”的 CSM 数据。
             m_LastCascadeShadows = frameContext.cascadeShadows;
+            if (frameContext.shadowMapView) {
+                m_LastHasShadowMapView = true;
+                m_LastShadowViewDesc = frameContext.shadowMapView->getDesc();
+            } else {
+                m_LastHasShadowMapView = false;
+                m_LastShadowViewDesc = rhi::TextureViewDesc{};
+            }
         }
 
         Window& m_Window;
@@ -397,6 +505,8 @@ namespace ark {
         RenderQueueStats m_LastForwardStats{};
         RenderQueueStats m_LastShadowStats{};
         CascadeShadowFrameData m_LastCascadeShadows{};
+        rhi::TextureViewDesc m_LastShadowViewDesc{};
+        bool m_LastHasShadowMapView = false;
         bool m_FrameBegun = false;
         bool m_DrawDataReady = false;
     };

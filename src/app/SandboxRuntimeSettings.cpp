@@ -17,6 +17,7 @@ namespace ark {
         view.setToneMappingSettings(settings.view.toneMapping);
         view.setPostProcessingSettings(settings.view.postProcessing);
         view.setShadowSettings(settings.view.shadows);
+        view.setShadowDebugSettings(settings.view.shadowDebug);
         view.setVisibilitySettings(settings.view.visibility);
     }
 

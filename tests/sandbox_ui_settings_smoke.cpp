@@ -28,6 +28,10 @@ int main() {
     desc.view.shadows.cascades.maxDistance = 96.0f;
     desc.view.shadows.cascades.cascadeExtent = 2048;
     desc.view.shadows.cascades.stabilize = true;
+    desc.view.shadowDebug.enabled = true;
+    desc.view.shadowDebug.mode = ark::ShadowDebugMode::CascadeColor;
+    desc.view.shadowDebug.showPreview = true;
+    desc.view.shadowDebug.previewCascadeIndex = 2;
     desc.view.visibility.enableFrustumCulling = true;
 
     ark::SandboxRuntimeSettings runtimeSettings = ark::makeSandboxRuntimeSettings(desc);
@@ -43,6 +47,10 @@ int main() {
         runtimeSettings.view.shadows.cascades.cascadeCount != 4 ||
         runtimeSettings.view.shadows.cascades.splitLambda != 0.72f ||
         runtimeSettings.view.shadows.cascades.maxDistance != 96.0f ||
+        !runtimeSettings.view.shadowDebug.enabled ||
+        runtimeSettings.view.shadowDebug.mode != ark::ShadowDebugMode::CascadeColor ||
+        !runtimeSettings.view.shadowDebug.showPreview ||
+        runtimeSettings.view.shadowDebug.previewCascadeIndex != 2 ||
         !runtimeSettings.view.visibility.enableFrustumCulling ||
         runtimeSettings.cameraMode != ark::SandboxCameraMode::FirstPerson ||
         runtimeSettings.cameraMoveSpeed != 12.0f ||
@@ -59,6 +67,7 @@ int main() {
     runtimeSettings.view.shadows.cascades.maxDistance = -1.0f;
     runtimeSettings.view.shadows.cascades.cascadeExtent = 99999;
     runtimeSettings.view.shadows.cascades.stabilize = false;
+    runtimeSettings.view.shadowDebug.previewCascadeIndex = 99;
 
     ark::RenderView view{};
     ark::applySandboxRuntimeSettings(view, runtimeSettings);
@@ -70,7 +79,21 @@ int main() {
         view.shadowSettings().cascades.maxDistance <= view.shadowSettings().nearPlane ||
         view.shadowSettings().cascades.cascadeExtent != 4096 ||
         view.shadowSettings().cascades.stabilize ||
+        !view.shadowDebugSettings().enabled ||
+        view.shadowDebugSettings().mode != ark::ShadowDebugMode::CascadeColor ||
+        !view.shadowDebugSettings().showPreview ||
+        view.shadowDebugSettings().previewCascadeIndex != ark::MaxShadowCascadeCount - 1u ||
         !view.visibilitySettings().enableFrustumCulling) {
+        return EXIT_FAILURE;
+    }
+
+    runtimeSettings.view.shadowDebug.enabled = false;
+    runtimeSettings.view.shadowDebug.mode = ark::ShadowDebugMode::LightDepth;
+    runtimeSettings.view.shadowDebug.showPreview = true;
+    ark::applySandboxRuntimeSettings(view, runtimeSettings);
+    if (view.shadowDebugSettings().enabled ||
+        view.shadowDebugSettings().mode != ark::ShadowDebugMode::None ||
+        view.shadowDebugSettings().showPreview) {
         return EXIT_FAILURE;
     }
 

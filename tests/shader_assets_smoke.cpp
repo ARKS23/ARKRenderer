@@ -98,6 +98,12 @@ namespace {
             !containsText(shaderSource, "g_Camera.view") ||
             !containsText(shaderSource, "g_Lighting.shadow.z") ||
             !containsText(shaderSource, "g_Lighting.shadow.w") ||
+            !containsText(shaderSource, "g_Lighting.cascadeShadow.w") ||
+            !containsText(shaderSource, "ShadowDebugModeCascadeColor") ||
+            !containsText(shaderSource, "ShadowDebugModeShadowFactor") ||
+            !containsText(shaderSource, "ShadowDebugModeLightDepth") ||
+            !containsText(shaderSource, "cascadeDebugColor") ||
+            !containsText(shaderSource, "applyShadowDebugOverlay") ||
             !containsText(shaderSource, "normalize(normal)") ||
             !containsText(shaderSource, "alphaCutoff") ||
             !containsText(shaderSource, "AlphaModeMask") ||

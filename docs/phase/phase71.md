@@ -2,11 +2,32 @@
 
 ## 实施状态
 
-待开始。
+已完成。
 
 Phase 0.67 已经接入 CSM 基础路径，Phase 0.68 完成 renderer effects 目录整理，Phase 0.69 明确 public/internal API 边界，Phase 0.70 计划补齐 sandbox first-person camera。完成相机漫游后，sandbox 才能更方便地进入 Sponza 局部区域观察阴影问题。
 
 本阶段建议聚焦 **Shadow Debug Visualization**。目标是让阴影问题可以被快速定位：到底是 cascade split、light-space ortho fit、shadow map 内容、shader cascade selection、bias / PCF，还是场景尺度导致的问题。
+
+## 本轮实现记录
+
+- 新增 `ShadowDebugSettings` public data contract，并由 `RenderView` 统一 sanitize。
+- `RenderViewProfileDesc` / sandbox runtime settings 已接入 shadow debug 设置，sandbox UI 可以显式开启调试模式。
+- `ForwardPass` 复用 `LightingUniform::cascadeShadow.w` 传递 shadow debug mode，未扩大 uniform 尺寸，也未改 descriptor layout。
+- `mesh.frag.hlsl` 已接入 debug overlay：
+  - `CascadeColor`：按当前像素命中的 cascade 混合红 / 绿 / 蓝 / 黄调试色。
+  - `ShadowFactor`：以灰度显示当前 shadow visibility。
+  - `LightDepth`：以灰度显示当前 shadow light-space depth。
+- sandbox UI 增加 Shadow Debug 区域，支持 mode、metadata preview、preview cascade index，并继续显示 CSM diagnostics。
+- shadow map preview 本阶段采用 metadata-only 路径：显示 view type、format、layer、extent、selected cascade；图像化 depth preview 延后到 ImGui sampled-image descriptor / image layout 生命周期更明确后接入。
+- 默认 debug mode 为关闭，不改变正常 sandbox 画面和 frame validation golden。
+
+## 验证记录
+
+- `cmake --build --preset msvc-vcpkg-debug` 通过。
+- Phase relevant tests 通过：`ark_renderer_public_headers_smoke`、`ark_forward_pass_pipeline_smoke`、`ark_shader_assets_smoke`、`ark_sandbox_ui_settings_smoke`、`ark_shadow_pass_smoke`、`ark_shadow_cascade_builder_smoke`。
+- `ctest -E ark_frame_validation_smoke` 通过：33 / 33。
+- sandbox hidden startup smoke 通过。
+- 完整 `ctest` 中 `ark_frame_validation_smoke` 仍因 `default_composite_scene` golden diff 失败；该 case 使用 preset capture camera，且 shadow debug 默认关闭，本阶段未更新 golden。
 
 ## 阶段目标
 
