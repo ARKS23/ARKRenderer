@@ -38,7 +38,7 @@ src/renderer/effects/
 5. 将后处理、阴影、质量等数据 contract 移动到 `renderer/settings`。
 6. 将 sample/sandbox 辅助类型移动到更明确的 `renderer/scene` / `renderer/presets`。
 7. 更新 include、CMake、tests 和文档，确保运行时行为不变。
-8. 保留必要 compatibility wrapper，避免一次整理破坏现有 public include 路径。
+8. 移除同名 compatibility wrapper，避免根目录出现真假入口混杂。
 
 ## 非目标
 
@@ -141,36 +141,25 @@ src/renderer/
 
 ## Header Inventory / Ownership Map
 
-本阶段整理后，`src/renderer` 根目录只保留 public facade 和 legacy compatibility wrapper：
+本阶段整理后，`src/renderer` 根目录只保留 public facade：
 
 | Header | Ownership | 说明 |
 | --- | --- | --- |
 | `Renderer.h` | Public facade | renderer 生命周期、resize、render 主入口 |
 | `RenderScene.h` | Public facade | renderer-facing scene submission 容器 |
 | `RenderView.h` | Public facade | per-frame camera、projection、postprocess、shadow、visibility 参数集合 |
-| `Bounds.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/Bounds.h` |
-| `Frustum.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/Frustum.h` |
-| `FrameContext.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/FrameContext.h` |
-| `FrameOverlay.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/FrameOverlay.h` |
-| `FrameRenderer.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/FrameRenderer.h` |
-| `RenderGraph.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/RenderGraph.h` |
-| `RenderPass.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/RenderPass.h` |
-| `RenderQueue.h` | Legacy wrapper / Renderer internal | 转发到 `renderer/core/RenderQueue.h` |
-| `EnvironmentBrdfLutResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/EnvironmentBrdfLutResource.h` |
-| `EnvironmentCubeResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/EnvironmentCubeResource.h` |
-| `EnvironmentResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/EnvironmentResource.h` |
-| `MeshResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/MeshResource.h` |
-| `ModelResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/ModelResource.h` |
-| `TextureCache.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/TextureCache.h` |
-| `TextureResource.h` | Legacy wrapper / Resource contract | 转发到 `renderer/resources/TextureResource.h` |
-| `PostProcessingSettings.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/PostProcessingSettings.h` |
-| `RendererQuality.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/RendererQuality.h` |
-| `ShadowConstants.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/ShadowConstants.h` |
-| `ShadowDebugSettings.h` | Legacy wrapper / Settings contract | 转发到 `renderer/settings/ShadowDebugSettings.h` |
-| `SceneResource.h` | Legacy wrapper / Sample scene helper | 转发到 `renderer/scene/SceneResource.h` |
-| `RendererPreset.h` | Legacy wrapper / Sample preset helper | 转发到 `renderer/presets/RendererPreset.h` |
 
-新代码优先 include 分层后的真实路径；根目录 wrapper 仅用于兼容旧 include 和渐进迁移。
+其余头文件必须使用分层后的真实路径：
+
+| Ownership | Include 路径 |
+| --- | --- |
+| Renderer internal | `renderer/core/*` |
+| Resource contract | `renderer/resources/*` |
+| Settings contract | `renderer/settings/*` |
+| Sample scene helper | `renderer/scene/*` |
+| Sample preset helper | `renderer/presets/*` |
+
+本阶段不保留根目录同名 wrapper。项目尚未形成稳定外部 SDK，直接切换到清晰路径比“短期兼容旧 include”更符合后续引擎接入目标。
 
 ### Public facade
 
@@ -203,15 +192,7 @@ renderer/resources/EnvironmentResource.h
 
 这些类型仍然可以被引擎资产系统 adapter 使用，但不应该承担完整 Asset System 的职责。
 
-为了避免破坏现有 include，可以保留短 wrapper：
-
-```cpp
-// renderer/ModelResource.h
-#pragma once
-#include "renderer/resources/ModelResource.h"
-```
-
-同理可为 `MeshResource`、`TextureResource`、`EnvironmentResource` 等保留兼容入口。
+不保留 `renderer/ModelResource.h` 这类根目录 wrapper；新代码必须显式 include `renderer/resources/ModelResource.h`。
 
 ### Renderer internal
 
@@ -241,7 +222,7 @@ ShadowConstants
 ShadowDebugSettings
 ```
 
-这些是可稳定暴露给 `RenderView` / `RendererQualityDesc` 的数据 contract。为了兼容现有 include，也可以保留短 wrapper。
+这些是可稳定暴露给 `RenderView` / `RendererQualityDesc` 的数据 contract；新代码使用 `renderer/settings/*` 真实路径。
 
 ### Sample / Sandbox 辅助
 
@@ -298,7 +279,7 @@ shaders/
 ```
 
 2. Public facade 尽量只 include 必要 contract，减少把 internal 类型泄漏给引擎层。
-3. 旧 public/resource include 路径保留 wrapper，避免一次性破坏既有用户代码。
+3. 不保留旧 public/resource include 路径 wrapper；发现旧路径 include 直接改成新分层路径。
 4. Tests 可以 include internal headers，但 public header smoke 只覆盖 facade / resource / settings contract。
 5. `effects/*` 和 `passes/*` 不允许被 public facade 直接暴露给引擎层。
 
@@ -309,7 +290,7 @@ shaders/
 - 确认本阶段只做结构整理和 include hygiene。
 - 确认不改运行时行为。
 - 确认 shader 目录暂缓。
-- 确认 compatibility wrapper 策略。
+- 确认不保留 compatibility wrapper，根目录只保留 public facade。
 
 ### 0.73.1 Header Inventory / Ownership Map
 
@@ -320,7 +301,7 @@ shaders/
   - Settings contract
   - Renderer internal
   - Sample / preset
-  - Legacy wrapper
+  - Removed legacy wrapper
 - 同步 README 中的 renderer 接入边界说明。
 
 ### 0.73.2 Core Internal Layout
@@ -334,22 +315,22 @@ shaders/
 
 - 移动 `ModelResource`、`MeshResource`、`TextureResource`、`TextureCache`、`Environment*Resource` 到 `renderer/resources`。
 - 移动 `PostProcessingSettings`、`RendererQuality`、`ShadowConstants`、`ShadowDebugSettings` 到 `renderer/settings`。
-- 保留必要 wrapper headers。
+- 删除根目录同名 wrapper headers。
 - 更新 CMake、tests 和文档。
 
 ### 0.73.4 Scene / Preset Layout
 
 - 移动 `SceneResource` 到 `renderer/scene`。
 - 移动 `RendererPreset` 到 `renderer/presets`。
-- 保留 wrapper headers，避免 `app/Application.h` 和现有 sample 路径一次性破坏。
+- 删除 wrapper headers，并将 `app/Application.h` 和现有 sample 路径全部迁移到新 include。
 - 更新 README，明确它们是 sample/sandbox 辅助，不是引擎接入必经路径。
 
 ### 0.73.5 Include Hygiene / Compatibility Check
 
-- 使用 `rg` 检查旧路径 include。
+- 使用 `rg` 检查旧路径 include，确保源码和测试不再依赖根目录同名 wrapper。
 - 保证 public header smoke 不 include `effects/*`、`passes/*`、`renderer/core/FrameContext.h`。
 - 保证 internal tests 可以 include 新路径。
-- 保证 wrapper header 足够薄，不引入额外依赖。
+- 保证 `src/renderer` 根目录不再残留同名 wrapper。
 
 ### 0.73.6 Tests
 
@@ -364,7 +345,7 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 必要时补充：
 
 - include boundary smoke：验证 public facade 不依赖 internal effect。
-- compatibility wrapper smoke：验证旧 include 路径仍可编译。
+- root layout smoke：验证 `src/renderer` 根目录只保留 public facade 源文件/头文件。
 
 ### 0.73.7 验证与收尾
 
@@ -381,8 +362,8 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 
 - 分批移动。
 - 每批后构建。
-- public/resource/settings 保留 wrapper。
-- internal include 使用 `rg` 批量检查。
+- 删除 wrapper 后使用 `rg` 批量检查旧 include。
+- internal include 统一使用新分层路径。
 
 ### 风险二：public API 被整理阶段污染
 
@@ -409,7 +390,7 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 
 ## 完成标准
 
-- `src/renderer` 根目录只保留核心 public facade 和必要 compatibility wrapper。
+- `src/renderer` 根目录只保留核心 public facade，不保留同名 wrapper。
 - renderer internal、resource、settings、scene/preset 的目录职责清晰。
 - 旧 public/resource include 路径仍可编译。
 - `effects/*`、`passes/*` 不被引擎 facade 暴露。
@@ -421,13 +402,13 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 
 ### 0.73.0 文档与范围确认
 
-- 本阶段限定为 renderer 目录结构整理、include hygiene 和兼容 wrapper 验证。
+- 本阶段限定为 renderer 目录结构整理、include hygiene 和无 wrapper 根目录验证。
 - 不移动 shader，不修改 descriptor layout、GPU data layout 或运行时渲染行为。
 
 ### 0.73.1 Header Inventory / Ownership Map
 
 - 保留 `Renderer.h`、`RenderScene.h`、`RenderView.h` 作为根目录 public facade。
-- 根目录资源、设置、core、scene/preset 旧路径头文件改为薄 wrapper，用于兼容旧 include。
+- 根目录资源、设置、core、scene/preset 旧路径头文件已删除，避免与真实分层路径重名。
 - README 已同步 renderer 接入边界和源码结构说明。
 
 ### 0.73.2 Core Internal Layout
@@ -439,7 +420,7 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 
 - `ModelResource`、`MeshResource`、`TextureResource`、`TextureCache`、`Environment*Resource` 已移动到 `renderer/resources`。
 - `PostProcessingSettings`、`RendererQuality`、`ShadowConstants`、`ShadowDebugSettings` 已移动到 `renderer/settings`。
-- legacy wrapper 保持 `renderer/ModelResource.h`、`renderer/PostProcessingSettings.h` 等旧路径可编译。
+- 根目录同名 wrapper 已删除，新代码使用 `renderer/resources/*` 和 `renderer/settings/*`。
 
 ### 0.73.4 Scene / Preset Layout
 
@@ -450,7 +431,7 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 ### 0.73.5 Include Hygiene / Compatibility Check
 
 - `rg` 检查源码与测试中旧路径 include，实际业务代码已迁移到新分层路径。
-- `renderer_public_headers_smoke` 同时覆盖新路径和 legacy wrapper，确认兼容层仍可编译。
+- `renderer_public_headers_smoke` 只覆盖 public facade 与新分层 contract，不再覆盖旧 wrapper。
 - public facade 未直接暴露 `effects/*`、`passes/*` 或 `renderer/core/FrameContext.h`。
 
 ### 0.73.6 Tests
@@ -473,6 +454,13 @@ ctest --preset msvc-vcpkg-debug --output-on-failure
 - `ark_sandbox` hidden smoke 已通过：程序启动 3 秒后正常停止，目录整理未导致默认 sandbox 启动失败。
 - `ark_frame_validation_smoke` 已随全量 CTest 通过，说明默认画面验证路径未被结构整理破坏。
 - README 与本阶段文档已同步。
+
+### 0.73.8 设计修正：移除根目录同名 wrapper
+
+- 删除 `src/renderer` 根目录下的资源、settings、core、scene/preset 同名转发头。
+- 根目录现在只保留 `Renderer.*`、`RenderScene.*`、`RenderView.*`。
+- `renderer_public_headers_smoke` 不再覆盖旧 include 路径，只验证 public facade 与新分层 contract。
+- 重新通过构建、targeted header/shader smoke、全量 CTest 和 sandbox hidden smoke。
 
 ## 后续阶段建议
 

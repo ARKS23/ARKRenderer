@@ -13,19 +13,6 @@
 #include "renderer/resources/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
 
-// Legacy compatibility wrappers: old include paths should remain buildable while
-// new code migrates to renderer/resources, renderer/settings, renderer/scene and renderer/presets.
-#include "renderer/EnvironmentResource.h"
-#include "renderer/MeshResource.h"
-#include "renderer/ModelResource.h"
-#include "renderer/PostProcessingSettings.h"
-#include "renderer/RendererPreset.h"
-#include "renderer/RendererQuality.h"
-#include "renderer/SceneResource.h"
-#include "renderer/ShadowConstants.h"
-#include "renderer/ShadowDebugSettings.h"
-#include "renderer/TextureResource.h"
-
 #include <cstdlib>
 #include <type_traits>
 

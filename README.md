@@ -26,7 +26,7 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 - `renderer/resources/*` 下的 `ModelResource`、`MeshResource`、`MaterialResource`、`TextureResource`、`EnvironmentResource` 是 renderer resource contract，可作为引擎资产进入 renderer 的边界对象。
 - `renderer/scene/SceneResource`、`renderer/presets/RendererPreset` 更偏 sandbox/sample 快速验证；真实引擎可以绕过它们，直接由资产系统创建 renderer resource。
 - `renderer/core/*`、`passes/*`、`effects/*` 默认属于 renderer internal，不建议应用层或引擎层直接依赖。
-- 根目录下保留了部分 legacy wrapper headers，例如 `renderer/ModelResource.h`，用于兼容旧 include；新代码优先使用分层后的 include 路径。
+- `src/renderer` 根目录只保留 public facade；新代码必须使用分层后的 include 路径，避免同名 wrapper 造成 API 边界混乱。
 
 ## 源码结构
 
