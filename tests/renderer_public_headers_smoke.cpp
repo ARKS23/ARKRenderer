@@ -1,17 +1,30 @@
+#include "renderer/resources/EnvironmentResource.h"
+#include "renderer/resources/MeshResource.h"
+#include "renderer/resources/ModelResource.h"
+#include "renderer/settings/PostProcessingSettings.h"
+#include "renderer/RenderScene.h"
+#include "renderer/RenderView.h"
+#include "renderer/Renderer.h"
+#include "renderer/presets/RendererPreset.h"
+#include "renderer/settings/RendererQuality.h"
+#include "renderer/scene/SceneResource.h"
+#include "renderer/settings/ShadowConstants.h"
+#include "renderer/settings/ShadowDebugSettings.h"
+#include "renderer/resources/TextureResource.h"
+#include "renderer/material/MaterialResource.h"
+
+// Legacy compatibility wrappers: old include paths should remain buildable while
+// new code migrates to renderer/resources, renderer/settings, renderer/scene and renderer/presets.
 #include "renderer/EnvironmentResource.h"
 #include "renderer/MeshResource.h"
 #include "renderer/ModelResource.h"
 #include "renderer/PostProcessingSettings.h"
-#include "renderer/RenderScene.h"
-#include "renderer/RenderView.h"
-#include "renderer/Renderer.h"
 #include "renderer/RendererPreset.h"
 #include "renderer/RendererQuality.h"
 #include "renderer/SceneResource.h"
 #include "renderer/ShadowConstants.h"
 #include "renderer/ShadowDebugSettings.h"
 #include "renderer/TextureResource.h"
-#include "renderer/material/MaterialResource.h"
 
 #include <cstdlib>
 #include <type_traits>

@@ -1,7 +1,7 @@
 #include "renderer/material/MaterialResource.h"
 
 #include "core/Log.h"
-#include "renderer/TextureResource.h"
+#include "renderer/resources/TextureResource.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DeviceContext.h"
 

@@ -1,4 +1,4 @@
-#include "renderer/RenderPass.h"
+#include "renderer/core/RenderPass.h"
 
 namespace ark {
     void RenderPass::setup(rhi::RenderDevice& device) {

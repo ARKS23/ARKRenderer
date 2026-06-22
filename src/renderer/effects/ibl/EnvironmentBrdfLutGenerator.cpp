@@ -2,7 +2,7 @@
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
-#include "renderer/EnvironmentBrdfLutResource.h"
+#include "renderer/resources/EnvironmentBrdfLutResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

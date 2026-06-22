@@ -1,4 +1,4 @@
-#include "renderer/Bounds.h"
+#include "renderer/core/Bounds.h"
 
 #include <cmath>
 #include <cstdlib>

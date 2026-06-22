@@ -1,4 +1,4 @@
-#include "renderer/TextureCache.h"
+#include "renderer/resources/TextureCache.h"
 
 #include "asset/TextureLoader.h"
 #include "core/Log.h"

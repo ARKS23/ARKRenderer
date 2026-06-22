@@ -2,7 +2,7 @@
 
 #include "core/Memory.h"
 #include "core/Types.h"
-#include "renderer/RenderPass.h"
+#include "renderer/core/RenderPass.h"
 #include "rhi/RHICommon.h"
 
 #include <array>

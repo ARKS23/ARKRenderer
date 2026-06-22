@@ -1,7 +1,7 @@
 #include "renderer/RenderScene.h"
 
-#include "renderer/MeshResource.h"
-#include "renderer/ModelResource.h"
+#include "renderer/resources/MeshResource.h"
+#include "renderer/resources/ModelResource.h"
 
 #include <utility>
 

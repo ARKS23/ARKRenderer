@@ -2,7 +2,7 @@
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
-#include "renderer/FrameContext.h"
+#include "renderer/core/FrameContext.h"
 #include "rhi/Buffer.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/PipelineLayout.h"

@@ -1,4 +1,4 @@
-#include "renderer/RendererQuality.h"
+#include "renderer/settings/RendererQuality.h"
 
 #include <algorithm>
 #include <cmath>

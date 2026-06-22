@@ -2,8 +2,8 @@
 
 #include "app/Window.h"
 #include "core/Log.h"
-#include "renderer/FrameContext.h"
-#include "renderer/RenderQueue.h"
+#include "renderer/core/FrameContext.h"
+#include "renderer/core/RenderQueue.h"
 #include "rhi/RenderDevice.h"
 #include "rhi/SwapChain.h"
 #include "rhi/TextureView.h"

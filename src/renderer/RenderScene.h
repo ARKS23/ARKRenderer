@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/Types.h"
-#include "renderer/Bounds.h"
+#include "renderer/core/Bounds.h"
 
 #include <glm/glm.hpp>
 #include <glm/mat4x4.hpp>

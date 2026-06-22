@@ -1,6 +1,6 @@
 #pragma once
 
-#include "renderer/RenderPass.h"
+#include "renderer/core/RenderPass.h"
 
 namespace ark {
     class ClearPass : public RenderPass {

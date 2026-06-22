@@ -2,8 +2,8 @@
 
 #include "asset/MeshData.h"
 #include "core/Memory.h"
-#include "renderer/MeshResource.h"
-#include "renderer/RenderPass.h"
+#include "renderer/resources/MeshResource.h"
+#include "renderer/core/RenderPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

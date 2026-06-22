@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/Memory.h"
-#include "renderer/RenderPass.h"
-#include "renderer/PostProcessingSettings.h"
+#include "renderer/core/RenderPass.h"
+#include "renderer/settings/PostProcessingSettings.h"
 #include "rhi/RHICommon.h"
 
 #include <array>

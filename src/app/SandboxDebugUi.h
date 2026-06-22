@@ -2,7 +2,7 @@
 
 #include "app/SandboxRuntimeSettings.h"
 #include "core/Memory.h"
-#include "renderer/FrameOverlay.h"
+#include "renderer/core/FrameOverlay.h"
 #include "rhi/RHICommon.h"
 
 namespace ark {

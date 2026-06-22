@@ -2,8 +2,8 @@
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
-#include "renderer/EnvironmentCubeResource.h"
-#include "renderer/EnvironmentResource.h"
+#include "renderer/resources/EnvironmentCubeResource.h"
+#include "renderer/resources/EnvironmentResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

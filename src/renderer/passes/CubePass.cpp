@@ -5,7 +5,7 @@
 #include "asset/TextureLoader.h"
 #include "core/FileSystem.h"
 #include "core/Log.h"
-#include "renderer/FrameContext.h"
+#include "renderer/core/FrameContext.h"
 #include "rhi/DeviceContext.h"
 #include "rhi/SwapChain.h"
 

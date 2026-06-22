@@ -1,4 +1,4 @@
-#include "renderer/ModelResource.h"
+#include "renderer/resources/ModelResource.h"
 
 #include "core/Log.h"
 #include "rhi/DeviceContext.h"

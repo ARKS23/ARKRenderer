@@ -1,11 +1,11 @@
 #pragma once
 
 #include "core/Memory.h"
-#include "renderer/EnvironmentBrdfLutResource.h"
-#include "renderer/EnvironmentCubeResource.h"
-#include "renderer/EnvironmentResource.h"
-#include "renderer/MeshResource.h"
-#include "renderer/RenderPass.h"
+#include "renderer/resources/EnvironmentBrdfLutResource.h"
+#include "renderer/resources/EnvironmentCubeResource.h"
+#include "renderer/resources/EnvironmentResource.h"
+#include "renderer/resources/MeshResource.h"
+#include "renderer/core/RenderPass.h"
 #include "renderer/material/MaterialResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"

@@ -23,9 +23,25 @@ ARKRenderer 是一个逐步搭建的 Vulkan 渲染器实验项目，用于验证
 ## Renderer 接入边界
 
 - 应用或未来引擎接入时，优先依赖 `Renderer`、`RenderScene`、`RenderView` 这三个 public facade。
-- `ModelResource`、`MeshResource`、`MaterialResource`、`TextureResource`、`EnvironmentResource` 是 renderer resource contract，可作为引擎资产进入 renderer 的边界对象。
-- `SceneResource`、`RendererPreset` 更偏 sandbox/sample 快速验证；真实引擎可以绕过它们，直接由资产系统创建 renderer resource。
-- `FrameRenderer`、`FrameContext`、`RenderQueue`、`passes/*`、`effects/*` 默认属于 renderer internal，不建议应用层或引擎层直接依赖。
+- `renderer/resources/*` 下的 `ModelResource`、`MeshResource`、`MaterialResource`、`TextureResource`、`EnvironmentResource` 是 renderer resource contract，可作为引擎资产进入 renderer 的边界对象。
+- `renderer/scene/SceneResource`、`renderer/presets/RendererPreset` 更偏 sandbox/sample 快速验证；真实引擎可以绕过它们，直接由资产系统创建 renderer resource。
+- `renderer/core/*`、`passes/*`、`effects/*` 默认属于 renderer internal，不建议应用层或引擎层直接依赖。
+- 根目录下保留了部分 legacy wrapper headers，例如 `renderer/ModelResource.h`，用于兼容旧 include；新代码优先使用分层后的 include 路径。
+
+## 源码结构
+
+```text
+src/renderer/
+  Renderer.* / RenderScene.* / RenderView.*  # public facade
+  core/                                      # FrameRenderer、FrameContext、RenderQueue 等内部调度
+  resources/                                 # renderer GPU resource contract
+  settings/                                  # 后处理、阴影、质量等数据 contract
+  scene/                                     # sandbox/sample 场景加载辅助
+  presets/                                   # sandbox/sample 默认预设
+  material/                                  # PBR 材质资源
+  passes/                                    # 基础渲染 pass
+  effects/                                   # Bloom、IBL、Shadow、Sky、SSAO、ToneMapping
+```
 
 ## 构建
 

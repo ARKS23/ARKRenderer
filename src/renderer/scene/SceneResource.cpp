@@ -1,4 +1,4 @@
-#include "renderer/SceneResource.h"
+#include "renderer/scene/SceneResource.h"
 
 #include "asset/GltfLoader.h"
 #include "asset/TextureLoader.h"

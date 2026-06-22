@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/Memory.h"
-#include "renderer/RenderPass.h"
-#include "renderer/ShadowConstants.h"
+#include "renderer/core/RenderPass.h"
+#include "renderer/settings/ShadowConstants.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

@@ -4,7 +4,7 @@
 #include "app/Input.h"
 #include "app/SandboxCameraController.h"
 #include "renderer/RenderView.h"
-#include "renderer/RendererPreset.h"
+#include "renderer/presets/RendererPreset.h"
 
 namespace ark {
     // SandboxRuntimeSettings 是启动配置的运行时副本；UI 只修改这里，再统一同步到相机和 RenderView。

@@ -1,4 +1,4 @@
-#include "renderer/EnvironmentBrdfLutResource.h"
+#include "renderer/resources/EnvironmentBrdfLutResource.h"
 
 #include "core/Log.h"
 #include "rhi/DeviceContext.h"

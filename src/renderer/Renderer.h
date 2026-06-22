@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/Memory.h"
-#include "renderer/RendererQuality.h"
-#include "renderer/SceneResource.h"
+#include "renderer/settings/RendererQuality.h"
+#include "renderer/scene/SceneResource.h"
 #include "rhi/RHICommon.h"
 
 namespace ark {

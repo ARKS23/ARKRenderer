@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/Memory.h"
-#include "renderer/RenderPass.h"
+#include "renderer/core/RenderPass.h"
 #include "rhi/Buffer.h"
 #include "rhi/PipelineLayout.h"
 #include "rhi/PipelineState.h"

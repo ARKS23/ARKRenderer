@@ -1,4 +1,4 @@
-#include "renderer/PostProcessingSettings.h"
+#include "renderer/settings/PostProcessingSettings.h"
 
 #include <algorithm>
 #include <cmath>

@@ -1,6 +1,6 @@
 #include "core/Memory.h"
-#include "renderer/EnvironmentCubeResource.h"
-#include "renderer/FrameContext.h"
+#include "renderer/resources/EnvironmentCubeResource.h"
+#include "renderer/core/FrameContext.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "renderer/effects/sky/SkyboxPass.h"

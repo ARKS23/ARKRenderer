@@ -2,8 +2,8 @@
 
 #include "asset/ShaderLoader.h"
 #include "core/Log.h"
-#include "renderer/EnvironmentCubeResource.h"
-#include "renderer/FrameContext.h"
+#include "renderer/resources/EnvironmentCubeResource.h"
+#include "renderer/core/FrameContext.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 #include "rhi/Buffer.h"

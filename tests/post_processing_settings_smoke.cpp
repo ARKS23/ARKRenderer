@@ -1,6 +1,6 @@
 #include "app/Application.h"
 #include "app/SandboxLaunchOptions.h"
-#include "renderer/PostProcessingSettings.h"
+#include "renderer/settings/PostProcessingSettings.h"
 #include "renderer/RenderView.h"
 
 #include <array>

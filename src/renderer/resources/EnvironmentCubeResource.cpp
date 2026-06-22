@@ -1,4 +1,4 @@
-#include "renderer/EnvironmentCubeResource.h"
+#include "renderer/resources/EnvironmentCubeResource.h"
 
 #include "core/Log.h"
 #include "rhi/DeviceContext.h"

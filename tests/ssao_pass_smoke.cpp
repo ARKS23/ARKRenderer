@@ -1,5 +1,5 @@
 #include "core/Memory.h"
-#include "renderer/FrameContext.h"
+#include "renderer/core/FrameContext.h"
 #include "renderer/RenderView.h"
 #include "renderer/effects/ssao/SsaoPass.h"
 #include "rhi/Buffer.h"

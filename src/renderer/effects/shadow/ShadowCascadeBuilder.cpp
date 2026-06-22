@@ -1,6 +1,6 @@
 #include "renderer/effects/shadow/ShadowCascadeBuilder.h"
 
-#include "renderer/Bounds.h"
+#include "renderer/core/Bounds.h"
 #include "renderer/RenderScene.h"
 #include "renderer/RenderView.h"
 

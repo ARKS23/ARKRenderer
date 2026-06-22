@@ -2,9 +2,9 @@
 
 #include "asset/MeshData.h"
 #include "core/Types.h"
-#include "renderer/PostProcessingSettings.h"
-#include "renderer/ShadowConstants.h"
-#include "renderer/ShadowDebugSettings.h"
+#include "renderer/settings/PostProcessingSettings.h"
+#include "renderer/settings/ShadowConstants.h"
+#include "renderer/settings/ShadowDebugSettings.h"
 #include "rhi/RHICommon.h"
 
 #include <algorithm>

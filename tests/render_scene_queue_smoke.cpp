@@ -1,9 +1,9 @@
-#include "renderer/RenderQueue.h"
+#include "renderer/core/RenderQueue.h"
 #include "renderer/RenderScene.h"
-#include "renderer/EnvironmentResource.h"
-#include "renderer/Frustum.h"
-#include "renderer/MeshResource.h"
-#include "renderer/TextureResource.h"
+#include "renderer/resources/EnvironmentResource.h"
+#include "renderer/core/Frustum.h"
+#include "renderer/resources/MeshResource.h"
+#include "renderer/resources/TextureResource.h"
 #include "renderer/material/MaterialResource.h"
 
 #include <cmath>

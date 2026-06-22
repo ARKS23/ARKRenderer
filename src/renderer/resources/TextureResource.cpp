@@ -1,4 +1,4 @@
-#include "renderer/TextureResource.h"
+#include "renderer/resources/TextureResource.h"
 
 #include "asset/TextureLoader.h"
 #include "core/Log.h"

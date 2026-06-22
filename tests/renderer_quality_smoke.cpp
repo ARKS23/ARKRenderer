@@ -1,5 +1,5 @@
 #include "renderer/Renderer.h"
-#include "renderer/RendererQuality.h"
+#include "renderer/settings/RendererQuality.h"
 
 #include <cmath>
 #include <cstdlib>

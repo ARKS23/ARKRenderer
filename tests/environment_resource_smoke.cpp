@@ -1,6 +1,6 @@
 #include "asset/TextureLoader.h"
 #include "core/Memory.h"
-#include "renderer/EnvironmentResource.h"
+#include "renderer/resources/EnvironmentResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"

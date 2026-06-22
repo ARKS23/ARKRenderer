@@ -1,4 +1,4 @@
-#include "renderer/MeshResource.h"
+#include "renderer/resources/MeshResource.h"
 
 #include "core/Log.h"
 #include "rhi/RenderDevice.h"

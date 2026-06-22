@@ -1,6 +1,6 @@
 #include "core/Memory.h"
 #include "renderer/effects/ibl/EnvironmentBrdfLutGenerator.h"
-#include "renderer/EnvironmentBrdfLutResource.h"
+#include "renderer/resources/EnvironmentBrdfLutResource.h"
 #include "rhi/Buffer.h"
 #include "rhi/DescriptorSet.h"
 #include "rhi/DescriptorSetLayout.h"
