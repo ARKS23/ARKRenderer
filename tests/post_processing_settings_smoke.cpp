@@ -19,6 +19,7 @@ namespace {
         const ark::PostProcessingSettings settings{};
         const ark::PostProcessingSettings sanitized = ark::sanitizePostProcessingSettings(settings);
         const ark::BloomSettings& bloom = sanitized.bloom;
+        const ark::SsaoSettings& ssao = sanitized.ssao;
         if (bloom.enabled ||
             !nearlyEqual(bloom.intensity, 0.0f) ||
             !nearlyEqual(bloom.scatter, 0.6f) ||
@@ -26,6 +27,19 @@ namespace {
             !nearlyEqual(bloom.softKnee, 0.5f) ||
             bloom.maxMipCount != 6) {
             std::cerr << "Default post-processing settings should keep Bloom disabled\n";
+            return false;
+        }
+
+        if (ssao.enabled ||
+            !nearlyEqual(ssao.radius, 0.6f) ||
+            !nearlyEqual(ssao.intensity, 1.0f) ||
+            !nearlyEqual(ssao.bias, 0.025f) ||
+            !nearlyEqual(ssao.power, 1.5f) ||
+            ssao.sampleCount != 16 ||
+            ssao.blurRadius != 2 ||
+            !nearlyEqual(ssao.resolutionScale, 1.0f) ||
+            ssao.debugMode != ark::SsaoDebugMode::None) {
+            std::cerr << "Default post-processing settings should keep SSAO disabled\n";
             return false;
         }
 
@@ -40,6 +54,15 @@ namespace {
         settings.bloom.threshold = 1.35f;
         settings.bloom.softKnee = 0.25f;
         settings.bloom.maxMipCount = 7;
+        settings.ssao.enabled = true;
+        settings.ssao.radius = 1.25f;
+        settings.ssao.intensity = 0.85f;
+        settings.ssao.bias = 0.03f;
+        settings.ssao.power = 2.0f;
+        settings.ssao.sampleCount = 32;
+        settings.ssao.blurRadius = 3;
+        settings.ssao.resolutionScale = 0.5f;
+        settings.ssao.debugMode = ark::SsaoDebugMode::Occlusion;
 
         const ark::PostProcessingSettings sanitized = ark::sanitizePostProcessingSettings(settings);
         if (!sanitized.bloom.enabled ||
@@ -51,6 +74,18 @@ namespace {
             std::cerr << "Valid Bloom settings were not preserved\n";
             return false;
         }
+        if (!sanitized.ssao.enabled ||
+            !nearlyEqual(sanitized.ssao.radius, 1.25f) ||
+            !nearlyEqual(sanitized.ssao.intensity, 0.85f) ||
+            !nearlyEqual(sanitized.ssao.bias, 0.03f) ||
+            !nearlyEqual(sanitized.ssao.power, 2.0f) ||
+            sanitized.ssao.sampleCount != 32 ||
+            sanitized.ssao.blurRadius != 3 ||
+            !nearlyEqual(sanitized.ssao.resolutionScale, 0.5f) ||
+            sanitized.ssao.debugMode != ark::SsaoDebugMode::Occlusion) {
+            std::cerr << "Valid SSAO settings were not preserved\n";
+            return false;
+        }
 
         settings.bloom.enabled = true;
         settings.bloom.intensity = -1.0f;
@@ -58,6 +93,15 @@ namespace {
         settings.bloom.threshold = std::numeric_limits<float>::quiet_NaN();
         settings.bloom.softKnee = 2.0f;
         settings.bloom.maxMipCount = 0;
+        settings.ssao.enabled = true;
+        settings.ssao.radius = std::numeric_limits<float>::infinity();
+        settings.ssao.intensity = -1.0f;
+        settings.ssao.bias = std::numeric_limits<float>::quiet_NaN();
+        settings.ssao.power = 0.0f;
+        settings.ssao.sampleCount = 0;
+        settings.ssao.blurRadius = 999;
+        settings.ssao.resolutionScale = -1.0f;
+        settings.ssao.debugMode = static_cast<ark::SsaoDebugMode>(999);
 
         const ark::PostProcessingSettings clamped = ark::sanitizePostProcessingSettings(settings);
         if (clamped.bloom.enabled ||
@@ -69,6 +113,18 @@ namespace {
             std::cerr << "Invalid Bloom settings were not clamped to the expected contract\n";
             return false;
         }
+        if (clamped.ssao.enabled ||
+            !nearlyEqual(clamped.ssao.radius, 0.6f) ||
+            !nearlyEqual(clamped.ssao.intensity, 0.0f) ||
+            !nearlyEqual(clamped.ssao.bias, 0.025f) ||
+            !nearlyEqual(clamped.ssao.power, 0.25f) ||
+            clamped.ssao.sampleCount != 4 ||
+            clamped.ssao.blurRadius != 8 ||
+            !nearlyEqual(clamped.ssao.resolutionScale, 0.25f) ||
+            clamped.ssao.debugMode != ark::SsaoDebugMode::None) {
+            std::cerr << "Invalid SSAO settings were not clamped to the expected contract\n";
+            return false;
+        }
 
         settings.bloom.enabled = true;
         settings.bloom.intensity = 100.0f;
@@ -76,6 +132,15 @@ namespace {
         settings.bloom.threshold = 128.0f;
         settings.bloom.softKnee = -2.0f;
         settings.bloom.maxMipCount = 999;
+        settings.ssao.enabled = true;
+        settings.ssao.radius = 128.0f;
+        settings.ssao.intensity = 128.0f;
+        settings.ssao.bias = 128.0f;
+        settings.ssao.power = 128.0f;
+        settings.ssao.sampleCount = 999;
+        settings.ssao.blurRadius = 999;
+        settings.ssao.resolutionScale = 128.0f;
+        settings.ssao.debugMode = ark::SsaoDebugMode::NormalDepth;
 
         const ark::PostProcessingSettings highClamp = ark::sanitizePostProcessingSettings(settings);
         if (!highClamp.bloom.enabled ||
@@ -87,6 +152,18 @@ namespace {
             std::cerr << "Bloom settings upper/lower clamp contract is invalid\n";
             return false;
         }
+        if (!highClamp.ssao.enabled ||
+            !nearlyEqual(highClamp.ssao.radius, 8.0f) ||
+            !nearlyEqual(highClamp.ssao.intensity, 4.0f) ||
+            !nearlyEqual(highClamp.ssao.bias, 0.5f) ||
+            !nearlyEqual(highClamp.ssao.power, 8.0f) ||
+            highClamp.ssao.sampleCount != 64 ||
+            highClamp.ssao.blurRadius != 8 ||
+            !nearlyEqual(highClamp.ssao.resolutionScale, 1.0f) ||
+            highClamp.ssao.debugMode != ark::SsaoDebugMode::NormalDepth) {
+            std::cerr << "SSAO settings upper/lower clamp contract is invalid\n";
+            return false;
+        }
 
         return true;
     }
@@ -96,20 +173,28 @@ namespace {
         settings.bloom.enabled = true;
         settings.bloom.intensity = 0.18f;
         settings.bloom.maxMipCount = 5;
+        settings.ssao.enabled = true;
+        settings.ssao.radius = 1.5f;
+        settings.ssao.sampleCount = 24;
 
         ark::RenderView view{};
         view.setPostProcessingSettings(settings);
         if (!view.postProcessingSettings().bloom.enabled ||
             !nearlyEqual(view.postProcessingSettings().bloom.intensity, 0.18f) ||
-            view.postProcessingSettings().bloom.maxMipCount != 5) {
+            view.postProcessingSettings().bloom.maxMipCount != 5 ||
+            !view.postProcessingSettings().ssao.enabled ||
+            !nearlyEqual(view.postProcessingSettings().ssao.radius, 1.5f) ||
+            view.postProcessingSettings().ssao.sampleCount != 24) {
             std::cerr << "RenderView did not preserve sanitized post-processing settings\n";
             return false;
         }
 
         settings.bloom.intensity = -2.0f;
+        settings.ssao.intensity = -2.0f;
         view.setPostProcessingSettings(settings);
-        if (view.postProcessingSettings().bloom.enabled) {
-            std::cerr << "RenderView should sanitize disabled Bloom when intensity is zero or below\n";
+        if (view.postProcessingSettings().bloom.enabled ||
+            view.postProcessingSettings().ssao.enabled) {
+            std::cerr << "RenderView should sanitize disabled post effects when intensity is zero or below\n";
             return false;
         }
 

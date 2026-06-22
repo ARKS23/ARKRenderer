@@ -16,6 +16,11 @@ int main() {
     desc.view.postProcessing.bloom.enabled = true;
     desc.view.postProcessing.bloom.intensity = 0.12f;
     desc.view.postProcessing.bloom.maxMipCount = 7;
+    desc.view.postProcessing.ssao.enabled = true;
+    desc.view.postProcessing.ssao.radius = 1.25f;
+    desc.view.postProcessing.ssao.intensity = 0.9f;
+    desc.view.postProcessing.ssao.sampleCount = 32;
+    desc.view.postProcessing.ssao.debugMode = ark::SsaoDebugMode::Occlusion;
     desc.view.shadows.enabled = true;
     desc.view.shadows.strength = 0.8f;
     desc.view.shadows.bias = 0.003f;
@@ -42,6 +47,11 @@ int main() {
     if (!runtimeSettings.uiVisible ||
         runtimeSettings.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
         runtimeSettings.view.postProcessing.bloom.intensity != 0.12f ||
+        !runtimeSettings.view.postProcessing.ssao.enabled ||
+        runtimeSettings.view.postProcessing.ssao.radius != 1.25f ||
+        runtimeSettings.view.postProcessing.ssao.intensity != 0.9f ||
+        runtimeSettings.view.postProcessing.ssao.sampleCount != 32 ||
+        runtimeSettings.view.postProcessing.ssao.debugMode != ark::SsaoDebugMode::Occlusion ||
         runtimeSettings.view.shadows.filterMode != ark::ShadowFilterMode::Pcf5x5 ||
         !runtimeSettings.view.shadows.cascades.enabled ||
         runtimeSettings.view.shadows.cascades.cascadeCount != 4 ||
@@ -60,6 +70,11 @@ int main() {
     }
 
     runtimeSettings.view.postProcessing.bloom.intensity = 2.0f;
+    runtimeSettings.view.postProcessing.ssao.radius = 128.0f;
+    runtimeSettings.view.postProcessing.ssao.intensity = -1.0f;
+    runtimeSettings.view.postProcessing.ssao.sampleCount = 999;
+    runtimeSettings.view.postProcessing.ssao.blurRadius = 999;
+    runtimeSettings.view.postProcessing.ssao.resolutionScale = -1.0f;
     runtimeSettings.view.shadows.mapExtent = 8192;
     runtimeSettings.view.shadows.filterRadiusTexels = 99.0f;
     runtimeSettings.view.shadows.cascades.cascadeCount = 3;
@@ -72,6 +87,12 @@ int main() {
     ark::RenderView view{};
     ark::applySandboxRuntimeSettings(view, runtimeSettings);
     if (view.postProcessingSettings().bloom.intensity <= 0.0f ||
+        view.postProcessingSettings().ssao.enabled ||
+        view.postProcessingSettings().ssao.radius != 8.0f ||
+        view.postProcessingSettings().ssao.intensity != 0.0f ||
+        view.postProcessingSettings().ssao.sampleCount != 64 ||
+        view.postProcessingSettings().ssao.blurRadius != 8 ||
+        view.postProcessingSettings().ssao.resolutionScale != 0.25f ||
         view.shadowSettings().mapExtent != 4096 ||
         view.shadowSettings().filterRadiusTexels != 8.0f ||
         view.shadowSettings().cascades.cascadeCount != 4 ||

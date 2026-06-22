@@ -334,6 +334,98 @@ namespace {
         return true;
     }
 
+    bool validateSsaoNormalDepthVertexShaderSource() {
+        const ark::Path shaderPath = findShaderSource("ssao_normal_depth.vert.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find SSAO normal-depth vertex shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read SSAO normal-depth vertex shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "struct SsaoGeometryUniform") ||
+            !containsText(shaderSource, "float4x4 normalMatrix") ||
+            !containsText(shaderSource, "viewDepth") ||
+            !containsText(shaderSource, "[[vk::location(1)]] float3 normal") ||
+            !containsText(shaderSource, "mul(g_Geometry.projection") ||
+            !containsText(shaderSource, "normalize(mul((float3x3)g_Geometry.view")) {
+            std::cerr << "SSAO normal-depth vertex shader does not expose expected view-space path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateSsaoNormalDepthFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("ssao_normal_depth.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find SSAO normal-depth fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read SSAO normal-depth fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "Texture2D<float4> g_BaseColorTexture") ||
+            !containsText(shaderSource, "struct SsaoMaterialUniform") ||
+            !containsText(shaderSource, "AlphaModeMask") ||
+            !containsText(shaderSource, "discard") ||
+            !containsText(shaderSource, "encodedNormal") ||
+            !containsText(shaderSource, "input.viewDepth")) {
+            std::cerr << "SSAO normal-depth fragment shader does not expose expected alpha and output path\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    bool validateSsaoFragmentShaderSource() {
+        const ark::Path shaderPath = findShaderSource("ssao.frag.hlsl");
+        if (shaderPath.empty()) {
+            std::cerr << "Failed to find SSAO fragment shader source\n";
+            return false;
+        }
+
+        const std::vector<ark::u8> shaderSource = ark::readBinaryFile(shaderPath);
+        if (shaderSource.empty()) {
+            std::cerr << "Failed to read SSAO fragment shader source\n";
+            return false;
+        }
+
+        if (!containsText(shaderSource, "SsaoModeEvaluate") ||
+            !containsText(shaderSource, "SsaoModeBlur") ||
+            !containsText(shaderSource, "SsaoModeComposite") ||
+            !containsText(shaderSource, "SsaoDebugOcclusion") ||
+            !containsText(shaderSource, "SsaoDebugNormalDepth") ||
+            !containsText(shaderSource, "reconstructViewPosition") ||
+            !containsText(shaderSource, "projectViewToUv") ||
+            !containsText(shaderSource, "buildTangentBasis") ||
+            !containsText(shaderSource, "evaluateSsao") ||
+            !containsText(shaderSource, "blurSsao") ||
+            !containsText(shaderSource, "compositeSsao") ||
+            !containsText(shaderSource, "MaxSsaoSamples") ||
+            !containsText(shaderSource, "g_Ssao.parameters0") ||
+            !containsText(shaderSource, "g_Ssao.parameters1")) {
+            std::cerr << "SSAO fragment shader does not expose expected evaluate/blur/composite path\n";
+            return false;
+        }
+
+        if (containsText(shaderSource, "linearToOutput") ||
+            containsText(shaderSource, "applyToneMapping")) {
+            std::cerr << "SSAO fragment shader should output linear HDR or debug values before tone mapping\n";
+            return false;
+        }
+
+        return true;
+    }
+
     bool validateEquirectToCubeVertexShaderSource() {
         const ark::Path shaderPath = findShaderSource("equirect_to_cube.vert.hlsl");
         if (shaderPath.empty()) {
@@ -668,6 +760,9 @@ int main() {
     const bool toneMappingVertexShaderValid = validateCompiledShader("tonemap.vert.spv");
     const bool toneMappingFragmentShaderValid = validateCompiledShader("tonemap.frag.spv");
     const bool bloomFragmentShaderValid = validateCompiledShader("bloom.frag.spv");
+    const bool ssaoNormalDepthVertexShaderValid = validateCompiledShader("ssao_normal_depth.vert.spv");
+    const bool ssaoNormalDepthFragmentShaderValid = validateCompiledShader("ssao_normal_depth.frag.spv");
+    const bool ssaoFragmentShaderValid = validateCompiledShader("ssao.frag.spv");
     const bool brdfLutVertexShaderValid = validateCompiledShader("brdf_lut.vert.spv");
     const bool brdfLutFragmentShaderValid = validateCompiledShader("brdf_lut.frag.spv");
     const bool equirectToCubeVertexShaderValid = validateCompiledShader("equirect_to_cube.vert.spv");
@@ -684,6 +779,8 @@ int main() {
                    meshFragmentShaderValid && shadowVertexShaderValid && shadowFragmentShaderValid &&
                    toneMappingVertexShaderValid && toneMappingFragmentShaderValid &&
                    bloomFragmentShaderValid &&
+                   ssaoNormalDepthVertexShaderValid && ssaoNormalDepthFragmentShaderValid &&
+                   ssaoFragmentShaderValid &&
                    brdfLutVertexShaderValid && brdfLutFragmentShaderValid &&
                    equirectToCubeVertexShaderValid && equirectToCubeFragmentShaderValid &&
                    irradianceVertexShaderValid && irradianceFragmentShaderValid &&
@@ -693,6 +790,9 @@ int main() {
                    validateShadowVertexShaderSource() && validateShadowFragmentShaderSource() &&
                    validateToneMappingVertexShaderSource() && validateToneMappingFragmentShaderSource() &&
                    validateBloomFragmentShaderSource() &&
+                   validateSsaoNormalDepthVertexShaderSource() &&
+                   validateSsaoNormalDepthFragmentShaderSource() &&
+                   validateSsaoFragmentShaderSource() &&
                    validateBrdfLutVertexShaderSource() && validateBrdfLutFragmentShaderSource() &&
                    validateEquirectToCubeVertexShaderSource() && validateEquirectToCubeFragmentShaderSource() &&
                    validateIrradianceVertexShaderSource() && validateIrradianceFragmentShaderSource() &&

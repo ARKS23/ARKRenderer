@@ -37,6 +37,7 @@ namespace ark {
         ToneMappingSettings toneMapping{1.0f, 2.2f, ToneMappingOperator::ACES};
         PostProcessingSettings postProcessing{
             BloomSettings{true, 0.12f, 0.6f, 1.0f, 0.5f, 6},
+            SsaoSettings{true, 0.85f, 1.15f, 0.03f, 1.35f, 24, 2, 1.0f, SsaoDebugMode::None},
         };
         ShadowSettings shadows{
             true,

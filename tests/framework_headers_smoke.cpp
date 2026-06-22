@@ -50,6 +50,7 @@
 #include "renderer/material/MaterialResource.h"
 #include "renderer/material/MaterialSystem.h"
 #include "renderer/effects/bloom/BloomPass.h"
+#include "renderer/effects/ssao/SsaoPass.h"
 #include "renderer/passes/ClearPass.h"
 #include "renderer/passes/CubePass.h"
 #include "renderer/passes/ForwardPass.h"

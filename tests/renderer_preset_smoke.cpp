@@ -237,6 +237,9 @@ namespace {
                 desc.view.toneMapping.operatorType != ark::ToneMappingOperator::ACES ||
                 !desc.view.postProcessing.bloom.enabled ||
                 !near(desc.view.postProcessing.bloom.intensity, 0.12f) ||
+                !desc.view.postProcessing.ssao.enabled ||
+                !near(desc.view.postProcessing.ssao.radius, 0.85f) ||
+                desc.view.postProcessing.ssao.sampleCount != 24 ||
                 !desc.view.shadows.enabled ||
                 !near(desc.view.shadows.strength, 1.0f) ||
                 desc.view.shadows.mapExtent != 2048 ||

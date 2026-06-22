@@ -6,6 +6,7 @@
 #include "renderer/FrameOverlay.h"
 #include "renderer/RenderPass.h"
 #include "renderer/effects/bloom/BloomPass.h"
+#include "renderer/effects/ssao/SsaoPass.h"
 #include "renderer/passes/ClearPass.h"
 #include "renderer/passes/ForwardPass.h"
 #include "renderer/effects/shadow/ShadowPass.h"
@@ -30,6 +31,7 @@ namespace ark {
                 : m_ShadowPass(makeScope<ShadowPass>()), m_ClearPass(makeScope<ClearPass>()),
                   m_ForwardPass(makeScope<ForwardPass>()),
                   m_SkyboxPass(makeScope<SkyboxPass>()), m_BloomPass(makeScope<BloomPass>()),
+                  m_SsaoPass(makeScope<SsaoPass>()),
                   m_ToneMappingPass(makeScope<ToneMappingPass>()),
                   m_ScenePasses{m_ClearPass.get(), m_SkyboxPass.get(), m_ForwardPass.get()},
                   m_PostPasses{m_ToneMappingPass.get()} {
@@ -43,6 +45,7 @@ namespace ark {
                 for (RenderPass* pass : m_ScenePasses) {
                     pass->setup(device);
                 }
+                m_SsaoPass->setup(device);
                 m_BloomPass->setup(device);
                 for (RenderPass* pass : m_PostPasses) {
                     pass->setup(device);
@@ -104,6 +107,7 @@ namespace ark {
                 }
 
                 frameContext.sceneColorView = m_SceneColorView.get();
+                frameContext.depthBufferView = depthBufferView;
                 frameContext.colorFormat = SceneColorFormat;
                 frameContext.depthFormat = frameContext.swapChain->getDesc().depthFormat;
                 if (!beginSceneRendering(frameContext, *depthBufferView)) {
@@ -132,6 +136,10 @@ namespace ark {
 
                 frameContext.colorFormat = SceneColorFormat;
                 frameContext.depthFormat = rhi::Format::Unknown;
+                if (!m_SsaoPass->prepare(frameContext) || !m_SsaoPass->execute(frameContext)) {
+                    return false;
+                }
+
                 if (!m_BloomPass->prepare(frameContext) || !m_BloomPass->execute(frameContext)) {
                     return false;
                 }
@@ -309,6 +317,7 @@ namespace ark {
             Scope<ForwardPass> m_ForwardPass;
             Scope<SkyboxPass> m_SkyboxPass;
             Scope<BloomPass> m_BloomPass;
+            Scope<SsaoPass> m_SsaoPass;
             Scope<ToneMappingPass> m_ToneMappingPass;
             std::array<RenderPass*, 3> m_ScenePasses{};
             std::array<RenderPass*, 1> m_PostPasses{};

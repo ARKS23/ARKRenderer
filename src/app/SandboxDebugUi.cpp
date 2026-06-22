@@ -57,8 +57,24 @@ namespace ark {
             }
         }
 
+        const char* ssaoDebugModeLabel(SsaoDebugMode mode) {
+            switch (mode) {
+            case SsaoDebugMode::Occlusion:
+                return "Occlusion";
+            case SsaoDebugMode::NormalDepth:
+                return "Normal Depth";
+            case SsaoDebugMode::None:
+            default:
+                return "None";
+            }
+        }
+
         const char* formatLabel(rhi::Format format) {
             switch (format) {
+            case rhi::Format::RGBA16Float:
+                return "RGBA16Float";
+            case rhi::Format::RGBA8Unorm:
+                return "RGBA8Unorm";
             case rhi::Format::D32Float:
                 return "D32Float";
             case rhi::Format::D24UnormS8UInt:
@@ -100,6 +116,17 @@ namespace ark {
             }
 
             filterMode = static_cast<ShadowFilterMode>(std::clamp(current, 0, 2));
+            return true;
+        }
+
+        bool comboSsaoDebugMode(SsaoDebugMode& mode) {
+            const char* items[] = {"None", "Occlusion", "Normal Depth"};
+            int current = static_cast<int>(mode);
+            if (!ImGui::Combo("Debug Mode##SSAO", &current, items, IM_ARRAYSIZE(items))) {
+                return false;
+            }
+
+            mode = static_cast<SsaoDebugMode>(std::clamp(current, 0, 2));
             return true;
         }
 
@@ -198,6 +225,7 @@ namespace ark {
             drawCameraPanel();
             drawToneMappingPanel();
             drawBloomPanel();
+            drawSsaoPanel();
             drawShadowPanel();
             drawVisibilityPanel();
             drawDiagnosticsPanel();
@@ -328,6 +356,41 @@ namespace ark {
             }
         }
 
+        void drawSsaoPanel() {
+            if (!ImGui::CollapsingHeader("SSAO")) {
+                return;
+            }
+
+            SsaoSettings& ssao = m_Settings.view.postProcessing.ssao;
+            ImGui::Checkbox("Enabled##SSAO", &ssao.enabled);
+            ImGui::SliderFloat("Radius##SSAO", &ssao.radius, 0.05f, 4.0f, "%.2f");
+            ImGui::SliderFloat("Intensity##SSAO", &ssao.intensity, 0.0f, 4.0f, "%.2f");
+            ImGui::SliderFloat("Bias##SSAO", &ssao.bias, 0.0f, 0.2f, "%.4f");
+            ImGui::SliderFloat("Power##SSAO", &ssao.power, 0.25f, 6.0f, "%.2f");
+
+            int sampleCount = static_cast<int>(ssao.sampleCount);
+            if (ImGui::SliderInt("Samples##SSAO", &sampleCount, 4, 64)) {
+                ssao.sampleCount = static_cast<u32>(sampleCount);
+            }
+
+            int blurRadius = static_cast<int>(ssao.blurRadius);
+            if (ImGui::SliderInt("Blur Radius##SSAO", &blurRadius, 0, 8)) {
+                ssao.blurRadius = static_cast<u32>(blurRadius);
+            }
+
+            ImGui::SliderFloat("Resolution Scale##SSAO", &ssao.resolutionScale, 0.25f, 1.0f, "%.2f");
+            comboSsaoDebugMode(ssao.debugMode);
+
+            if (m_LastHasSsaoOcclusion) {
+                ImGui::Text("Frame: %ux%u, %s",
+                            m_LastSsaoExtent.width,
+                            m_LastSsaoExtent.height,
+                            formatLabel(m_LastSsaoViewDesc.format));
+            } else {
+                ImGui::TextDisabled("SSAO frame target is inactive");
+            }
+        }
+
         void drawShadowPanel() {
             if (!ImGui::CollapsingHeader("Shadow", ImGuiTreeNodeFlags_DefaultOpen)) {
                 return;
@@ -423,10 +486,16 @@ namespace ark {
 
             const ToneMappingSettings& toneMapping = m_Settings.view.toneMapping;
             const BloomSettings& bloom = m_Settings.view.postProcessing.bloom;
+            const SsaoSettings& ssao = m_Settings.view.postProcessing.ssao;
             const ShadowSettings& shadows = m_Settings.view.shadows;
 
             ImGui::Text("Tone: %s", toneMappingLabel(toneMapping.operatorType));
             ImGui::Text("Bloom: %s", bloom.enabled ? "On" : "Off");
+            ImGui::Text("SSAO: %s / %s / %ux%u",
+                        ssao.enabled ? "On" : "Off",
+                        ssaoDebugModeLabel(ssao.debugMode),
+                        m_LastSsaoExtent.width,
+                        m_LastSsaoExtent.height);
             ImGui::Text("Shadow: %s / %s",
                         shadows.enabled ? "On" : "Off",
                         shadowFilterLabel(shadows.filterMode));
@@ -497,6 +566,15 @@ namespace ark {
                 m_LastHasShadowMapView = false;
                 m_LastShadowViewDesc = rhi::TextureViewDesc{};
             }
+
+            m_LastSsaoExtent = frameContext.ssaoExtent;
+            if (frameContext.ssaoOcclusionView) {
+                m_LastHasSsaoOcclusion = true;
+                m_LastSsaoViewDesc = frameContext.ssaoOcclusionView->getDesc();
+            } else {
+                m_LastHasSsaoOcclusion = false;
+                m_LastSsaoViewDesc = rhi::TextureViewDesc{};
+            }
         }
 
         Window& m_Window;
@@ -506,7 +584,10 @@ namespace ark {
         RenderQueueStats m_LastShadowStats{};
         CascadeShadowFrameData m_LastCascadeShadows{};
         rhi::TextureViewDesc m_LastShadowViewDesc{};
+        rhi::TextureViewDesc m_LastSsaoViewDesc{};
+        rhi::Extent2D m_LastSsaoExtent{};
         bool m_LastHasShadowMapView = false;
+        bool m_LastHasSsaoOcclusion = false;
         bool m_FrameBegun = false;
         bool m_DrawDataReady = false;
     };

@@ -38,7 +38,12 @@ namespace ark {
         rhi::SwapChain* swapChain = nullptr;
         rhi::FrameResource* frameResource = nullptr;
         rhi::TextureView* backBufferView = nullptr;
+        rhi::TextureView* depthBufferView = nullptr;
         rhi::TextureView* sceneColorView = nullptr;
+        // SSAO pass 后续会在 Forward 之后、Bloom 之前消费这些临时贴图引用；资源所有权仍留在具体 pass 内部。
+        rhi::TextureView* ssaoNormalDepthView = nullptr;
+        rhi::TextureView* ssaoOcclusionView = nullptr;
+        rhi::TextureView* ssaoCompositeView = nullptr;
         EnvironmentCubeResource* environmentCube = nullptr;
         EnvironmentCubeResource* irradianceCube = nullptr;
         EnvironmentCubeResource* prefilteredSpecularCube = nullptr;
@@ -47,6 +52,7 @@ namespace ark {
         rhi::Sampler* shadowSampler = nullptr;
 
         rhi::Extent2D extent{};
+        rhi::Extent2D ssaoExtent{};
         rhi::Format colorFormat = rhi::Format::Unknown;
         rhi::Format depthFormat = rhi::Format::Unknown;
         rhi::ClearColor clearColor{};
